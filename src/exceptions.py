@@ -170,3 +170,22 @@ class RateLimitError(RIKIException):
         self.retry_after = retry_after
         message = f"Rate limit exceeded for {command}: retry after {retry_after:.1f}s"
         super().__init__(message, {"command": command, "retry_after": retry_after})
+
+class InvalidOperationError(RIKIException):
+    """
+    Raised when a player attempts an action that is not allowed 
+    or violates game rules.
+    
+    Args:
+        action: Description of the invalid action
+        reason: Explanation of why it’s not allowed
+    
+    Example:
+        >>> raise InvalidOperationError("ascend_floor", "Player has not cleared previous floor")
+    """
+    
+    def __init__(self, action: str, reason: str):
+        self.action = action
+        self.reason = reason
+        message = f"Invalid operation '{action}': {reason}"
+        super().__init__(message, {"action": action, "reason": reason})
