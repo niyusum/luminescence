@@ -1,4 +1,3 @@
-# src/features/combat/models.py
 """
 Combat domain models and data structures.
 

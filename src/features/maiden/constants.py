@@ -3,7 +3,7 @@ Unified maiden system constants for RIKI RPG.
 
 Single source of truth for:
 - Element definitions (names, emojis, colors)
-- Tier definitions (names, colors, roman numerals)
+- Tier definitions (names, colors, roman numerals, stat ranges)
 - UI constants (pagination, progress bars)
 - Embed colors for all contexts
 - Cache key templates
@@ -73,14 +73,23 @@ class Element(Enum):
 @dataclass
 class TierData:
     """
-    Complete tier information.
+    Complete tier information with stat ranges for variety.
     
-    Note: Stat ranges and scaling logic live in MaidenService.
-    This is just metadata for display purposes.
+    stat_range: (min_total, max_total) - Range of total stats for this tier
+                Used during seeding to create variety within tier
+    base_attack: Representative/average attack for this tier
+                 Used for balance calculations and reference
+    
+    Example: Tier 1 with stat_range (31, 62) and base_attack 45
+    - Blazeblob could have 41 ATK, 6 DEF, 16 HP (total: 63)
+    - Droozle could have 19 ATK, 15 DEF, 28 HP (total: 62)
+    - Both valid Tier 1, different stat distributions
     """
     tier: int
     name: str
     roman: str
+    stat_range: Tuple[int, int]  # (min_total, max_total) stats for variety
+    base_attack: int             # Representative attack for scaling
     color: int
     
     @property
@@ -92,34 +101,39 @@ class TierData:
     def short_display(self) -> str:
         """Get short display name (e.g., 'T7 Legendary')."""
         return f"T{self.tier} {self.name}"
+    
+    @property
+    def stat_range_display(self) -> str:
+        """Get formatted stat range."""
+        return f"{self.stat_range[0]:,}-{self.stat_range[1]:,} total stats"
 
 
 class Tier:
     """
-    Tier management system.
+    Tier management system with exponentially rewarding progression.
     
-    Provides tier metadata for UI display only.
-    Stat calculations, fusion costs, and game balance live in services.
+    Provides tier metadata including stat ranges for seeding variety.
+    Stat calculations and game balance live in services.
     """
     
     _TIER_DATA = {
-        # Early Game
-        1: TierData(1, "Common", "I", 0x808080),         # Gray
-        2: TierData(2, "Uncommon", "II", 0x40E0D0),      # Turquoise
-        3: TierData(3, "Rare", "III", 0x00FF00),         # Green
-        4: TierData(4, "Epic", "IV", 0x0099FF),          # Blue
+        # Early Game - Linear Learning Phase (2.4-3.3x jumps)
+        1: TierData(1, "Common", "I", (31, 62), 45, 0x808080),              # Gray
+        2: TierData(2, "Uncommon", "II", (77, 154), 110, 0x40E0D0),        # Turquoise 
+        3: TierData(3, "Rare", "III", (210, 420), 300, 0x00FF00),          # Green
+        4: TierData(4, "Epic", "IV", (630, 1260), 900, 0x0099FF),          # Blue
         
-        # Mid Game
-        5: TierData(5, "Mythic", "V", 0x9932CC),         # Purple
-        6: TierData(6, "Divine", "VI", 0xFFD700),        # Gold
-        7: TierData(7, "Legendary", "VII", 0xFF4500),    # Orange Red
-        8: TierData(8, "Ethereal", "VIII", 0x9370DB),    # Medium Purple
+        # Mid Game - Accelerating Growth (3.3-3.7x jumps)
+        5: TierData(5, "Mythic", "V", (2100, 4200), 3000, 0x9932CC),       # Purple
+        6: TierData(6, "Divine", "VI", (7700, 15400), 11000, 0xFFD700),    # Gold
+        7: TierData(7, "Legendary", "VII", (26250, 52500), 37500, 0xFF4500), # Orange Red
+        8: TierData(8, "Ethereal", "VIII", (91000, 182000), 130000, 0x9370DB), # Medium Purple
         
-        # End Game
-        9: TierData(9, "Genesis", "IX", 0x00CED1),       # Dark Turquoise
-        10: TierData(10, "Empyrean", "X", 0xFF1493),     # Deep Pink
-        11: TierData(11, "Void", "XI", 0x1C1C1C),        # Almost Black
-        12: TierData(12, "Singularity", "XII", 0xFFFFFF) # Pure White
+        # End Game - Exponential Fantasy (3.4-3.7x jumps)
+        9: TierData(9, "Genesis", "IX", (332500, 665000), 475000, 0x00CED1),   # Dark Turquoise
+        10: TierData(10, "Empyrean", "X", (1120000, 2240000), 1600000, 0xFF1493), # Deep Pink
+        11: TierData(11, "Void", "XI", (3850000, 7700000), 5500000, 0x1C1C1C),    # Almost Black
+        12: TierData(12, "Singularity", "XII", (13650000, 27300000), 19500000, 0xFFFFFF) # Pure White
     }
     
     @classmethod

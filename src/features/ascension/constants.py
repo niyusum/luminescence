@@ -1,4 +1,3 @@
-
 """
 Ascension system constants - minimal and data-driven.
 

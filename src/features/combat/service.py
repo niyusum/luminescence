@@ -17,8 +17,11 @@ Features:
 - Comprehensive metrics and logging
 
 Attack damage originates from maiden base_atk stats:
-    Power = sum(base_atk × quantity × tier_multiplier) for all maidens
+    Power = sum(base_atk × quantity) for all maidens
     Damage = Power × attack_count × modifiers × crit_bonus
+    
+Note: Tier scaling handled via MaidenBase.base_atk values from seed data.
+      Higher tier maidens have exponentially higher base_atk naturally.
 """
 
 from typing import Dict, List, Optional, Tuple
@@ -155,9 +158,10 @@ class CombatService:
         """
         Calculate player's total power from ALL owned maidens.
         
-        Power = sum(base_atk × quantity × tier_multiplier) for all maidens
-        Tier multiplier: 1 + (tier - 1) × 0.5
+        Power = sum(base_atk × quantity) for all maidens
         
+        No tier multipliers - tier scaling handled via MaidenBase.base_atk values.
+        Higher tier maidens naturally have exponentially higher base_atk from seed data.
         No squad limits, no benching - every maiden contributes.
         Optionally includes leader bonus multiplier.
         
@@ -173,10 +177,10 @@ class CombatService:
             >>> power = await CombatService.calculate_total_power(session, player_id)
             >>> print(f"Total Power: {power:,}")
         """
-        # Calculate base power from all maidens
+        # Calculate base power from all maidens (pure sum, no tier multipliers)
         result = await session.execute(
             select(func.sum(
-                MaidenBase.base_atk * Maiden.quantity * (1 + (Maiden.tier - 1) * 0.5)
+                MaidenBase.base_atk * Maiden.quantity
             ))
             .join(MaidenBase, Maiden.maiden_base_id == MaidenBase.id)
             .where(Maiden.player_id == player_id)
@@ -249,11 +253,10 @@ class CombatService:
                 leader_bonus_applied=False
             )
         
-        # Calculate power for each maiden
+        # Calculate power for each maiden (no tier multipliers)
         maiden_powers = []
         for maiden, maiden_base in maiden_pairs:
-            tier_multiplier = 1 + (maiden.tier - 1) * 0.5
-            power = int(maiden_base.base_atk * maiden.quantity * tier_multiplier)
+            power = int(maiden_base.base_atk * maiden.quantity)
             
             maiden_powers.append({
                 "maiden_id": maiden.id,
