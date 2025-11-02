@@ -2,26 +2,25 @@
 Maiden inventory and collection management service.
 
 Handles querying, adding, updating, and removing maidens from player inventories.
-Provides filtering, sorting, and power calculation utilities.
+Provides filtering, sorting, and collection utilities.
 
 Features:
 - Inventory queries with filtering and sorting
 - Maiden addition/removal with validation
-- Power calculation with leader bonuses (THE authoritative source)
+- Power calculation (DEFERS TO CombatService)
 - Fusable maiden identification
 - Collection statistics
 - Performance metrics and monitoring
 
 RIKI LAW Compliance:
 - Session-first parameter pattern (Article I.6)
-- Single source of truth for power calculations (Article VII)
+- Delegates power calculations to CombatService (Article VII)
 - Transaction logging for audit trails (Article II)
 - Domain exceptions only (Article VII)
 - No Discord imports (Article VII)
 - Performance metrics (Article X)
 
-Note: This is THE authoritative service for maiden power calculations.
-All other services must use MaidenService.calculate_player_total_power().
+Note: Power calculations now defer to CombatService as the authoritative source.
 """
 
 from typing import List, Optional, Dict, Any
@@ -42,10 +41,10 @@ class MaidenService:
     """
     Maiden inventory and collection management service.
     
-    THE authoritative source for:
-    - Maiden power calculations
+    Provides:
     - Collection management
     - Inventory operations
+    - Power calculations (via CombatService)
     """
     
     # Metrics tracking
@@ -292,7 +291,8 @@ class MaidenService:
             existing_result = await session.execute(
                 select(Maiden).where(
                     Maiden.player_id == player_id,
-                    Maiden.maiden_base_id == maiden_base_id
+                    Maiden.maiden_base_id == maiden_base_id,
+                    Maiden.tier == tier
                 ).with_for_update()
             )
             existing_maiden = existing_result.scalar_one_or_none()
@@ -462,13 +462,13 @@ class MaidenService:
         player_id: int
     ) -> int:
         """
-        Calculate player's total power from all maidens with leader bonus.
+        Calculate player's total power from all maidens.
         
-        THIS IS THE AUTHORITATIVE POWER CALCULATION.
-        All other services MUST use this method.
+        DEFERS TO CombatService as the authoritative source.
+        Includes leader bonus by default.
         
-        Formula:
-            Power = (base_attack + base_defense + base_hp) × quantity × leader_bonus
+        Formula (from CombatService):
+            Power = Σ(base_atk × quantity) × leader_bonus
         
         Args:
             session: Database session
@@ -481,61 +481,23 @@ class MaidenService:
         MaidenService._metrics["power_calculations"] += 1
         
         try:
-            maidens = await MaidenService.get_player_maidens(session, player_id)
+            # Defer to CombatService as authoritative source
+            from src.features.combat.service import CombatService
             
-            player = await session.get(Player, player_id)
-            if not player:
-                return 0
-            
-            total_power = 0
-            
-            # Sum base power from all maidens
-            for maiden in maidens:
-                if not maiden.maiden_base:
-                    continue
-                
-                maiden_base = maiden.maiden_base
-                
-                maiden_power = (
-                    maiden_base.base_attack +
-                    maiden_base.base_defense +
-                    maiden_base.base_hp
-                )
-                
-                total_power += maiden_power * maiden.quantity
-            
-            # Apply leader bonus if present
-            if player.leader_maiden_id:
-                leader_maiden = await MaidenService.get_maiden_by_id(
-                    session, player.leader_maiden_id
-                )
-                
-                if leader_maiden and leader_maiden.maiden_base:
-                    leader_base = leader_maiden.maiden_base
-                    
-                    if leader_base.has_leader_effect():
-                        effect_type = leader_base.leader_effect.get("type")
-                        
-                        if effect_type == "stat_boost":
-                            from src.features.leader.service import LeaderService
-                            
-                            bonus_percent = LeaderService.calculate_effect_value(
-                                leader_base,
-                                leader_maiden.tier
-                            )
-                            
-                            bonus_multiplier = 1 + (bonus_percent / 100)
-                            total_power = int(total_power * bonus_multiplier)
+            total_power = await CombatService.calculate_total_power(
+                session,
+                player_id,
+                include_leader_bonus=True
+            )
             
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             MaidenService._metrics["total_power_calc_time_ms"] += elapsed_ms
             
             logger.debug(
-                f"Calculated power: player={player_id} power={total_power} maiden_count={len(maidens)}",
+                f"Calculated power: player={player_id} power={total_power}",
                 extra={
                     "player_id": player_id,
                     "total_power": total_power,
-                    "maiden_count": len(maidens),
                     "calc_time_ms": round(elapsed_ms, 2)
                 }
             )
