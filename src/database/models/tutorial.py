@@ -21,7 +21,7 @@ class TutorialProgress(SQLModel, table=True):
         - set_leader: Set a leader maiden
         - complete_daily_quest: Finish all daily objectives
     
-    Rewards per step (configurable):
+    Rewards per step (core.configurable):
         - Grace, Rikis, or XP rewards
         - Unlocking features
         - Guidance popups

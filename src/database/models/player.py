@@ -156,7 +156,7 @@ class Player(SQLModel, table=True):
         if self.last_prayer_regen is None:
             return 0
         
-        from src.services.config_manager import ConfigManager
+        from src.core.config_manager import ConfigManager
         regen_interval = ConfigManager.get("prayer_system.regen_minutes", 5) * 60
         time_since = (datetime.utcnow() - self.last_prayer_regen).total_seconds()
         return max(0, int(regen_interval - time_since))

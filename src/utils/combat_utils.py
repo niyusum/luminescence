@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from src.database.models.maiden import Maiden
-from src.services.logger import get_logger
+from src.core.logger import get_logger
 
 logger = get_logger(__name__)
 
