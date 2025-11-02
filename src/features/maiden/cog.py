@@ -5,7 +5,7 @@ import math
 
 from src.core.database_service import DatabaseService
 from src.features.maiden.service import MaidenService
-from src.database.models.player import Player
+from database.models.core.player import Player
 from src.core.logger import get_logger
 from utils.embed_builder import EmbedBuilder
 

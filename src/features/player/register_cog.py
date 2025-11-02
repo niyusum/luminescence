@@ -5,7 +5,7 @@ from src.core.database_service import DatabaseService
 from src.features.player.service import PlayerService
 from src.core.transaction_logger import TransactionLogger
 from src.core.config_manager import ConfigManager
-from src.database.models.player import Player
+from database.models.core.player import Player
 from src.core.exceptions import ValidationError, DatabaseError
 from src.core.logger import get_logger
 from src.core.event_bus import EventBus

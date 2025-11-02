@@ -3,8 +3,8 @@ from datetime import date, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from src.database.models.daily_quest import DailyQuest
-from src.database.models.player import Player
+from src.database.models.progression.daily_quest import DailyQuest
+from database.models.core.player import Player
 from src.core.config_manager import ConfigManager
 from src.core.transaction_logger import TransactionLogger
 from src.core.exceptions import InvalidOperationError
@@ -157,8 +157,8 @@ class DailyService:
         if quest_type not in valid_quest_types:
             raise InvalidOperationError(f"Invalid quest type: {quest_type}")
         
-        progress_key, core.config_key, default_required = valid_quest_types[quest_type]
-        required_amount = ConfigManager.get(core.config_key, default_required)
+        progress_key, config_key, default_required = valid_quest_types[quest_type]
+        required_amount = ConfigManager.get(config_key, default_required)
         
         daily_quest = await DailyService.get_or_create_daily_quest(session, player_id)
         

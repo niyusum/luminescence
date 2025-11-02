@@ -2,9 +2,9 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from src.database.models.maiden import Maiden
-from src.database.models.maiden_base import MaidenBase
-from src.database.models.player import Player
+from database.models.core.maiden import Maiden
+from database.models.core.maiden_base import MaidenBase
+from database.models.core.player import Player
 from src.core.exceptions import MaidenNotFoundError
 from src.core.logger import get_logger
 

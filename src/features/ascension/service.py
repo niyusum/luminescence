@@ -5,8 +5,8 @@ from datetime import datetime
 import random
 import math
 
-from src.database.models.player import Player
-from src.database.models.ascension_progress import AscensionProgress
+from database.models.core.player import Player
+from src.database.models.progression.ascension_progress import AscensionProgress
 from src.core.config_manager import ConfigManager
 from src.features.resource.service import ResourceService
 from src.core.transaction_logger import TransactionLogger

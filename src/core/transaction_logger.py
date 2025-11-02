@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models.transaction_log import TransactionLog
+from database.models.economy.transaction_log import TransactionLog
 from src.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -212,7 +212,7 @@ class TransactionLogger:
         Returns:
             Number of logs deleted
         """
-        from src.database.models.transaction_log import TransactionLog
+        from database.models.economy.transaction_log import TransactionLog
         from src.core.database_service import DatabaseService
         from sqlalchemy import delete
         from datetime import datetime, timedelta

@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import math
 
-from src.database.models.player import Player
+from database.models.core.player import Player
 from src.core.config_manager import ConfigManager
 from src.core.transaction_logger import TransactionLogger
 from src.core.config import Config

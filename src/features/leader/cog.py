@@ -6,7 +6,7 @@ from src.core.database_service import DatabaseService
 from src.features.player.service import PlayerService
 from src.features.leader.service import LeaderService
 from src.core.transaction_logger import TransactionLogger
-from src.database.models.player import Player
+from database.models.core.player import Player
 from src.core.exceptions import MaidenNotFoundError
 from src.core.logger import get_logger
 from src.utils.decorators import ratelimit

@@ -4,7 +4,7 @@ from sqlalchemy import select
 from datetime import datetime
 import asyncio
 
-from src.database.models.game_config import GameConfig
+from database.models.core.game_config import GameConfig
 from src.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -210,28 +210,41 @@ class ConfigManager:
                 "common": [1, 10], "uncommon": [11, 25],
                 "rare": [26, 50], "epic": [51, 100],
                 "legendary": [101, 200], "mythic": [201, 999999]
+        },
+        "shrines": {
+            "lesser": {
+                "base_cost": 10000,
+                "cost_multiplier": 2.3,
+                "base_yield": 50,
+                "yield_multiplier": 2.3,
+                "max_level": 12,
+                "collection_cap_hours": 24,
+                "max_shrines": 3,
+                "unlock_level": 10
             },
-            "shrines": {
-                "lesser": {
-                    "base_cost": 10000,
-                    "cost_multiplier": 2.3,
-                    "base_yield": 50,
-                    "yield_multiplier": 2.3,
-                    "max_level": 12,
-                    "collection_cap_hours": 24,
-                    "max_shrines": 3,
-                    "unlock_level": 10
-                },
-                "radiant": {
-                    "base_cost": 50000,
-                    "cost_multiplier": 2.3,
-                    "base_yield": 0.05,
-                    "yield_multiplier": 2.3,
-                    "max_level": 12,
-                    "collection_cap_hours": 24,
-                    "max_shrines": 3,
-                    "unlock_level": 30
-                }
+            "radiant": {
+                "base_cost": 50000,
+                "cost_multiplier": 2.3,
+                "base_yield": 0.05,
+                "yield_multiplier": 2.3,
+                "max_level": 12,
+                "collection_cap_hours": 24,
+                "max_shrines": 3,
+                "unlock_level": 30
+            }
+        },
+        "guilds": {
+            "base_upgrade_cost": 25000,
+            "upgrade_costs": {
+                "level_2": 25000,
+                "level_3": 50000,
+                "level_4": 100000,
+            },
+            "upgrade_cost_multiplier": 2.5,
+            "max_level": 20,
+            "base_max_members": 10,
+            "member_growth_per_level": 2,
+            "donation_minimum": 1000,
             }
         }
     }

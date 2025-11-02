@@ -6,9 +6,9 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from src.database.models.player import Player
-from src.database.models.maiden import Maiden
-from src.database.models.maiden_base import MaidenBase
+from database.models.core.player import Player
+from database.models.core.maiden import Maiden
+from database.models.core.maiden_base import MaidenBase
 from src.core.config_manager import ConfigManager
 from src.core.logger import get_logger
 from src.features.resource.service import ResourceService

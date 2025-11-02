@@ -1,8 +1,8 @@
 # src/services/leader_service.py
 from typing import Dict
-from src.database.models.player import Player
-from src.database.models.maiden import Maiden
-from src.database.models.maiden_base import MaidenBase
+from database.models.core.player import Player
+from database.models.core.maiden import Maiden
+from database.models.core.maiden_base import MaidenBase
 from src.core.database_service import DatabaseService
 from src.core.logger import get_logger
 

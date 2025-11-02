@@ -3,7 +3,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models.player import Player
+from database.models.core.player import Player
 from src.core.config_manager import ConfigManager
 from src.core.transaction_logger import TransactionLogger
 from src.features.leader.service import LeaderService
@@ -477,7 +477,7 @@ class ResourceService:
             >>> deleted = await ResourceService.cleanup_old_audit_logs(session, cutoff_days=90)
             >>> print(f"Deleted {deleted} old audit logs")
         """
-        from src.database.models.transaction_log import TransactionLog
+        from database.models.economy.transaction_log import TransactionLog
         from sqlalchemy import delete
         
         cutoff_date = datetime.utcnow() - timedelta(days=cutoff_days)

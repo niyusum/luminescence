@@ -17,7 +17,7 @@ async def _handle_tutorial_event(event_name: str, data):
         return
 
     async with DatabaseService.get_transaction() as session:
-        from src.database.models.player import Player
+        from database.models.core.player import Player
         player = await session.get(Player, player_id, with_for_update=True)
         if not player:
             return
