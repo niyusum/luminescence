@@ -1,10 +1,25 @@
 from .embed_builder import EmbedBuilder
-from .combat_utils import calculate_damage, display_hp_bar
-from .decorators import command_cooldown
+from .combat_utils import CombatUtils, ProgressUtils
+from .decorators import (
+    ratelimit,
+    get_ratelimit_metrics,
+    reset_ratelimit_metrics,
+    clear_ratelimit,
+    get_ratelimit_status,
+)
 
 __all__ = [
+    # Embed builder
     "EmbedBuilder",
-    "calculate_damage",
-    "display_hp_bar",
-    "command_cooldown",
+
+    # Combat utilities
+    "CombatUtils",
+    "ProgressUtils",
+
+    # Rate limiting decorators
+    "ratelimit",
+    "get_ratelimit_metrics",
+    "reset_ratelimit_metrics",
+    "clear_ratelimit",
+    "get_ratelimit_status",
 ]
