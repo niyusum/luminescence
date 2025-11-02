@@ -9,7 +9,7 @@ from src.core.redis_service import RedisService
 from src.core.transaction_logger import TransactionLogger
 from src.core.config_manager import ConfigManager
 from src.core.event_bus import EventBus
-from database.models.core.player import Player
+from src.database.models.core.player import Player
 from src.core.exceptions import InsufficientResourcesError, ValidationError
 from src.core.logger import get_logger
 from src.utils.decorators import ratelimit

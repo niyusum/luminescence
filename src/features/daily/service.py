@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from src.database.models.progression.daily_quest import DailyQuest
-from database.models.core.player import Player
+from src.database.models.core.player import Player
 from src.core.config_manager import ConfigManager
 from src.core.transaction_logger import TransactionLogger
 from src.core.exceptions import InvalidOperationError

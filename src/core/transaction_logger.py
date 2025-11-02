@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models.economy.transaction_log import TransactionLog
+from src.database.models.economy.transaction_log import TransactionLog
 from src.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -222,6 +222,6 @@ class TransactionLogger:
         async with DatabaseService.get_transaction() as session:
             stmt = delete(TransactionLog).where(TransactionLog.timestamp < cutoff_date)
             result = await session.execute(stmt)
-            deleted_count = result.rowcount or 0
+            deleted_count = result.rowcount  # rowcount can be 0 validly, no need for 'or 0'
             logger.info(f"Cleaned up {deleted_count} transaction logs older than {cutoff_days} days")
             return deleted_count

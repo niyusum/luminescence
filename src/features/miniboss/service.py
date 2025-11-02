@@ -4,8 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import random
 import math
 
-from database.models.core.player import Player
-from database.models.progression.sector_progress import SectorProgress
+from src.database.models.core.player import Player
+from src.database.models.progression.sector_progress import SectorProgress
 from src.core.config_manager import ConfigManager
 from src.features.resource.service import ResourceService
 from src.core.transaction_logger import TransactionLogger

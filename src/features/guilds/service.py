@@ -531,21 +531,27 @@ class GuildService:
 
     @staticmethod
     async def get_guild_summary(session: AsyncSession, guild_id: int) -> Dict[str, Any]:
-        guild = await session.get(Guild, guild_id)
+        from sqlalchemy.orm import selectinload
+
+        # ✅ Optimized: Use eager loading to prevent N+1 queries
+        result = await session.execute(
+            select(Guild)
+            .options(selectinload(Guild.members), selectinload(Guild.invites))
+            .where(Guild.id == guild_id)
+        )
+        guild = result.scalar_one_or_none()
+
         if not guild:
             raise InvalidOperationError("Guild not found.")
 
-        members = (
-            await session.execute(
-                select(GuildMember).where(GuildMember.guild_id == guild_id).order_by(GuildMember.joined_at.asc())
-            )
-        ).scalars().all()
+        # Filter and sort members (already loaded)
+        members = sorted(
+            guild.members,
+            key=lambda m: m.joined_at
+        )
 
-        invites = (
-            await session.execute(
-                select(GuildInvite).where(GuildInvite.guild_id == guild_id, GuildInvite.active.is_(True))
-            )
-        ).scalars().all()
+        # Filter active invites (already loaded)
+        invites = [inv for inv in guild.invites if inv.active]
 
         return {
             "id": guild.id,

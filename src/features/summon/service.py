@@ -6,9 +6,9 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from database.models.core.player import Player
-from database.models.core.maiden import Maiden
-from database.models.core.maiden_base import MaidenBase
+from src.database.models.core.player import Player
+from src.database.models.core.maiden import Maiden
+from src.database.models.core.maiden_base import MaidenBase
 from src.core.config_manager import ConfigManager
 from src.core.logger import get_logger
 from src.features.resource.service import ResourceService
@@ -112,19 +112,20 @@ class SummonService:
             raise ValueError(f"Player {player_id} not found")
 
         # Determine grace cost
-        cost = cost_override or ConfigManager.get("summon_costs.grace_per_summon", 5)
+        cost = cost_override if cost_override is not None else ConfigManager.get("summon_costs.grace_per_summon", 5)
 
-        # ✅ Unified grace consumption via ResourceService
-        await ResourceService.consume_resources(
-            session=session,
-            player=player,
-            resources={"grace": cost},
-            source="summon_cost",
-            context={"cost": cost}
-        )
+        # ✅ Unified grace consumption via ResourceService (skip if cost is 0 for batch summons)
+        if cost > 0:
+            await ResourceService.consume_resources(
+                session=session,
+                player=player,
+                resources={"grace": cost},
+                source="summon_cost",
+                context={"cost": cost}
+            )
 
         # Determine pity
-        pity_threshold = ConfigManager.get("summon.pity.summons_for_pity", 25)
+        pity_threshold = ConfigManager.get("pity_system.summons_for_pity", 25)
         is_pity = (player.pity_counter + 1) >= pity_threshold
 
         if is_pity:
@@ -182,8 +183,6 @@ class SummonService:
         except Exception as e:
             logger.debug(f"Transaction log skipped: {e}")
 
-        await session.commit()
-
         logger.info(
             f"Player {player_id} summoned {result['maiden_base'].name} "
             f"T{result['tier']} (pity: {result.get('was_pity', False)})"
@@ -201,17 +200,24 @@ class SummonService:
     ) -> Dict[str, Any]:
         """Trigger pity: guarantee an unowned maiden from unlocked tiers."""
         from src.features.maiden.service import MaidenService
+        from sqlalchemy import exists
 
         rate_data = SummonService.get_rates_for_player_level(player.level)
         unlocked_tiers = rate_data["unlocked_tiers"]
 
-        stmt = select(MaidenBase).where(MaidenBase.base_tier.in_(unlocked_tiers))
-        all_bases = (await session.exec(stmt)).all()
+        # ✅ Optimized: Use SQL NOT EXISTS instead of fetching all + filtering in Python
+        unowned_subquery = ~exists(
+            select(1).where(
+                Maiden.player_id == player.discord_id,
+                Maiden.maiden_base_id == MaidenBase.id
+            )
+        )
 
-        stmt = select(Maiden.maiden_base_id).where(Maiden.player_id == player.discord_id)
-        owned_ids = set((await session.exec(stmt)).all())
-
-        unowned = [b for b in all_bases if b.id not in owned_ids]
+        stmt = select(MaidenBase).where(
+            MaidenBase.base_tier.in_(unlocked_tiers),
+            unowned_subquery
+        )
+        unowned = (await session.execute(stmt)).scalars().all()
 
         if unowned:
             maiden_base = random.choice(unowned)

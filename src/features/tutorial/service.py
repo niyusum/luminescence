@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from database.models.core.player import Player
+from src.database.models.core.player import Player
 from src.features.resource.service import ResourceService  # ✅ added
 from src.core.logger import get_logger
 

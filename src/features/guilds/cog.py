@@ -15,18 +15,14 @@ from src.utils.embed_builder import EmbedBuilder  # assumes your shared embed ut
 logger = get_logger(__name__)
 
 
-def _ok(title: str, desc: str = "", *, color: int = 0x4CAF50) -> discord.Embed:
-    try:
-        return EmbedBuilder.basic(title=title, description=desc, color=color)
-    except Exception:
-        return discord.Embed(title=title, description=desc, color=color)
+def _ok(title: str, desc: str = "") -> discord.Embed:
+    """Success embed for guild operations."""
+    return EmbedBuilder.success(title=title, description=desc)
 
 
-def _err(title: str, desc: str = "", *, color: int = 0xE53935) -> discord.Embed:
-    try:
-        return EmbedBuilder.error(title=title, description=desc)
-    except Exception:
-        return discord.Embed(title=title, description=desc, color=color)
+def _err(title: str, desc: str = "") -> discord.Embed:
+    """Error embed for guild operations."""
+    return EmbedBuilder.error(title=title, description=desc)
 
 
 async def _send_ctx(ctx: commands.Context, embed: discord.Embed, *, ephemeral: bool = True):

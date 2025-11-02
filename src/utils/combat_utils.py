@@ -2,7 +2,8 @@ from typing import Dict, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from database.models.core.maiden import Maiden
+from src.database.models.core.maiden import Maiden
+from src.database.models.core.maiden_base import MaidenBase
 from src.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -36,9 +37,9 @@ class CombatUtils:
             Total ATK value
         """
         result = await session.execute(
-            select(func.sum(Maiden.atk)).where(
-                Maiden.owner_id == player_id
-            )
+            select(func.sum(MaidenBase.base_atk * Maiden.quantity * (1 + (Maiden.tier - 1) * 0.5)))
+            .join(MaidenBase, Maiden.maiden_base_id == MaidenBase.id)
+            .where(Maiden.player_id == player_id)
         )
         total_power = result.scalar_one_or_none()
         
@@ -48,14 +49,14 @@ class CombatUtils:
     async def get_power_breakdown(session: AsyncSession, player_id: int, limit: int = 10) -> Dict:
         """
         Get detailed breakdown of player power contribution.
-        
+
         Shows top contributing maidens and collection stats.
-        
+
         Args:
             session: Database session
             player_id: Discord ID
             limit: Number of top maidens to return
-        
+
         Returns:
             Dictionary with:
                 - total_power: Total ATK
@@ -63,40 +64,55 @@ class CombatUtils:
                 - top_maidens: List of top contributors
                 - average_atk: Average ATK per maiden
         """
-        # Get all maidens
+        # ✅ Fixed: Use correct column name and join with MaidenBase
         result = await session.execute(
-            select(Maiden).where(
-                Maiden.owner_id == player_id
-            ).order_by(Maiden.atk.desc())
+            select(Maiden, MaidenBase)
+            .join(MaidenBase, Maiden.maiden_base_id == MaidenBase.id)
+            .where(Maiden.player_id == player_id)  # ✅ Fixed: player_id instead of owner_id
         )
-        maidens = result.scalars().all()
-        
-        if not maidens:
+        maiden_pairs = result.all()
+
+        if not maiden_pairs:
             return {
                 "total_power": 0,
                 "maiden_count": 0,
                 "top_maidens": [],
                 "average_atk": 0
             }
-        
-        total_power = sum(m.atk for m in maidens)
-        average_atk = total_power / len(maidens)
-        
+
+        # Calculate power for each maiden (base_atk * quantity * tier multiplier)
+        maiden_powers = []
+        for maiden, maiden_base in maiden_pairs:
+            power = maiden_base.base_atk * maiden.quantity * (1 + (maiden.tier - 1) * 0.5)
+            maiden_powers.append({
+                "maiden": maiden,
+                "maiden_base": maiden_base,
+                "power": int(power)
+            })
+
+        # Sort by power descending
+        maiden_powers.sort(key=lambda x: x["power"], reverse=True)
+
+        total_power = sum(mp["power"] for mp in maiden_powers)
+        total_maidens = sum(mp["maiden"].quantity for mp in maiden_powers)
+        average_atk = total_power / total_maidens if total_maidens > 0 else 0
+
         top_maidens = [
             {
-                "id": m.id,
-                "name": m.name,
-                "atk": m.atk,
-                "tier": m.tier,
-                "element": m.element,
-                "contribution_percent": (m.atk / total_power) * 100 if total_power > 0 else 0
+                "id": mp["maiden"].id,
+                "name": mp["maiden_base"].name,
+                "atk": mp["power"],
+                "tier": mp["maiden"].tier,
+                "element": mp["maiden"].element,
+                "quantity": mp["maiden"].quantity,
+                "contribution_percent": (mp["power"] / total_power) * 100 if total_power > 0 else 0
             }
-            for m in maidens[:limit]
+            for mp in maiden_powers[:limit]
         ]
-        
+
         return {
             "total_power": total_power,
-            "maiden_count": len(maidens),
+            "maiden_count": total_maidens,
             "top_maidens": top_maidens,
             "average_atk": int(average_atk)
         }

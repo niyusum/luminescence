@@ -4,7 +4,7 @@ from sqlalchemy import select
 from datetime import datetime
 import asyncio
 
-from database.models.core.game_config import GameConfig
+from src.database.models.core.game_config import GameConfig
 from src.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -17,6 +17,22 @@ class ConfigManager:
     Provides hierarchical config access using dot notation (e.g., 'fusion_costs.base').
     Cached in memory with TTL and periodically refreshed.
     Allows live balance changes without redeploy (RIKI LAW Article I.4).
+
+    SECURITY NOTE - SQL Injection Prevention:
+    ==========================================
+    All database queries in this module use SQLAlchemy's parameterized queries,
+    which automatically prevent SQL injection attacks. Example (line 340):
+
+        ✅ SAFE: select(GameConfig).where(GameConfig.config_key == top_key)
+        ❌ NEVER DO: f"SELECT * FROM game_config WHERE config_key = '{top_key}'"
+
+    IMPORTANT FOR DEVELOPERS:
+    - NEVER use string interpolation (f-strings, %) for SQL queries
+    - ALWAYS use SQLAlchemy's query builders or parameterized queries
+    - If you need raw SQL, use session.execute(text(sql), {"param": value})
+    - All user input must be treated as untrusted and parameterized
+
+    This applies to ALL database operations across the entire codebase.
     """
 
     _cache: Dict[str, Any] = {}
@@ -42,11 +58,11 @@ class ConfigManager:
         },
         "energy_system": {
             "base_max": 100, "regen_minutes": 4,
-            "per_level_increase": 10, "overcap_bonus": 0.10
+            "per_level_increase": 10, "overcap_bonus": 0.10, "overcap_threshold": 0.9
         },
         "stamina_system": {
             "base_max": 50, "regen_minutes": 10,
-            "per_level_increase": 5, "overcap_bonus": 0.10
+            "per_level_increase": 5, "overcap_bonus": 0.10, "overcap_threshold": 0.9
         },
         "xp_curve": {"type": "polynomial", "base": 50, "exponent": 2.0},
         "level_milestones": {

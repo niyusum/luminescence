@@ -2,9 +2,9 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from database.models.core.maiden import Maiden
-from database.models.core.maiden_base import MaidenBase
-from database.models.core.player import Player
+from src.database.models.core.maiden import Maiden
+from src.database.models.core.maiden_base import MaidenBase
+from src.database.models.core.player import Player
 from src.core.exceptions import MaidenNotFoundError
 from src.core.logger import get_logger
 
@@ -188,21 +188,23 @@ class MaidenService:
         player_id: int,
         maiden_base_id: int,
         tier: int,
-        quantity: int = 1
+        quantity: int = 1,
+        acquired_from: str = "summon"
     ) -> Maiden:
         """
         Add maiden to player inventory or increment quantity if exists.
-        
+
         Args:
             session: Database session
             player_id: Player's Discord ID
             maiden_base_id: MaidenBase template ID
             tier: Maiden tier
             quantity: Number to add (default 1)
-        
+            acquired_from: Source of acquisition (default "summon")
+
         Returns:
             Maiden object (existing or newly created)
-        
+
         Example:
             >>> maiden = await MaidenService.add_maiden_to_inventory(
             ...     session, player_id, maiden_base_id=5, tier=3, quantity=2
@@ -215,27 +217,33 @@ class MaidenService:
             ).with_for_update()
         )
         existing_maiden = existing_result.scalar_one_or_none()
-        
+
         if existing_maiden:
             existing_maiden.quantity += quantity
             await session.refresh(existing_maiden, ["maiden_base"])
             return existing_maiden
         else:
+            # Fetch maiden_base to get element field
+            maiden_base = await session.get(MaidenBase, maiden_base_id)
+            if not maiden_base:
+                raise ValueError(f"MaidenBase {maiden_base_id} not found")
+
             new_maiden = Maiden(
                 player_id=player_id,
                 maiden_base_id=maiden_base_id,
                 tier=tier,
+                element=maiden_base.element,  # ✅ Populate element from MaidenBase
                 quantity=quantity,
-                is_locked=False
+                acquired_from=acquired_from
             )
             session.add(new_maiden)
             await session.flush()
             await session.refresh(new_maiden, ["maiden_base"])
-            
+
             player = await session.get(Player, player_id)
             if player:
                 player.unique_maidens += 1
-            
+
             return new_maiden
     
     @staticmethod

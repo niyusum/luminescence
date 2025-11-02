@@ -41,6 +41,9 @@ class Player(SQLModel, table=True):
         Index("ix_players_class_level", "player_class", "level"),
         Index("ix_players_highest_sector", "highest_sector_reached"),
         Index("ix_players_highest_floor", "highest_floor_ascended"),
+        # Composite indexes for common query patterns
+        Index("ix_players_class_power", "player_class", "total_power"),  # Class-based leaderboards
+        Index("ix_players_active_level", "last_active", "level"),  # Comeback bonus eligibility
     )
     
     id: Optional[int] = Field(default=None, primary_key=True)

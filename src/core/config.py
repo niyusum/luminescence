@@ -79,8 +79,8 @@ class Config:
     CIRCUIT_BREAKER_RECOVERY_TIMEOUT: int = 60
     CIRCUIT_BREAKER_EXPECTED_EXCEPTION: tuple = (Exception,)
     
-    MAX_FUSION_COST: int = 10_000_000
-    MAX_LEVEL_UPS_PER_TRANSACTION: int = 100
+    MAX_FUSION_COST: int = 100_000_000
+    MAX_LEVEL_UPS_PER_TRANSACTION: int = 10
     
     @classmethod
     def validate(cls) -> None:

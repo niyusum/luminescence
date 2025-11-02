@@ -2,6 +2,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 from sqlmodel import SQLModel, Field, Relationship
+from sqlalchemy import Index
 
 if TYPE_CHECKING:
     from src.database.models.social.guild import Guild
@@ -16,6 +17,12 @@ class GuildMember(SQLModel, table=True):
         - All joins indexed for performance
     """
     __tablename__ = "guild_members"
+    __table_args__ = (
+        Index("ix_guild_members_guild_id", "guild_id"),
+        Index("ix_guild_members_player_id", "player_id"),
+        # Composite index for guild rankings
+        Index("ix_guild_members_guild_contribution", "guild_id", "contribution"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     guild_id: int = Field(foreign_key="guilds.id", index=True)

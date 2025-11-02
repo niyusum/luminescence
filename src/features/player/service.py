@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import math
 
-from database.models.core.player import Player
+from src.database.models.core.player import Player
 from src.core.config_manager import ConfigManager
 from src.core.transaction_logger import TransactionLogger
 from src.core.config import Config
@@ -264,15 +264,17 @@ class PlayerService:
                 player.energy = player.max_energy
                 player.stamina = player.max_stamina
 
+                # Get overcap configuration values
+                overcap_threshold = ConfigManager.get("energy_system.overcap_threshold", 0.9)
                 overflow_bonus = ConfigManager.get("energy_system.overcap_bonus", 0.10)
 
-                if old_energy >= player.max_energy * 0.9:
+                if old_energy >= player.max_energy * overcap_threshold:
                     overcap_energy = int(player.max_energy * overflow_bonus)
                     player.energy += overcap_energy
                     player.stats["overflow_energy_gained"] = \
                         player.stats.get("overflow_energy_gained", 0) + overcap_energy
 
-                if old_stamina >= player.max_stamina * 0.9:
+                if old_stamina >= player.max_stamina * overcap_threshold:
                     overcap_stamina = int(player.max_stamina * overflow_bonus)
                     player.stamina += overcap_stamina
                     player.stats["overflow_stamina_gained"] = \

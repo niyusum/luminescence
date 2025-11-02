@@ -5,7 +5,7 @@ from datetime import datetime
 import random
 import math
 
-from database.models.core.player import Player
+from src.database.models.core.player import Player
 from src.database.models.progression.ascension_progress import AscensionProgress
 from src.core.config_manager import ConfigManager
 from src.features.resource.service import ResourceService

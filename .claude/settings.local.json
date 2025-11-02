@@ -5,7 +5,8 @@
       "Bash(python -c:*)",
       "Bash(find:*)",
       "Bash(tree:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(python -m py_compile:*)"
     ],
     "deny": [],
     "ask": []

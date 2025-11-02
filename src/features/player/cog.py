@@ -5,7 +5,7 @@ from typing import Optional
 from src.core.database_service import DatabaseService
 from src.features.player.service import PlayerService
 from src.features.resource.service import ResourceService
-from database.models.core.player import Player
+from src.database.models.core.player import Player
 from src.core.exceptions import PlayerNotFoundError
 from src.core.logger import get_logger
 from utils.embed_builder import EmbedBuilder
