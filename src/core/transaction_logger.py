@@ -1,6 +1,26 @@
-from typing import Dict, Any, Optional
-from datetime import datetime
+"""
+Centralized audit logging for all game transactions.
+
+Features:
+- Database-backed audit trails for all state changes
+- Batch logging for efficiency
+- Transaction history queries
+- Automatic log retention management
+- Performance metrics tracking
+- Structured logging with context propagation
+
+RIKI LAW Compliance:
+- Complete audit trails for all state changes (Article II)
+- Discord context in all transaction logs (Article II)
+- Graceful error handling (Article IX)
+- Performance metrics and monitoring (Article X)
+"""
+
+from typing import Dict, Any, Optional, List
+from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete, func
+import time
 
 from src.database.models.economy.transaction_log import TransactionLog
 from src.core.logger import get_logger
@@ -10,7 +30,7 @@ logger = get_logger(__name__)
 
 class TransactionLogger:
     """
-    Centralized audit logging for all game transactions (RIKI LAW Article I.2).
+    Centralized audit logging for all game transactions (RIKI LAW Article II).
     
     Records every significant player action for debugging, support tickets,
     anti-cheat, and compliance. All logs stored in database for long-term retention.
@@ -23,17 +43,15 @@ class TransactionLogger:
         - prayer_performed
         - level_up
         - quest_completed
-    
-    Usage:
-        >>> async with DatabaseService.get_transaction() as session:
-        ...     await TransactionLogger.log_transaction(
-        ...         session=session,
-        ...         player_id=123,
-        ...         transaction_type="fusion_attempt",
-        ...         details={"tier": 3, "success": True},
-        ...         context="command:/fuse"
-        ...     )
     """
+    
+    # Metrics tracking
+    _metrics = {
+        "transactions_logged": 0,
+        "log_errors": 0,
+        "batch_logs": 0,
+        "total_log_time_ms": 0.0,
+    }
     
     @staticmethod
     async def log_transaction(
@@ -53,6 +71,8 @@ class TransactionLogger:
             details: Structured data about the transaction
             context: Where the transaction originated (command name, event, etc.)
         """
+        start_time = time.perf_counter()
+        
         try:
             log_entry = TransactionLog(
                 player_id=player_id,
@@ -64,13 +84,33 @@ class TransactionLogger:
             
             session.add(log_entry)
             
+            TransactionLogger._metrics["transactions_logged"] += 1
+            
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            TransactionLogger._metrics["total_log_time_ms"] += elapsed_ms
+            
             logger.info(
-                f"TRANSACTION: player={player_id} type={transaction_type} "
-                f"details={details} context={context}"
+                f"TRANSACTION: player={player_id} type={transaction_type}",
+                extra={
+                    "player_id": player_id,
+                    "transaction_type": transaction_type,
+                    "details": details,
+                    "context": context,
+                    "log_time_ms": round(elapsed_ms, 2)
+                }
             )
             
         except Exception as e:
-            logger.error(f"Failed to log transaction: {e}")
+            TransactionLogger._metrics["log_errors"] += 1
+            logger.error(
+                f"Failed to log transaction: player={player_id} type={transaction_type} error={e}",
+                extra={
+                    "player_id": player_id,
+                    "transaction_type": transaction_type,
+                    "details": details
+                },
+                exc_info=True
+            )
     
     @staticmethod
     async def log_resource_change(
@@ -185,6 +225,85 @@ class TransactionLogger:
         )
     
     @staticmethod
+    async def batch_log(
+        session: AsyncSession,
+        transactions: List[Dict[str, Any]]
+    ) -> int:
+        """
+        Log multiple transactions efficiently in a batch.
+        
+        More efficient than individual log_transaction calls when logging
+        many transactions at once.
+        
+        Args:
+            session: Database session
+            transactions: List of transaction dicts with keys:
+                - player_id: Discord ID
+                - transaction_type: Type of transaction
+                - details: Transaction details dict
+                - context: Optional context string
+        
+        Returns:
+            Number of transactions successfully logged
+        
+        Example:
+            >>> await TransactionLogger.batch_log(session, [
+            ...     {
+            ...         "player_id": 123,
+            ...         "transaction_type": "resource_change_rikis",
+            ...         "details": {"delta": 100},
+            ...         "context": "daily_reward"
+            ...     },
+            ...     {
+            ...         "player_id": 456,
+            ...         "transaction_type": "resource_change_rikis",
+            ...         "details": {"delta": 100},
+            ...         "context": "daily_reward"
+            ...     }
+            ... ])
+        """
+        start_time = time.perf_counter()
+        
+        try:
+            log_entries = []
+            for txn in transactions:
+                log_entry = TransactionLog(
+                    player_id=txn["player_id"],
+                    transaction_type=txn["transaction_type"],
+                    details=txn["details"],
+                    context=txn.get("context", "unknown"),
+                    timestamp=datetime.utcnow()
+                )
+                log_entries.append(log_entry)
+            
+            session.add_all(log_entries)
+            
+            TransactionLogger._metrics["transactions_logged"] += len(log_entries)
+            TransactionLogger._metrics["batch_logs"] += 1
+            
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            TransactionLogger._metrics["total_log_time_ms"] += elapsed_ms
+            
+            logger.info(
+                f"BATCH TRANSACTION: count={len(log_entries)} time={elapsed_ms:.2f}ms",
+                extra={
+                    "batch_size": len(log_entries),
+                    "log_time_ms": round(elapsed_ms, 2)
+                }
+            )
+            
+            return len(log_entries)
+            
+        except Exception as e:
+            TransactionLogger._metrics["log_errors"] += 1
+            logger.error(
+                f"Failed to batch log transactions: count={len(transactions)} error={e}",
+                extra={"batch_size": len(transactions)},
+                exc_info=True
+            )
+            return 0
+    
+    @staticmethod
     async def flush(session: AsyncSession) -> None:
         """
         Flush pending transaction logs to database.
@@ -195,15 +314,119 @@ class TransactionLogger:
             await session.flush()
             logger.debug("Transaction logs flushed to database")
         except Exception as e:
-            logger.error(f"Failed to flush transaction logs: {e}")
+            logger.error(f"Failed to flush transaction logs: {e}", exc_info=True)
             raise
-
+    
+    # =========================================================================
+    # QUERY METHODS
+    # =========================================================================
+    
+    @staticmethod
+    async def get_player_history(
+        session: AsyncSession,
+        player_id: int,
+        transaction_type: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[TransactionLog]:
+        """
+        Get transaction history for a player.
+        
+        Args:
+            session: Database session
+            player_id: Discord ID of player
+            transaction_type: Optional filter by transaction type
+            limit: Maximum number of records to return
+            offset: Number of records to skip (for pagination)
+        
+        Returns:
+            List of TransactionLog entries (newest first)
+        
+        Example:
+            >>> # Get last 50 fusion attempts for player
+            >>> history = await TransactionLogger.get_player_history(
+            ...     session,
+            ...     player_id=123,
+            ...     transaction_type="fusion_attempt",
+            ...     limit=50
+            ... )
+        """
+        try:
+            stmt = select(TransactionLog).where(TransactionLog.player_id == player_id)
+            
+            if transaction_type:
+                stmt = stmt.where(TransactionLog.transaction_type == transaction_type)
+            
+            stmt = stmt.order_by(TransactionLog.timestamp.desc()).limit(limit).offset(offset)
+            
+            result = await session.execute(stmt)
+            return list(result.scalars().all())
+            
+        except Exception as e:
+            logger.error(
+                f"Failed to get player history: player={player_id} error={e}",
+                extra={"player_id": player_id, "transaction_type": transaction_type},
+                exc_info=True
+            )
+            return []
+    
+    @staticmethod
+    async def get_player_stats(
+        session: AsyncSession,
+        player_id: int,
+        days: int = 30
+    ) -> Dict[str, Any]:
+        """
+        Get transaction statistics for a player.
+        
+        Args:
+            session: Database session
+            player_id: Discord ID of player
+            days: Number of days to analyze (default 30)
+        
+        Returns:
+            Dictionary with transaction counts by type
+        
+        Example:
+            >>> stats = await TransactionLogger.get_player_stats(session, 123)
+            >>> # {"fusion_attempt": 50, "summon_attempt": 100, ...}
+        """
+        try:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            
+            stmt = (
+                select(
+                    TransactionLog.transaction_type,
+                    func.count(TransactionLog.id).label("count")
+                )
+                .where(TransactionLog.player_id == player_id)
+                .where(TransactionLog.timestamp >= cutoff_date)
+                .group_by(TransactionLog.transaction_type)
+            )
+            
+            result = await session.execute(stmt)
+            stats = {row.transaction_type: row.count for row in result}
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(
+                f"Failed to get player stats: player={player_id} error={e}",
+                extra={"player_id": player_id, "days": days},
+                exc_info=True
+            )
+            return {}
+    
+    # =========================================================================
+    # MAINTENANCE
+    # =========================================================================
+    
     @staticmethod
     async def cleanup_old_logs(cutoff_days: int = 90) -> int:
         """
         Delete transaction logs older than specified days.
-        Automatically manages its own database transaction.
         
+        Automatically manages its own database transaction.
         Safe to call standalone (used by SystemTasksCog daily cleanup task).
         
         Args:
@@ -212,16 +435,107 @@ class TransactionLogger:
         Returns:
             Number of logs deleted
         """
-        from database.models.economy.transaction_log import TransactionLog
         from src.core.database_service import DatabaseService
-        from sqlalchemy import delete
-        from datetime import datetime, timedelta
-
+        
         cutoff_date = datetime.utcnow() - timedelta(days=cutoff_days)
-
-        async with DatabaseService.get_transaction() as session:
-            stmt = delete(TransactionLog).where(TransactionLog.timestamp < cutoff_date)
+        
+        try:
+            async with DatabaseService.get_transaction() as session:
+                stmt = delete(TransactionLog).where(TransactionLog.timestamp < cutoff_date)
+                result = await session.execute(stmt)
+                deleted_count = result.rowcount
+                
+                logger.info(
+                    f"Cleaned up transaction logs: deleted={deleted_count} older_than={cutoff_days}d",
+                    extra={
+                        "deleted_count": deleted_count,
+                        "cutoff_days": cutoff_days,
+                        "cutoff_date": cutoff_date
+                    }
+                )
+                
+                return deleted_count
+                
+        except Exception as e:
+            logger.error(
+                f"Failed to cleanup old logs: cutoff_days={cutoff_days} error={e}",
+                extra={"cutoff_days": cutoff_days},
+                exc_info=True
+            )
+            return 0
+    
+    @staticmethod
+    async def get_log_count(session: AsyncSession, days: Optional[int] = None) -> int:
+        """
+        Get total count of transaction logs.
+        
+        Args:
+            session: Database session
+            days: Optional filter for last N days
+        
+        Returns:
+            Total number of transaction logs
+        """
+        try:
+            stmt = select(func.count(TransactionLog.id))
+            
+            if days:
+                cutoff_date = datetime.utcnow() - timedelta(days=days)
+                stmt = stmt.where(TransactionLog.timestamp >= cutoff_date)
+            
             result = await session.execute(stmt)
-            deleted_count = result.rowcount  # rowcount can be 0 validly, no need for 'or 0'
-            logger.info(f"Cleaned up {deleted_count} transaction logs older than {cutoff_days} days")
-            return deleted_count
+            return result.scalar() or 0
+            
+        except Exception as e:
+            logger.error(
+                f"Failed to get log count: days={days} error={e}",
+                exc_info=True
+            )
+            return 0
+    
+    # =========================================================================
+    # METRICS & MONITORING
+    # =========================================================================
+    
+    @staticmethod
+    def get_metrics() -> Dict[str, Any]:
+        """
+        Get transaction logging metrics.
+        
+        Returns:
+            Dictionary with transaction counts, errors, timing
+        
+        Example:
+            >>> metrics = TransactionLogger.get_metrics()
+            >>> print(f"Logged: {metrics['transactions_logged']}")
+            >>> print(f"Avg time: {metrics['avg_log_time_ms']:.2f}ms")
+        """
+        avg_log_time = (
+            TransactionLogger._metrics["total_log_time_ms"] / 
+            max(TransactionLogger._metrics["transactions_logged"], 1)
+        )
+        
+        error_rate = (
+            (TransactionLogger._metrics["log_errors"] / 
+             max(TransactionLogger._metrics["transactions_logged"] + 
+                 TransactionLogger._metrics["log_errors"], 1)) * 100
+        )
+        
+        return {
+            "transactions_logged": TransactionLogger._metrics["transactions_logged"],
+            "log_errors": TransactionLogger._metrics["log_errors"],
+            "batch_logs": TransactionLogger._metrics["batch_logs"],
+            "error_rate": round(error_rate, 2),
+            "avg_log_time_ms": round(avg_log_time, 2),
+        }
+    
+    @staticmethod
+    def reset_metrics() -> None:
+        """Reset all metrics counters."""
+        TransactionLogger._metrics = {
+            "transactions_logged": 0,
+            "log_errors": 0,
+            "batch_logs": 0,
+            "total_log_time_ms": 0.0,
+        }
+        logger.info("TransactionLogger metrics reset")
