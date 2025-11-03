@@ -8,10 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.social.guild import Guild
 from src.database.models.economy.guild_shrine import GuildShrine
-from src.core.config_manager import ConfigManager
-from src.core.transaction_logger import TransactionLogger
+from src.core.config.config_manager import ConfigManager
+from src.core.infra.transaction_logger import TransactionLogger
 from src.core.exceptions import InvalidOperationError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 from src.features.resource.service import ResourceService
 
 logger = get_logger(__name__)

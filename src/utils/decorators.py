@@ -21,9 +21,9 @@ from functools import wraps
 import discord
 from discord.ext import commands
 
-from src.core.redis_service import RedisService
+from src.core.infra.redis_service import RedisService
 from src.core.exceptions import RateLimitError
-from src.core.logger import get_logger, LogContext
+from src.core.logging.logger import get_logger, LogContext
 
 logger = get_logger(__name__)
 

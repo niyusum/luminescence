@@ -23,9 +23,9 @@ from src.features.ascension.constants import (
     validate_token_type,
     get_token_tier_range
 )
-from src.core.transaction_logger import TransactionLogger
+from src.core.infra.transaction_logger import TransactionLogger
 from src.core.exceptions import InsufficientResourcesError, InvalidOperationError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

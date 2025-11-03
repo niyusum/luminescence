@@ -2,14 +2,14 @@ import discord
 from discord.ext import commands
 from typing import Optional
 
-from src.core.database_service import DatabaseService
+from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
-from src.core.redis_service import RedisService
-from src.core.transaction_logger import TransactionLogger
-from src.core.event_bus import EventBus
+from src.core.infra.redis_service import RedisService
+from src.core.infra.transaction_logger import TransactionLogger
+from src.core.event.event_bus import EventBus
 from src.features.resource.service import ResourceService
 from src.core.exceptions import InsufficientResourcesError, ValidationError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 

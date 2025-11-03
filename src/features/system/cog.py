@@ -1,13 +1,22 @@
-# src/cogs/system_tasks_cog.py
+"""
+System administration and background tasks.
+
+Automated maintenance tasks for system health, cache refresh,
+and transaction log cleanup.
+
+RIKI LAW Compliance:
+- Article VI: Admin commands only (no business logic)
+- Article VII: Background tasks for maintenance only
+"""
 import discord
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta
 
-from src.core.database_service import DatabaseService
-from src.core.cache_service import CacheService
-from src.core.config_manager import ConfigManager
-from src.core.logger import get_logger
-from src.core.transaction_logger import TransactionLogger
+from src.core.infra.database_service import DatabaseService
+from src.core.cache.cache_service import CacheService
+from src.core.config.config_manager import ConfigManager
+from src.core.logging.logger import get_logger
+from src.core.infra.transaction_logger import TransactionLogger
 from utils.embed_builder import EmbedBuilder
 
 logger = get_logger(__name__)
@@ -119,7 +128,7 @@ class SystemTasksCog(commands.Cog):
         """Display system status and metrics."""
         await ctx.defer(ephemeral=True)
         try:
-            from src.core.redis_service import RedisService
+            from src.core.infra.redis_service import RedisService
             redis_healthy = await RedisService.health_check()
             db_healthy = await DatabaseService.health_check()
 

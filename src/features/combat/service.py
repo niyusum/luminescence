@@ -28,10 +28,10 @@ from dataclasses import dataclass
 from src.database.models.core.player import Player
 from src.database.models.core.maiden import Maiden
 from src.database.models.core.maiden_base import MaidenBase
-from src.core.config_manager import ConfigManager
-from src.core.transaction_logger import TransactionLogger
+from src.core.config.config_manager import ConfigManager
+from src.core.infra.transaction_logger import TransactionLogger
 from src.core.exceptions import CombatError
-from src.core.logger import get_logger, LogContext
+from src.core.logging.logger import get_logger, LogContext
 
 logger = get_logger(__name__)
 

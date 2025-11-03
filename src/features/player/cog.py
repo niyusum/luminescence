@@ -2,12 +2,11 @@ import discord
 from discord.ext import commands
 from typing import Optional
 
-from src.core.database_service import DatabaseService
+from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
 from src.features.resource.service import ResourceService
-from src.database.models.core.player import Player
 from src.core.exceptions import PlayerNotFoundError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 from utils.embed_builder import EmbedBuilder
 
 logger = get_logger(__name__)

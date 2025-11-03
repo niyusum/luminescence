@@ -50,7 +50,7 @@ import asyncio
 import traceback
 from collections import defaultdict
 
-from src.core.logger import get_logger, set_log_context
+from src.core.logging.logger import get_logger, set_log_context
 
 logger = get_logger(__name__)
 

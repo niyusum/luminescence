@@ -33,7 +33,7 @@ import asyncio
 import time
 
 from src.database.models.core.game_config import GameConfig
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -332,7 +332,7 @@ class ConfigManager:
         Raises:
             Exception: If initialization fails critically
         """
-        from src.core.database_service import DatabaseService
+        from src.core.infra.database_service import DatabaseService
         
         try:
             async with DatabaseService.get_session() as session:
@@ -376,7 +376,7 @@ class ConfigManager:
     @classmethod
     async def _background_refresh(cls) -> None:
         """Periodically refresh configs from database."""
-        from src.core.database_service import DatabaseService
+        from src.core.infra.database_service import DatabaseService
         
         while True:
             try:

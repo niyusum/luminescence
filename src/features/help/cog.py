@@ -1,3 +1,14 @@
+"""
+Interactive help system with categorized commands.
+
+Provides a Discord UI for browsing available commands by category,
+with examples and usage tips. Uses button interface for easy navigation.
+
+RIKI LAW Compliance:
+- Article VI: Discord layer only
+- Article VII: No business logic, pure UI/documentation
+"""
+
 import discord
 from discord.ext import commands
 from typing import Dict, Optional

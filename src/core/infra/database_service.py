@@ -37,8 +37,8 @@ from sqlalchemy.exc import OperationalError, DBAPIError
 import asyncio
 import time
 
-from src.core.config import Config
-from src.core.logger import get_logger, LogContext, set_log_context
+from src.core.config.config import Config
+from src.core.logging.logger import get_logger, LogContext, set_log_context
 
 logger = get_logger(__name__)
 

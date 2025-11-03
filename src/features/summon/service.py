@@ -9,8 +9,8 @@ from sqlmodel import select
 from src.database.models.core.player import Player
 from src.database.models.core.maiden import Maiden
 from src.database.models.core.maiden_base import MaidenBase
-from src.core.config_manager import ConfigManager
-from src.core.logger import get_logger
+from src.core.config.config_manager import ConfigManager
+from src.core.logging.logger import get_logger
 from src.features.resource.service import ResourceService
 from src.core.exceptions import InsufficientResourcesError
 
@@ -104,7 +104,7 @@ class SummonService:
         Applies pity tracking and full transaction logging.
         """
         from src.features.maiden.service import MaidenService
-        from src.core.transaction_service import TransactionService
+        from src.core.infra.transaction_service import TransactionService
 
         # Lock player row
         player = await session.get(Player, player_id, with_for_update=True)

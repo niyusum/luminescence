@@ -4,7 +4,7 @@ from sqlalchemy import select, func
 
 from src.database.models.core.maiden import Maiden
 from src.database.models.core.maiden_base import MaidenBase
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

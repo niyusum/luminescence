@@ -3,8 +3,8 @@ from typing import Dict
 from src.database.models.core.player import Player
 from src.database.models.core.maiden import Maiden
 from src.database.models.core.maiden_base import MaidenBase
-from src.core.database_service import DatabaseService
-from src.core.logger import get_logger
+from src.core.infra.database_service import DatabaseService
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

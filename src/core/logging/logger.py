@@ -24,7 +24,7 @@ from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from src.core.config import Config
+from src.core.config.config import Config
 
 
 # Context variables for request tracing

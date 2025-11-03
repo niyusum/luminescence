@@ -4,7 +4,7 @@ from datetime import datetime
 
 from src.database.models.core.player import Player
 from src.features.resource.service import ResourceService  # ✅ added
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

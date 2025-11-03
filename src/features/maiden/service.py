@@ -32,7 +32,7 @@ from src.database.models.core.maiden import Maiden
 from src.database.models.core.maiden_base import MaidenBase
 from src.database.models.core.player import Player
 from src.core.exceptions import MaidenNotFoundError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

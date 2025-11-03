@@ -19,7 +19,7 @@ import discord
 from discord.ext import commands
 from typing import Optional, Dict, Any
 
-from src.core.database_service import DatabaseService
+from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
 from src.features.ascension.token_service import TokenService
 from src.features.ascension.constants import TOKEN_TIERS, get_token_emoji, get_token_display_name
@@ -28,7 +28,7 @@ from src.features.exploration.constants import RELIC_TYPES
 from src.features.combat.service import CombatService
 from src.database.models.core.player import Player
 from src.database.models.economy.transaction_log import TransactionLog
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 from sqlalchemy import select, desc

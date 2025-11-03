@@ -22,7 +22,7 @@ from sqlalchemy import Index, func, delete
 import json
 import time
 
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -628,7 +628,7 @@ class TransactionService:
         Returns:
             Number of transactions deleted
         """
-        from src.core.database_service import DatabaseService
+        from src.core.infra.database_service import DatabaseService
         
         cutoff_date = datetime.utcnow() - timedelta(days=cutoff_days)
         

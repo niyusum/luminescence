@@ -11,7 +11,7 @@ from discord import app_commands
 from discord.ext import commands
 from typing import Optional, List
 
-from src.core.database_service import DatabaseService
+from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
 from src.features.ascension.token_service import TokenService
 from src.features.ascension.constants import (
@@ -20,7 +20,7 @@ from src.features.ascension.constants import (
 )
 from src.features.maiden.constants import Element
 from src.core.exceptions import InsufficientResourcesError, InvalidOperationError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 

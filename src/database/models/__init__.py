@@ -19,11 +19,13 @@ from .progression.sector_progress import SectorProgress
 from .progression.daily_quest import DailyQuest
 from .progression.tutorial import TutorialProgress
 from .progression.leaderboard import LeaderboardSnapshot
+from .progression.exploration_mastery import ExplorationMastery
 
 # --- Economy ---
 from .economy.transaction_log import TransactionLog
 from .economy.shrine import PlayerShrine
 from .economy.guild_shrine import GuildShrine
+from .economy.token import Token
 
 # --- Combat ---
 # Future: PvPMatch, WorldBoss, Enemy
@@ -40,9 +42,9 @@ __all__ = [
     "Player", "Maiden", "MaidenBase", "GameConfig",
     # Progression
     "AscensionProgress", "SectorProgress", "DailyQuest",
-    "TutorialProgress", "LeaderboardSnapshot",
+    "TutorialProgress", "LeaderboardSnapshot", "ExplorationMastery",
     # Economy
-    "TransactionLog", "PlayerShrine", "GuildShrine",
+    "TransactionLog", "PlayerShrine", "GuildShrine", "Token",
     # Combat
     # Future: "PvPMatch", "WorldBoss", "Enemy",
     # Social

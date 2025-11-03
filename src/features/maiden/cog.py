@@ -3,16 +3,13 @@ from discord.ext import commands
 from typing import Optional
 import math
 
-from src.core.database_service import DatabaseService
+from src.core.bot.base_cog import BaseCog
 from src.features.maiden.service import MaidenService
-from src.database.models.core.player import Player
-from src.core.logger import get_logger
+from src.core.event.event_bus import EventBus
 from utils.embed_builder import EmbedBuilder
 
-logger = get_logger(__name__)
 
-
-class MaidenCollectionCog(commands.Cog):
+class MaidenCollectionCog(BaseCog):
     """
     Maiden collection display system.
 
@@ -27,7 +24,7 @@ class MaidenCollectionCog(commands.Cog):
     """
 
     def __init__(self, bot: commands.Bot):
-        self.bot = bot
+        super().__init__(bot, "MaidenCollectionCog")
 
     @commands.hybrid_command(
         name="maidens",
@@ -41,17 +38,17 @@ class MaidenCollectionCog(commands.Cog):
         page: int = 1,
     ):
         """View maiden collection with optional filtering."""
-        await ctx.defer()  # public
+        await self.safe_defer(ctx)  # Using BaseCog helper
 
         try:
             # Validate input filters
             if tier is not None and (tier < 1 or tier > 12):
-                embed = EmbedBuilder.error(
-                    title="Invalid Tier",
-                    description=f"Tier must be between 1 and 12. You entered: {tier}",
-                    help_text="Example: `/maidens tier:5`",
+                await self.send_error(
+                    ctx,
+                    "Invalid Tier",
+                    f"Tier must be between 1 and 12. You entered: {tier}",
+                    help_text="Example: `/maidens tier:5`"
                 )
-                await ctx.send(embed=embed, ephemeral=True)
                 return
 
             if element is not None:
@@ -65,24 +62,18 @@ class MaidenCollectionCog(commands.Cog):
                 ]
                 element = element.lower()
                 if element not in valid_elements:
-                    embed = EmbedBuilder.error(
-                        title="Invalid Element",
-                        description=f"Element must be one of: {', '.join(valid_elements)}",
-                        help_text="Example: `/maidens element:infernal`",
+                    await self.send_error(
+                        ctx,
+                        "Invalid Element",
+                        f"Element must be one of: {', '.join(valid_elements)}",
+                        help_text="Example: `/maidens element:infernal`"
                     )
-                    await ctx.send(embed=embed, ephemeral=True)
                     return
 
-            async with DatabaseService.get_transaction() as session:
-                player = await session.get(Player, ctx.author.id)
+            async with self.get_session() as session:  # Using BaseCog helper
+                player = await self.require_player(ctx, session, ctx.author.id)
                 if not player:
-                    embed = EmbedBuilder.error(
-                        title="Not Registered",
-                        description="You need to register first!",
-                        help_text="Use `/register` to create your account.",
-                    )
-                    await ctx.send(embed=embed, ephemeral=True)
-                    return
+                    return  # Error already sent by require_player
 
                 maidens = await MaidenService.get_player_maidens(
                     session,
@@ -90,6 +81,19 @@ class MaidenCollectionCog(commands.Cog):
                     tier_filter=tier,
                     element_filter=element,
                 )
+
+                # 🎓 Tutorial Event: First time viewing collection
+                try:
+                    await EventBus.publish("collection_viewed", {
+                        "player_id": ctx.author.id,
+                        "channel_id": ctx.channel.id,
+                        "bot": self.bot,
+                        "maiden_count": len(maidens),
+                        "__topic__": "collection_viewed",
+                        "timestamp": discord.utils.utcnow()
+                    })
+                except Exception as e:
+                    self.logger.warning(f"Failed to publish collection_viewed event: {e}")
 
                 if not maidens:
                     filter_desc = ""
@@ -169,13 +173,13 @@ class MaidenCollectionCog(commands.Cog):
                     await ctx.send(embed=embed)
 
         except Exception as e:
-            logger.error(f"Maiden collection display error for {ctx.author.id}: {e}", exc_info=True)
-            embed = EmbedBuilder.error(
-                title="Collection Error",
-                description="Unable to load your maidens.",
-                help_text="Please try again shortly.",
+            self.log_cog_error("maidens", e, user_id=ctx.author.id)
+            await self.send_error(
+                ctx,
+                "Collection Error",
+                "Unable to load your maidens.",
+                help_text="Please try again shortly."
             )
-            await ctx.send(embed=embed, ephemeral=True)
 
 
 class MaidenPaginationView(discord.ui.View):

@@ -9,10 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import Player  # your Player model (import path per your aggregator)
 from src.database.models.economy.shrine import PlayerShrine
-from src.core.config_manager import ConfigManager
-from src.core.transaction_logger import TransactionLogger
+from src.core.config.config_manager import ConfigManager
+from src.core.infra.transaction_logger import TransactionLogger
 from src.core.exceptions import InvalidOperationError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

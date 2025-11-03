@@ -17,12 +17,12 @@ import random
 
 from src.database.models.core.player import Player
 from src.database.models.progression.sector_progress import SectorProgress
-from src.core.config_manager import ConfigManager
+from src.core.config.config_manager import ConfigManager
 from src.features.resource.service import ResourceService
 from src.features.combat.service import CombatService
-from src.core.transaction_logger import TransactionLogger
+from src.core.infra.transaction_logger import TransactionLogger
 from src.core.exceptions import InsufficientResourcesError, InvalidOperationError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

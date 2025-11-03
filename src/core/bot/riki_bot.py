@@ -28,18 +28,18 @@ from typing import List, Optional
 import discord
 from discord.ext import commands
 
-from src.core.config import Config
-from src.core.config_manager import ConfigManager
-from src.core.database_service import DatabaseService
+from src.core.config.config import Config
+from src.core.config.config_manager import ConfigManager
+from src.core.infra.database_service import DatabaseService
 from src.core.exceptions import (
     ConfigurationError,
     InsufficientResourcesError,
     RateLimitError,
     RIKIException,
 )
-from src.core.loader import load_all_features
-from src.core.logger import LogContext, get_logger, set_log_context
-from src.core.redis_service import RedisService
+from src.core.bot.loader import load_all_features
+from src.core.logging.logger import LogContext, get_logger, set_log_context
+from src.core.infra.redis_service import RedisService
 from src.features.tutorial.listener import register_tutorial_listeners
 from src.utils.embed_builder import EmbedBuilder
 

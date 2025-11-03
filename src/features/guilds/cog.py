@@ -5,11 +5,11 @@ from discord import app_commands
 from discord.ext import commands
 from typing import Optional
 
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 from src.core.exceptions import InvalidOperationError
-from src.core.database_service import DatabaseService
+from src.core.infra.database_service import DatabaseService
 from src.features.guilds.service import GuildService
-from src.core.config_manager import ConfigManager
+from src.core.config.config_manager import ConfigManager
 from src.utils.embed_builder import EmbedBuilder  # assumes your shared embed util
 
 logger = get_logger(__name__)

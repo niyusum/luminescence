@@ -1,9 +1,10 @@
 import asyncio
 import sys
 
-from src.core.config import Config
-from src.core.logger import get_logger
-from src.core.riki_bot import RIKIBot
+from src.core.config.config import Config
+from src.core.logging.logger import get_logger
+from src.core.bot.riki_bot import RIKIBot
+from src.core.event.registry import register_all_event_listeners
 
 logger = get_logger(__name__)
 
@@ -17,6 +18,9 @@ async def main():
         sys.exit(1)
 
     bot = RIKIBot()
+
+    # Register all event listeners
+    await register_all_event_listeners(bot)
 
     try:
         logger.info("🚀 Starting RIKI RPG...")

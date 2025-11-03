@@ -2,13 +2,13 @@ import discord
 from discord.ext import commands
 from typing import Optional, List, Dict, Any
 
-from src.core.database_service import DatabaseService
+from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
 from src.features.leader.service import LeaderService
-from src.core.transaction_logger import TransactionLogger
-from src.database.models.core.player import Player
+from src.core.infra.transaction_logger import TransactionLogger
+from src.core.event.event_bus import EventBus
 from src.core.exceptions import MaidenNotFoundError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 
@@ -269,6 +269,21 @@ class LeaderSelectDropdown(discord.ui.Select):
                     },
                     context=f"interaction:set_leader guild:{interaction.guild_id}",
                 )
+
+                # 🎓 Tutorial Event: First time setting leader
+                try:
+                    await EventBus.publish("leader_set", {
+                        "player_id": self.user_id,
+                        "channel_id": interaction.channel_id,
+                        "bot": self.view.bot,
+                        "maiden_id": maiden_id,
+                        "maiden_name": result["maiden_name"],
+                        "element": result["element"],
+                        "__topic__": "leader_set",
+                        "timestamp": discord.utils.utcnow()
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to publish leader_set event: {e}")
 
             embed = EmbedBuilder.success(
                 title="Leader Set!",

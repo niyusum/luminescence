@@ -11,13 +11,13 @@ import discord
 from discord.ext import commands
 from typing import Optional, Dict, Any
 
-from src.core.database_service import DatabaseService
+from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
 from src.features.ascension.service import AscensionService
 from src.features.combat.service import CombatService
-from src.core.transaction_logger import TransactionLogger
+from src.core.infra.transaction_logger import TransactionLogger
 from src.core.exceptions import InsufficientResourcesError, InvalidOperationError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 
@@ -428,7 +428,7 @@ class AscensionCombatView(discord.ui.View):
         reward_text = f"**+{rewards['rikis']:,}** Rikis\n**+{rewards['xp']}** XP"
         if rewards.get("token"):
             token_data = rewards["token"]
-            from src.database.models.economy.token import TOKEN_TIERS
+            from src.features.ascension.constants import TOKEN_TIERS
             token_info = TOKEN_TIERS[token_data["type"]]
             reward_text += f"\n{token_info['emoji']} **{token_info['name']}** x{token_data['quantity']}"
         

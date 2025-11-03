@@ -16,9 +16,9 @@ from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.core.player import Player
-from src.core.transaction_logger import TransactionLogger
+from src.core.infra.transaction_logger import TransactionLogger
 from src.core.exceptions import InvalidOperationError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

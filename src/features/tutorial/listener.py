@@ -1,8 +1,8 @@
 import asyncio
-from src.core.event_bus import EventBus
+from src.core.event.event_bus import EventBus
 from src.features.tutorial.service import TutorialService
-from src.core.database_service import DatabaseService
-from src.core.logger import get_logger
+from src.core.infra.database_service import DatabaseService
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

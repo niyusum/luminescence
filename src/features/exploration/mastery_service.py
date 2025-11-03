@@ -18,10 +18,10 @@ from src.database.models.core.player import Player
 from src.database.models.progression.exploration_mastery import ExplorationMastery
 from src.features.exploration.mastery_relic import MasteryRelic
 from src.features.exploration.constants import RELIC_TYPES
-from src.core.config_manager import ConfigManager
-from src.core.transaction_logger import TransactionLogger
+from src.core.config.config_manager import ConfigManager
+from src.core.infra.transaction_logger import TransactionLogger
 from src.core.exceptions import InvalidOperationError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,14 +1,14 @@
 import discord
 from discord.ext import commands
 
-from src.core.database_service import DatabaseService
+from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
-from src.core.transaction_logger import TransactionLogger
-from src.core.config_manager import ConfigManager
+from src.core.infra.transaction_logger import TransactionLogger
+from src.core.config.config_manager import ConfigManager
 from src.database.models.core.player import Player
 from src.core.exceptions import ValidationError, DatabaseError
-from src.core.logger import get_logger
-from src.core.event_bus import EventBus
+from src.core.logging.logger import get_logger
+from src.core.event.event_bus import EventBus
 from src.features.tutorial.service import TutorialService
 from utils.embed_builder import EmbedBuilder
 

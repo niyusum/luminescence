@@ -12,7 +12,12 @@
       "Bash(if ! head -20 \"$file\")",
       "Bash(then echo \"$file\")",
       "Bash(fi)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(python3:*)",
+      "Bash(where:*)",
+      "Bash(nul)",
+      "Bash(.venv/Scripts/python.exe -m py_compile:*)",
+      "Bash(.venv/Scripts/python.exe:*)"
     ],
     "deny": [],
     "ask": []

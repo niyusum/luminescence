@@ -13,12 +13,12 @@ import discord
 from discord.ext import commands
 from typing import Optional
 
-from src.core.database_service import DatabaseService
+from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
 from src.features.player.allocation_service import AllocationService
 from src.database.models.core.player import Player
 from src.core.exceptions import InvalidOperationError
-from src.core.logger import get_logger
+from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 
