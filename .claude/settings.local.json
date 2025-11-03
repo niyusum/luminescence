@@ -6,7 +6,13 @@
       "Bash(find:*)",
       "Bash(tree:*)",
       "Bash(cat:*)",
-      "Bash(python -m py_compile:*)"
+      "Bash(python -m py_compile:*)",
+      "Bash(for file in src/features/**/*.py src/database/models/**/*.py src/core/**/*.py)",
+      "Bash(do [ -f \"$file\" ])",
+      "Bash(if ! head -20 \"$file\")",
+      "Bash(then echo \"$file\")",
+      "Bash(fi)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []
