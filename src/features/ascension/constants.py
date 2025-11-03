@@ -1,185 +1,141 @@
 """
-Ascension system constants - minimal and data-driven.
+Ascension system constants.
 
-Contains ONLY the data that's currently hardcoded in the service:
-- Boss name generation logic (no sprites assumed)
-- HP/reward scaling formulas
-- Milestone floor definitions
-- Resource costs
+Single source of truth for:
+- Token tier definitions (maiden redemption)
+- Attack cost definitions
+- Token drop weights by floor
 
-Future: When sprites/assets are ready, expand boss definitions.
-For now: Keep it simple and functional.
+RIKI LAW Compliance:
+- Article IV: Pure data only, tunable values in ConfigManager
+- Article VII: No business logic in constants
+
+Note: Boss generation, HP scaling, and rewards are handled via ConfigManager
+in the service layer for maximum flexibility.
 """
 
-from typing import Dict, Any
-from dataclasses import dataclass
+from typing import Dict, Optional, Tuple
+import random
 
 
 # ============================================================================
-# HP SCALING
+# TOKEN TIERS (Display & Reference Data)
 # ============================================================================
 
-BASE_HP = 1000
-HP_GROWTH_RATE = 1.10
-MAX_HP = 999_999_999_999  # Prevent overflow at extreme floors
-
-
-# ============================================================================
-# REWARD SCALING
-# ============================================================================
-
-BASE_RIKIS_REWARD = 50
-BASE_XP_REWARD = 20
-REWARD_GROWTH_RATE = 1.12
-
-# Reward intervals
-EGG_INTERVAL = 5           # Maiden egg every 5 floors
-PRAYER_INTERVAL = 10       # Prayer charge every 10 floors
-CATALYST_INTERVAL = 25     # Fusion catalyst every 25 floors
-
-
-# ============================================================================
-# STAMINA COSTS
-# ============================================================================
-
-BASE_STAMINA_COST = 5
-STAMINA_INCREASE_PER_10_LEVELS = 1
-MAX_STAMINA_COST = 50
-
-
-# ============================================================================
-# ATTACK CONSTANTS
-# ============================================================================
-
-ATTACK_MULTIPLIERS = {
-    "x1": 1,
-    "x5": 5,
-    "x20": 20
-}
-
-GEM_ATTACK_COST = 10
-X20_CRIT_CHANCE = 0.20
-X20_CRIT_MULTIPLIER = 1.5
-
-
-# ============================================================================
-# BOSS NAME GENERATION (Current System)
-# ============================================================================
-
-# Generic boss name components (no sprites assumed)
-BOSS_PREFIXES_BY_TIER = {
-    (1, 10): ["Lesser", "Minor", "Weak"],
-    (11, 50): ["Guardian", "Sentinel", "Watcher"],
-    (51, 100): ["Elite", "Champion", "Veteran"],
-    (101, 200): ["Ascended", "Exalted", "Divine"],
-    (201, 999999): ["Transcendent", "Eternal", "Absolute"],
-}
-
-BOSS_TYPES = ["Warrior", "Mage", "Beast", "Construct", "Wraith"]
-
-
-# ============================================================================
-# MILESTONE BOSSES (Special Named Bosses)
-# ============================================================================
-
-@dataclass(frozen=True)
-class MilestoneBoss:
-    """Special boss for milestone floors."""
-    name: str
-    description: str  # Short flavor text for now
-    hp_multiplier: float = 1.5
-
-
-# Milestone bosses - can expand these as you add lore/sprites
-MILESTONE_BOSSES: Dict[int, MilestoneBoss] = {
-    50: MilestoneBoss(
-        name="Floor 50 Guardian",
-        description="A powerful guardian marking your progress",
-        hp_multiplier=1.5
-    ),
-    100: MilestoneBoss(
-        name="Floor 100 Champion",
-        description="The champion of the 100th floor",
-        hp_multiplier=2.0
-    ),
-    200: MilestoneBoss(
-        name="Floor 200 Ascendant",
-        description="An ascended being of immense power",
-        hp_multiplier=3.0
-    ),
-    # Add more as you develop lore/assets
-}
-
-
-# ============================================================================
-# MILESTONE REWARDS
-# ============================================================================
-
-MILESTONE_REWARDS: Dict[int, Dict[str, Any]] = {
-    50: {
-        "title": "Tower Climber",
-        "rikis": 10000,
-        "gems": 5
+TOKEN_TIERS: Dict[str, Dict] = {
+    "bronze": {
+        "name": "Bronze Token",
+        "tier_range": (1, 3),
+        "emoji": "🥉",
+        "color": 0xCD7F32,
+        "description": "Redeems for Tier 1-3 Maiden",
+        "order": 1
     },
-    100: {
-        "title": "Sky Piercer",
-        "rikis": 50000,
-        "gems": 10,
-        "prayer_charges": 1
+    "silver": {
+        "name": "Silver Token",
+        "tier_range": (3, 5),
+        "emoji": "🥈",
+        "color": 0xC0C0C0,
+        "description": "Redeems for Tier 3-5 Maiden",
+        "order": 2
     },
-    200: {
-        "title": "Celestial Ascendant",
-        "rikis": 500000,
-        "gems": 25,
-        "prayer_charges": 2,
-        "fusion_catalyst": 1
+    "gold": {
+        "name": "Gold Token",
+        "tier_range": (5, 7),
+        "emoji": "🥇",
+        "color": 0xFFD700,
+        "description": "Redeems for Tier 5-7 Maiden",
+        "order": 3
     },
-    # Add more as you design progression
+    "platinum": {
+        "name": "Platinum Token",
+        "tier_range": (7, 9),
+        "emoji": "💎",
+        "color": 0xE5E4E2,
+        "description": "Redeems for Tier 7-9 Maiden",
+        "order": 4
+    },
+    "diamond": {
+        "name": "Diamond Token",
+        "tier_range": (9, 11),
+        "emoji": "💠",
+        "color": 0xB9F2FF,
+        "description": "Redeems for Tier 9-11 Maiden",
+        "order": 5
+    }
 }
 
 
 # ============================================================================
-# EGG RARITY BY FLOOR RANGE
+# TOKEN HELPER FUNCTIONS
 # ============================================================================
 
-def get_egg_rarity_for_floor(floor: int) -> str:
+def get_token_tier(token_type: str) -> Optional[Dict]:
     """
-    Determine maiden egg rarity based on floor number.
+    Get token tier data by type.
     
-    Simple escalating rarity based on floor ranges.
+    Args:
+        token_type: Token type key (bronze, silver, etc.)
+    
+    Returns:
+        Token tier data dict or None if invalid
     """
-    if floor < 20:
-        return "common"
-    elif floor < 50:
-        return "rare"
-    elif floor < 100:
-        return "epic"
-    elif floor < 200:
-        return "legendary"
-    else:
-        return "mythic"
+    return TOKEN_TIERS.get(token_type.lower())
+
+
+def get_all_token_types() -> list:
+    """Get list of all valid token types in display order."""
+    return sorted(TOKEN_TIERS.keys(), key=lambda k: TOKEN_TIERS[k]["order"])
+
+
+def validate_token_type(token_type: str) -> bool:
+    """Check if token type is valid."""
+    return token_type.lower() in TOKEN_TIERS
+
+
+def get_token_display_name(token_type: str) -> str:
+    """Get display name for token type."""
+    tier_data = get_token_tier(token_type)
+    return tier_data["name"] if tier_data else "Unknown Token"
+
+
+def get_token_emoji(token_type: str) -> str:
+    """Get emoji for token type."""
+    tier_data = get_token_tier(token_type)
+    return tier_data["emoji"] if tier_data else "🎫"
+
+
+def get_token_tier_range(token_type: str) -> Optional[Tuple[int, int]]:
+    """Get maiden tier range for token type."""
+    tier_data = get_token_tier(token_type)
+    return tier_data["tier_range"] if tier_data else None
+
+
+def get_token_color(token_type: str) -> int:
+    """Get Discord embed color for token type."""
+    tier_data = get_token_tier(token_type)
+    return tier_data["color"] if tier_data else 0x2C2D31
 
 
 # ============================================================================
-# HELPER FUNCTIONS
+# ATTACK COSTS (Used by service.get_attack_cost)
 # ============================================================================
 
-def get_boss_prefix_for_floor(floor: int) -> str:
-    """
-    Get appropriate boss prefix for floor number.
-    
-    Uses tier ranges to select from prefix pools.
-    """
-    import random
-    
-    for (min_floor, max_floor), prefixes in BOSS_PREFIXES_BY_TIER.items():
-        if min_floor <= floor <= max_floor:
-            return random.choice(prefixes)
-    
-    # Fallback to highest tier
-    return random.choice(BOSS_PREFIXES_BY_TIER[(201, 999999)])
+ATTACK_COSTS: Dict[str, Dict[str, int]] = {
+    "x1": {"stamina": 1, "gems": 0},
+    "x3": {"stamina": 3, "gems": 0},
+    "x10": {"stamina": 10, "gems": 10}
+}
 
 
-def is_milestone_floor(floor: int) -> bool:
-    """Check if floor is a special milestone floor."""
-    return floor in MILESTONE_BOSSES
+def get_attack_cost(attack_type: str) -> Dict[str, int]:
+    """
+    Get resource costs for attack type.
+    
+    Args:
+        attack_type: "x1", "x3", or "x10"
+    
+    Returns:
+        {"stamina": int, "gems": int}
+    """
+    return ATTACK_COSTS.get(attack_type, {"stamina": 1, "gems": 0})

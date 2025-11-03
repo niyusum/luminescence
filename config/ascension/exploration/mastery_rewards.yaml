@@ -1,0 +1,109 @@
+# Exploration mastery rewards
+# Each sector has 3 ranks, each granting permanent stat boost relic
+# Relics are stored in player inventory and provide passive bonuses
+
+sector_1:
+  rank_1:
+    relic_type: "shrine_income"
+    bonus_value: 5.0
+    description: "Infernal Shrine Blessing"
+  
+  rank_2:
+    relic_type: "attack_boost"
+    bonus_value: 3.0
+    description: "Emberstone Relic"
+  
+  rank_3:
+    relic_type: "energy_regen"
+    bonus_value: 5.0
+    description: "Flameheart Talisman"
+
+sector_2:
+  rank_1:
+    relic_type: "shrine_income"
+    bonus_value: 7.0
+    description: "Abyssal Shrine Blessing"
+  
+  rank_2:
+    relic_type: "defense_boost"
+    bonus_value: 3.0
+    description: "Tidekeeper Aegis"
+  
+  rank_3:
+    relic_type: "combine_rate"
+    bonus_value: 2.0
+    description: "Aquamarine Focus"
+
+sector_3:
+  rank_1:
+    relic_type: "shrine_income"
+    bonus_value: 10.0
+    description: "Tempest Shrine Blessing"
+  
+  rank_2:
+    relic_type: "stamina_regen"
+    bonus_value: 3.0
+    description: "Stormcaller's Vigor"
+  
+  rank_3:
+    relic_type: "hp_boost"
+    bonus_value: 200.0
+    description: "Windwarden's Fortitude"
+
+sector_4:
+  rank_1:
+    relic_type: "shrine_income"
+    bonus_value: 12.0
+    description: "Earth Shrine Blessing"
+  
+  rank_2:
+    relic_type: "xp_gain"
+    bonus_value: 5.0
+    description: "Rootwarden's Wisdom"
+  
+  rank_3:
+    relic_type: "combine_rate"
+    bonus_value: 3.0
+    description: "Terraxis Crystal"
+
+sector_5:
+  rank_1:
+    relic_type: "shrine_income"
+    bonus_value: 15.0
+    description: "Radiant Shrine Blessing"
+  
+  rank_2:
+    relic_type: "attack_boost"
+    bonus_value: 5.0
+    description: "Lumina's Blade"
+  
+  rank_3:
+    relic_type: "energy_regen"
+    bonus_value: 10.0
+    description: "Dawnkeeper's Vitality"
+
+sector_6:
+  rank_1:
+    relic_type: "shrine_income"
+    bonus_value: 18.0
+    description: "Umbral Shrine Blessing"
+  
+  rank_2:
+    relic_type: "defense_boost"
+    bonus_value: 5.0
+    description: "Noctara's Veil"
+  
+  rank_3:
+    relic_type: "hp_boost"
+    bonus_value: 500.0
+    description: "Shadowheart Aegis"
+
+# Relic type definitions (for reference)
+# - shrine_income: Increases passive shrine rikis generation (%)
+# - attack_boost: Increases strategic power (%)
+# - defense_boost: Increases strategic defense (%)
+# - energy_regen: Increases energy regeneration rate per hour
+# - stamina_regen: Increases stamina regeneration rate per hour
+# - hp_boost: Increases max HP (flat value)
+# - xp_gain: Increases XP earned from all sources (%)
+# - combine_rate: Increases fusion success rate (%)

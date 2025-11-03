@@ -5,29 +5,25 @@ RIKI LAW Compliance: Article III (Service Layer), Article II (Audit Trails)
 - Pure business logic with no Discord dependencies
 - Comprehensive transaction logging for all combat events
 - Pessimistic locking for combat state modifications
-- Power calculations from maiden collections with leader bonuses
-- Damage calculations with modifiers, crits, and scaling
+- Dual power calculation: Strategic (best 6) and Total (all maidens)
 
 Features:
-- Player power calculation from maiden inventory
-- Damage calculation with attack multipliers and critical hits
-- Combat resolution (attacker vs defender, PvP/PvE)
-- HP management and stat calculations
-- Combat display formatting (HP bars, damage text, element emojis)
-- Comprehensive metrics and logging
+- Strategic power calculation (best 6 maidens, one per element)
+- Total power calculation (all maidens)
+- Element-based general bonuses
+- Damage calculations with modifiers, crits, and scaling
+- Turn-based combat resolution with HP management
+- Boss counter-attack damage calculation
 
-Attack damage originates from maiden base_atk stats:
-    Power = sum(base_atk × quantity) for all maidens
-    Damage = Power × attack_count × modifiers × crit_bonus
-    
-Note: Tier scaling handled via MaidenBase.base_atk values from seed data.
-      Higher tier maidens have exponentially higher base_atk naturally.
+Combat Modes:
+1. Strategic (Ascension): Best 6 maidens, boss fights back, HP at risk
+2. Total (Exploration): All maidens, speed-based, no retaliation
 """
 
 from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from dataclasses import dataclass
 
 from src.database.models.core.player import Player
 from src.database.models.core.maiden import Maiden
@@ -45,22 +41,20 @@ logger = get_logger(__name__)
 # ============================================================================
 
 @dataclass(frozen=True)
-class PowerBreakdown:
+class StrategicPower:
     """
-    Detailed breakdown of player power from maiden collection.
+    Strategic power breakdown from best 6 maidens.
     
     Attributes:
-        total_power: Total ATK value from all maidens
-        maiden_count: Total number of unique maidens owned
-        top_contributors: List of top power-contributing maidens
-        average_power: Average power per maiden
-        leader_bonus_applied: Whether leader bonus was included
+        total_power: Total ATK from 6 generals
+        total_defense: Total DEF from 6 generals
+        generals: Dict of element -> general data
+        element_bonuses: List of active element bonuses
     """
     total_power: int
-    maiden_count: int
-    top_contributors: List[Dict]
-    average_power: int
-    leader_bonus_applied: bool
+    total_defense: int
+    generals: Dict[str, Dict]
+    element_bonuses: List[Dict[str, str]]
 
 
 @dataclass(frozen=True)
@@ -83,26 +77,80 @@ class DamageCalculation:
 
 
 @dataclass(frozen=True)
-class CombatResult:
+class CombatTurn:
     """
-    Complete combat resolution result.
+    Complete combat turn result.
     
     Attributes:
-        attacker_victory: True if attacker won
-        damage_dealt: Total damage dealt by attacker
-        damage_taken: Total damage taken by attacker (PvP only)
-        attacker_remaining_hp: Attacker's HP after combat
-        defender_remaining_hp: Defender's HP after combat
-        turns_elapsed: Number of combat turns
-        combat_log: List of combat events for display
+        player_damage: Damage dealt by player
+        boss_damage: Damage dealt by boss (to player HP)
+        player_hp: Player HP after turn
+        boss_hp: Boss HP after turn
+        critical: Whether player crit
+        momentum: Current momentum level (0-100)
+        victory: True if boss defeated
+        defeat: True if player defeated
+        combat_log: Turn description
     """
-    attacker_victory: bool
-    damage_dealt: int
-    damage_taken: int
-    attacker_remaining_hp: int
-    defender_remaining_hp: int
-    turns_elapsed: int
+    player_damage: int
+    boss_damage: int
+    player_hp: int
+    boss_hp: int
+    critical: bool
+    momentum: int
+    victory: bool
+    defeat: bool
     combat_log: List[str]
+
+
+# ============================================================================
+# ELEMENT BONUS DEFINITIONS
+# ============================================================================
+
+ELEMENT_BONUSES = {
+    "infernal": {
+        "name": "Infernal General",
+        "emoji": "🔥",
+        "bonus_text": "+10% ATK",
+        "applies_to": "attack",
+        "multiplier": 1.10
+    },
+    "abyssal": {
+        "name": "Abyssal General",
+        "emoji": "🌊",
+        "bonus_text": "+10% DEF",
+        "applies_to": "defense",
+        "multiplier": 1.10
+    },
+    "tempest": {
+        "name": "Tempest General",
+        "emoji": "⚡",
+        "bonus_text": "+5% Critical Rate",
+        "applies_to": "crit_rate",
+        "value": 0.05
+    },
+    "earth": {
+        "name": "Earth General",
+        "emoji": "🌍",
+        "bonus_text": "+100 Max HP",
+        "applies_to": "hp",
+        "value": 100
+    },
+    "radiant": {
+        "name": "Radiant General",
+        "emoji": "✨",
+        "bonus_text": "+5% HP Regen/Turn",
+        "applies_to": "hp_regen",
+        "value": 0.05
+    },
+    "umbral": {
+        "name": "Umbral General",
+        "emoji": "🌑",
+        "bonus_text": "-5% Enemy ATK",
+        "applies_to": "enemy_atk_reduction",
+        "multiplier": 0.95
+    }
+}
 
 
 # ============================================================================
@@ -111,59 +159,153 @@ class CombatResult:
 
 class CombatService:
     """
-    Core combat mechanics and power calculation service (RIKI LAW Article III).
+    Core combat mechanics service (RIKI LAW Article III).
     
-    Provides centralized combat calculations including:
-    - Player power from maiden collection with tier scaling
-    - Damage calculations with crits, modifiers, and scaling
-    - Combat resolution for PvE and PvP encounters
-    - HP management and stat calculations
-    - Combat display formatting utilities
-    
-    All combat state modifications use pessimistic locking (RIKI LAW Article III).
-    All combat events are logged for audit trails (RIKI LAW Article II).
-    
-    Usage:
-        >>> # Calculate player power
-        >>> power = await CombatService.calculate_total_power(session, player_id)
-        >>> breakdown = await CombatService.get_power_breakdown(session, player_id)
-        
-        >>> # Calculate damage
-        >>> damage_calc = CombatService.calculate_damage(
-        ...     player_power=5000,
-        ...     attack_count=5,
-        ...     crit_chance=0.15,
-        ...     modifiers={"leader_bonus": 1.10}
-        ... )
-        
-        >>> # Resolve combat
-        >>> result = await CombatService.resolve_combat(
-        ...     session=session,
-        ...     attacker_id=user_id,
-        ...     defender_id=enemy_id,
-        ...     combat_type="pvp"
-        ... )
+    Provides dual power calculation modes and combat resolution.
     """
     
     # ========================================================================
-    # POWER CALCULATION
+    # STRATEGIC POWER CALCULATION (ASCENSION)
+    # ========================================================================
+    
+    @staticmethod
+    async def calculate_strategic_power(
+        session: AsyncSession,
+        player_id: int,
+        include_leader_bonus: bool = True
+    ) -> StrategicPower:
+        """
+        Calculate power from best 6 maidens (one per element).
+        
+        This is MUCH lower than total power, designed for challenging combat.
+        Used for Ascension tower climbing.
+        
+        Formula:
+            - Select highest ATK maiden in each element
+            - Sum their (base_atk × quantity)
+            - Apply leader bonus if requested
+            - Apply element bonuses
+        
+        Args:
+            session: Database session
+            player_id: Discord ID
+            include_leader_bonus: Whether to apply leader multiplier
+        
+        Returns:
+            StrategicPower dataclass with full breakdown
+        
+        Example:
+            >>> strategic = await CombatService.calculate_strategic_power(session, player_id)
+            >>> print(f"Strategic Power: {strategic.total_power:,}")
+            >>> print(f"Generals: {len(strategic.generals)}/6")
+        """
+        elements = ["infernal", "abyssal", "tempest", "earth", "radiant", "umbral"]
+        generals = {}
+        total_power = 0
+        total_defense = 0
+        
+        for element in elements:
+            # Get strongest maiden in this element
+            result = await session.execute(
+                select(Maiden, MaidenBase)
+                .join(MaidenBase, Maiden.maiden_base_id == MaidenBase.id)
+                .where(
+                    Maiden.player_id == player_id,
+                    MaidenBase.element == element
+                )
+                .order_by((MaidenBase.base_atk * Maiden.quantity).desc())
+                .limit(1)
+            )
+            maiden_pair = result.first()
+            
+            if maiden_pair:
+                maiden, maiden_base = maiden_pair
+                maiden_power = maiden_base.base_atk * maiden.quantity
+                maiden_defense = maiden_base.base_def * maiden.quantity
+                
+                generals[element] = {
+                    "maiden_id": maiden.id,
+                    "name": maiden_base.name,
+                    "atk": maiden_power,
+                    "def": maiden_defense,
+                    "tier": maiden.tier,
+                    "quantity": maiden.quantity,
+                    "element": element
+                }
+                
+                total_power += maiden_power
+                total_defense += maiden_defense
+        
+        # Apply element bonuses
+        if "infernal" in generals:
+            total_power = int(total_power * ELEMENT_BONUSES["infernal"]["multiplier"])
+        
+        if "abyssal" in generals:
+            total_defense = int(total_defense * ELEMENT_BONUSES["abyssal"]["multiplier"])
+        
+        # Apply leader bonus
+        if include_leader_bonus:
+            player = await session.get(Player, player_id)
+            if player and player.leader_maiden_id:
+                from src.features.leader.service import LeaderService
+                modifiers = await LeaderService.get_active_modifiers(player)
+                
+                atk_multiplier = modifiers.get("income_boost", 1.0)
+                total_power = int(total_power * atk_multiplier)
+        
+        # Get element bonuses list
+        element_bonuses = CombatService._format_element_bonuses(generals)
+        
+        logger.info(
+            f"Strategic power calculated: player={player_id}, power={total_power:,}, "
+            f"def={total_defense:,}, generals={len(generals)}/6"
+        )
+        
+        return StrategicPower(
+            total_power=total_power,
+            total_defense=total_defense,
+            generals=generals,
+            element_bonuses=element_bonuses
+        )
+    
+    @staticmethod
+    def _format_element_bonuses(generals: Dict[str, Dict]) -> List[Dict[str, str]]:
+        """
+        Format active element bonuses for display.
+        
+        Returns list of active bonuses with emoji and description.
+        """
+        bonuses = []
+        
+        for element, general in generals.items():
+            if element in ELEMENT_BONUSES:
+                bonus_data = ELEMENT_BONUSES[element]
+                bonuses.append({
+                    "element": element,
+                    "emoji": bonus_data["emoji"],
+                    "name": bonus_data["name"],
+                    "bonus": bonus_data["bonus_text"]
+                })
+        
+        return bonuses
+    
+    # ========================================================================
+    # TOTAL POWER CALCULATION (EXPLORATION)
     # ========================================================================
     
     @staticmethod
     async def calculate_total_power(
         session: AsyncSession,
         player_id: int,
-        include_leader_bonus: bool = False
+        include_leader_bonus: bool = True
     ) -> int:
         """
-        Calculate player's total power from ALL owned maidens.
+        Calculate player's total power from ALL maidens.
         
-        Power = sum(base_atk × quantity) for all maidens
+        Used for Exploration (Matrons) where full collection matters.
         
-        No tier multipliers - tier scaling handled via MaidenBase.base_atk values.
-        Higher tier maidens naturally have exponentially higher base_atk from seed data.
-        No squad limits, no benching - every maiden contributes.
-        Optionally includes leader bonus multiplier.
+        Formula:
+            Power = Σ(base_atk × quantity) × leader_bonus
         
         Args:
             session: Database session
@@ -177,7 +319,7 @@ class CombatService:
             >>> power = await CombatService.calculate_total_power(session, player_id)
             >>> print(f"Total Power: {power:,}")
         """
-        # Calculate base power from all maidens (pure sum, no tier multipliers)
+        # Calculate base power from all maidens
         result = await session.execute(
             select(func.sum(
                 MaidenBase.base_atk * Maiden.quantity
@@ -192,118 +334,14 @@ class CombatService:
         if include_leader_bonus:
             player = await session.get(Player, player_id)
             if player and player.leader_maiden_id:
-                # Get leader bonus from LeaderService
                 from src.features.leader.service import LeaderService
                 modifiers = await LeaderService.get_active_modifiers(player)
-                
-                # Check if leader provides ATK bonus (income_boost often scales ATK)
                 atk_multiplier = modifiers.get("income_boost", 1.0)
                 total_power = int(total_power * atk_multiplier)
-                
-                logger.debug(
-                    f"Applied leader bonus to power calculation "
-                    f"(player={player_id}, multiplier={atk_multiplier:.2f}, "
-                    f"final_power={total_power:,})"
-                )
+        
+        logger.debug(f"Total power calculated: player={player_id}, power={total_power:,}")
         
         return total_power
-    
-    @staticmethod
-    async def get_power_breakdown(
-        session: AsyncSession,
-        player_id: int,
-        top_n: int = 10,
-        include_leader_bonus: bool = False
-    ) -> PowerBreakdown:
-        """
-        Get detailed breakdown of player power contribution.
-        
-        Shows top contributing maidens, collection stats, and leader bonus.
-        Useful for player stats displays and debugging power calculations.
-        
-        Args:
-            session: Database session
-            player_id: Discord ID
-            top_n: Number of top contributors to include
-            include_leader_bonus: Whether to calculate leader bonus
-        
-        Returns:
-            PowerBreakdown with detailed stats
-        
-        Example:
-            >>> breakdown = await CombatService.get_power_breakdown(session, player_id, top_n=5)
-            >>> print(f"Total Power: {breakdown.total_power:,}")
-            >>> for maiden in breakdown.top_contributors:
-            ...     print(f"{maiden['name']}: {maiden['power']:,} ATK")
-        """
-        # Fetch all maidens with their bases
-        result = await session.execute(
-            select(Maiden, MaidenBase)
-            .join(MaidenBase, Maiden.maiden_base_id == MaidenBase.id)
-            .where(Maiden.player_id == player_id)
-        )
-        maiden_pairs = result.all()
-        
-        if not maiden_pairs:
-            return PowerBreakdown(
-                total_power=0,
-                maiden_count=0,
-                top_contributors=[],
-                average_power=0,
-                leader_bonus_applied=False
-            )
-        
-        # Calculate power for each maiden (no tier multipliers)
-        maiden_powers = []
-        for maiden, maiden_base in maiden_pairs:
-            power = int(maiden_base.base_atk * maiden.quantity)
-            
-            maiden_powers.append({
-                "maiden_id": maiden.id,
-                "name": maiden_base.name,
-                "power": power,
-                "tier": maiden.tier,
-                "element": maiden.element,
-                "quantity": maiden.quantity,
-                "base_atk": maiden_base.base_atk
-            })
-        
-        # Sort by power descending
-        maiden_powers.sort(key=lambda x: x["power"], reverse=True)
-        
-        total_power = sum(mp["power"] for mp in maiden_powers)
-        total_maidens = sum(mp["quantity"] for mp in maiden_powers)
-        average_power = total_power // total_maidens if total_maidens > 0 else 0
-        
-        # Calculate contribution percentages for top contributors
-        top_contributors = []
-        for mp in maiden_powers[:top_n]:
-            contribution_pct = (mp["power"] / total_power * 100) if total_power > 0 else 0
-            top_contributors.append({
-                **mp,
-                "contribution_percent": round(contribution_pct, 2)
-            })
-        
-        # Apply leader bonus if requested
-        leader_bonus_applied = False
-        if include_leader_bonus:
-            player = await session.get(Player, player_id)
-            if player and player.leader_maiden_id:
-                from src.features.leader.service import LeaderService
-                modifiers = await LeaderService.get_active_modifiers(player)
-                atk_multiplier = modifiers.get("income_boost", 1.0)
-                
-                if atk_multiplier > 1.0:
-                    total_power = int(total_power * atk_multiplier)
-                    leader_bonus_applied = True
-        
-        return PowerBreakdown(
-            total_power=total_power,
-            maiden_count=total_maidens,
-            top_contributors=top_contributors,
-            average_power=average_power,
-            leader_bonus_applied=leader_bonus_applied
-        )
     
     # ========================================================================
     # DAMAGE CALCULATION
@@ -315,6 +353,7 @@ class CombatService:
         attack_count: int = 1,
         crit_chance: float = 0.0,
         crit_multiplier: float = 1.5,
+        momentum_level: int = 0,
         modifiers: Optional[Dict[str, float]] = None
     ) -> DamageCalculation:
         """
@@ -322,38 +361,40 @@ class CombatService:
         
         Formula:
             base_damage = player_power × attack_count
-            final_damage = base_damage × modifiers × crit_bonus
+            momentum_bonus = 1.0 + (momentum_level dependent)
+            final_damage = base_damage × momentum_bonus × modifiers × crit_bonus
         
         Args:
             player_power: Total ATK from maiden collection
-            attack_count: Number of attacks (1, 5, 20 for ascension)
+            attack_count: Number of attacks (1, 3, 10)
             crit_chance: Critical hit chance (0.0-1.0)
             crit_multiplier: Critical hit damage multiplier (default 1.5x)
+            momentum_level: Current momentum (0-100)
             modifiers: Optional dict of modifier names to multipliers
         
         Returns:
             DamageCalculation with full breakdown
-        
-        Example:
-            >>> damage = CombatService.calculate_damage(
-            ...     player_power=5000,
-            ...     attack_count=5,
-            ...     crit_chance=0.15,
-            ...     modifiers={"leader_bonus": 1.10, "event_bonus": 1.20}
-            ... )
-            >>> print(f"Damage: {damage.final_damage:,} {'CRIT!' if damage.was_critical else ''}")
         """
         import random
         
         # Base damage
         base_damage = player_power * attack_count
         
+        # Momentum bonus
+        momentum_mult = 1.0
+        if momentum_level >= 80:
+            momentum_mult = 1.50
+        elif momentum_level >= 50:
+            momentum_mult = 1.30
+        elif momentum_level >= 30:
+            momentum_mult = 1.20
+        
         # Roll for critical hit
         was_critical = random.random() < crit_chance
         
         # Apply modifiers
         applied_modifiers = modifiers or {}
-        total_multiplier = 1.0
+        total_multiplier = momentum_mult
         
         for modifier_name, multiplier in applied_modifiers.items():
             total_multiplier *= multiplier
@@ -362,6 +403,9 @@ class CombatService:
         if was_critical:
             total_multiplier *= crit_multiplier
             applied_modifiers["critical_hit"] = crit_multiplier
+        
+        if momentum_level > 0:
+            applied_modifiers["momentum"] = momentum_mult
         
         # Calculate final damage
         final_damage = int(base_damage * total_multiplier)
@@ -379,23 +423,66 @@ class CombatService:
             attack_count=attack_count
         )
     
+    # ========================================================================
+    # BOSS DAMAGE CALCULATION
+    # ========================================================================
+    
+    @staticmethod
+    def calculate_boss_damage_to_player(
+        boss_atk: int,
+        generals_total_def: int,
+        umbral_general_present: bool = False
+    ) -> int:
+        """
+        Calculate damage boss deals to player HP.
+        
+        Formula:
+            1. Apply Umbral reduction if present: boss_atk × 0.95
+            2. Subtract generals' total DEF
+            3. Minimum 1 damage
+        
+        Args:
+            boss_atk: Boss attack stat
+            generals_total_def: Sum of 6 generals' defense
+            umbral_general_present: Whether umbral general active
+        
+        Returns:
+            Damage dealt to player (minimum 1)
+        """
+        # Apply umbral reduction
+        effective_boss_atk = boss_atk
+        if umbral_general_present:
+            effective_boss_atk = int(boss_atk * ELEMENT_BONUSES["umbral"]["multiplier"])
+        
+        # Calculate damage
+        raw_damage = effective_boss_atk - generals_total_def
+        final_damage = max(1, raw_damage)
+        
+        logger.debug(
+            f"Boss damage calc: boss_atk={boss_atk}, "
+            f"umbral_reduction={umbral_general_present}, "
+            f"effective_atk={effective_boss_atk}, "
+            f"generals_def={generals_total_def}, "
+            f"raw={raw_damage}, final={final_damage}"
+        )
+        
+        return final_damage
+    
+    # ========================================================================
+    # UTILITY
+    # ========================================================================
+    
     @staticmethod
     def calculate_attacks_needed(player_power: int, enemy_hp: int) -> int:
         """
         Estimate attacks needed to defeat enemy.
         
-        Useful for UI displays showing estimated combat length.
-        
         Args:
-            player_power: Total ATK from maidens
-            enemy_hp: Enemy total HP
+            player_power: Total ATK
+            enemy_hp: Enemy HP
         
         Returns:
             Number of attacks needed (minimum 1, max 999 if no power)
-        
-        Example:
-            >>> attacks = CombatService.calculate_attacks_needed(5000, 25000)
-            >>> print(f"Estimated attacks to win: {attacks}")
         """
         if player_power == 0:
             return 999
@@ -403,140 +490,18 @@ class CombatService:
         import math
         return max(1, math.ceil(enemy_hp / player_power))
     
-    # ========================================================================
-    # COMBAT RESOLUTION
-    # ========================================================================
-    
     @staticmethod
-    async def resolve_combat(
-        session: AsyncSession,
-        attacker_id: int,
-        defender_id: int,
-        combat_type: str = "pve",
-        attacker_attacks: int = 1
-    ) -> CombatResult:
-        """
-        Resolve complete combat encounter between attacker and defender.
-        
-        Handles both PvE (player vs enemy) and PvP (player vs player) combat.
-        Uses pessimistic locking for combat state (RIKI LAW Article III).
-        Logs complete combat transaction for audit trail (RIKI LAW Article II).
-        
-        Args:
-            session: Database session (must be in transaction)
-            attacker_id: Attacker's player ID
-            defender_id: Defender's player ID or enemy ID
-            combat_type: "pve" or "pvp"
-            attacker_attacks: Number of attacks attacker performs
-        
-        Returns:
-            CombatResult with full combat resolution
-        
-        Raises:
-            CombatError: If combat cannot be resolved
-        
-        Example:
-            >>> async with DatabaseService.get_transaction() as session:
-            ...     result = await CombatService.resolve_combat(
-            ...         session=session,
-            ...         attacker_id=user_id,
-            ...         defender_id=enemy_id,
-            ...         combat_type="pve",
-            ...         attacker_attacks=5
-            ...     )
-            ...     if result.attacker_victory:
-            ...         print(f"Victory! Dealt {result.damage_dealt:,} damage")
-        """
-        async with LogContext(user_id=attacker_id, combat_type=combat_type):
-            # Fetch attacker with lock
-            attacker = await session.get(Player, attacker_id, with_for_update=True)
-            if not attacker:
-                raise CombatError(f"Attacker player {attacker_id} not found")
-            
-            # Calculate attacker power
-            attacker_power = await CombatService.calculate_total_power(
-                session=session,
-                player_id=attacker_id,
-                include_leader_bonus=True
-            )
-            
-            # Get combat configuration
-            crit_chance = ConfigManager.get("combat.crit_chance", 0.1)
-            crit_multiplier = ConfigManager.get("combat.crit_multiplier", 1.5)
-            
-            # Calculate damage
-            damage_calc = CombatService.calculate_damage(
-                player_power=attacker_power,
-                attack_count=attacker_attacks,
-                crit_chance=crit_chance,
-                crit_multiplier=crit_multiplier
-            )
-            
-            combat_log = []
-            combat_log.append(
-                f"⚔️ Attacker power: {attacker_power:,} ATK × {attacker_attacks} attacks"
-            )
-            combat_log.append(
-                CombatService.format_damage_display(
-                    damage=damage_calc.final_damage,
-                    is_crit=damage_calc.was_critical
-                )
-            )
-            
-            # Log combat transaction
-            await TransactionLogger.log_transaction(
-                session=session,
-                player_id=attacker_id,
-                transaction_type=f"combat_{combat_type}",
-                details={
-                    "defender_id": defender_id,
-                    "attacker_power": attacker_power,
-                    "damage_dealt": damage_calc.final_damage,
-                    "was_critical": damage_calc.was_critical,
-                    "attack_count": attacker_attacks,
-                    "modifiers": damage_calc.modifiers_applied
-                },
-                context=f"combat_resolution:{combat_type}"
-            )
-            
-            logger.info(
-                f"Combat resolved: attacker={attacker_id}, defender={defender_id}, "
-                f"type={combat_type}, damage={damage_calc.final_damage:,}, "
-                f"crit={damage_calc.was_critical}"
-            )
-            
-            # For now, return simplified result (expand for full combat system)
-            return CombatResult(
-                attacker_victory=True,  # Will be calculated based on HP
-                damage_dealt=damage_calc.final_damage,
-                damage_taken=0,  # PvP only
-                attacker_remaining_hp=100,  # Placeholder
-                defender_remaining_hp=0,  # Placeholder
-                turns_elapsed=1,
-                combat_log=combat_log
-            )
-    
-    # ========================================================================
-    # DISPLAY UTILITIES
-    # ========================================================================
-    
-    @staticmethod
-    def render_hp_bar(current_hp: int, max_hp: int, width: int = 20) -> str:
+    def render_hp_bar(current_hp: int, max_hp: int, width: int = 10) -> str:
         """
         Render ASCII HP bar using Unicode blocks.
         
         Args:
             current_hp: Current HP value
             max_hp: Maximum HP value
-            width: Bar width in characters (default 20)
+            width: Bar width in characters (default 10)
         
         Returns:
             Formatted HP bar string
-        
-        Example:
-            >>> bar = CombatService.render_hp_bar(7500, 10000, 20)
-            >>> print(bar)
-            '███████████████░░░░░'
         """
         if max_hp == 0:
             return "░" * width
@@ -548,116 +513,8 @@ class CombatService:
         return "█" * filled_width + "░" * empty_width
     
     @staticmethod
-    def render_hp_percentage(current_hp: int, max_hp: int) -> str:
-        """
-        Render HP as percentage string.
-        
-        Returns:
-            Formatted percentage (e.g., "75%")
-        """
-        if max_hp == 0:
-            return "0%"
-        
-        percent = int((current_hp / max_hp) * 100)
-        return f"{percent}%"
-    
-    @staticmethod
-    def format_damage_display(damage: int, is_crit: bool = False) -> str:
-        """
-        Format damage number for display with appropriate styling.
-        
-        Args:
-            damage: Damage value
-            is_crit: Whether this is a critical hit
-        
-        Returns:
-            Formatted damage string with emojis
-        
-        Example:
-            >>> print(CombatService.format_damage_display(5000, is_crit=False))
-            '⚔️ 5,000'
-            >>> print(CombatService.format_damage_display(7500, is_crit=True))
-            '💥 **7,500** ✨ CRITICAL!'
-        """
-        formatted = f"{damage:,}"
-        
-        if is_crit:
-            return f"💥 **{formatted}** ✨ CRITICAL!"
-        else:
-            return f"⚔️ {formatted}"
-    
-    @staticmethod
-    def format_combat_log_entry(
-        attacker_name: str,
-        damage: int,
-        current_hp: int,
-        max_hp: int,
-        is_crit: bool = False
-    ) -> str:
-        """
-        Format single combat log entry with HP bar.
-        
-        Args:
-            attacker_name: Name of attacker
-            damage: Damage dealt
-            current_hp: Defender's current HP
-            max_hp: Defender's max HP
-            is_crit: Whether this was a critical hit
-        
-        Returns:
-            Formatted combat log entry
-        
-        Example:
-            >>> entry = CombatService.format_combat_log_entry(
-            ...     "Ember", 5000, 15000, 20000, is_crit=True
-            ... )
-            >>> print(entry)
-            '💥 Ember dealt **5,000** damage! ✨ CRITICAL!\n███████████████░░░░░ 15,000 / 20,000 HP'
-        """
-        damage_text = CombatService.format_damage_display(damage, is_crit)
-        hp_bar = CombatService.render_hp_bar(current_hp, max_hp, width=20)
-        hp_text = f"{current_hp:,} / {max_hp:,} HP"
-        
-        return f"{attacker_name} dealt {damage_text}\n{hp_bar} {hp_text}"
-    
-    @staticmethod
     def get_element_emoji(element: str) -> str:
-        """
-        Get emoji for element type.
-        
-        Args:
-            element: Element name (infernal, abyssal, etc.)
-        
-        Returns:
-            Element emoji
-        """
-        emojis = {
-            "infernal": "🔥",
-            "abyssal": "💧",
-            "tempest": "🌪️",
-            "earth": "🌿",
-            "radiant": "✨",
-            "umbral": "🌑",
-        }
-        return emojis.get(element.lower(), "⚪")
-    
-    @staticmethod
-    def get_rarity_emoji(rarity: str) -> str:
-        """
-        Get emoji for rarity tier.
-        
-        Args:
-            rarity: Rarity name (common, rare, epic, etc.)
-        
-        Returns:
-            Rarity emoji
-        """
-        emojis = {
-            "common": "⚪",
-            "uncommon": "🟢",
-            "rare": "🔵",
-            "epic": "🟣",
-            "legendary": "🟠",
-            "mythic": "🔴",
-        }
-        return emojis.get(rarity.lower(), "⚪")
+        """Get emoji for element type."""
+        if element in ELEMENT_BONUSES:
+            return ELEMENT_BONUSES[element]["emoji"]
+        return "⚪"
