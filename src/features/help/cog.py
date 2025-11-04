@@ -255,9 +255,9 @@ class HelpCategoryView(discord.ui.View):
             name="Class Bonuses",
             value=(
                 "• Each player class adds additional effects:\n"
-                "  ⚔️ Warrior — +Attack stats\n"
-                "  🛡️ Guardian — +Defense bonuses\n"
-                "  💫 Mystic — +Grace and XP efficiency"
+                "  ⚔️ Destroyer — +25% stamina regeneration\n"
+                "  🛡️ Adapter — +25% energy regeneration\n"
+                "  💫 Invoker — +25% shrine rewards"
             ),
             inline=False,
         )

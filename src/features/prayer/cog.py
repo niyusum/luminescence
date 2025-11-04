@@ -39,19 +39,14 @@ class PrayCog(commands.Cog):
     @commands.hybrid_command(
         name="pray",
         aliases=["rp"],
-        description="Perform prayers to gain grace for summoning",
+        description="Perform a prayer to gain grace for summoning",
     )
     @ratelimit(uses=10, per_seconds=60, command_name="pray")
-    async def pray(self, ctx: commands.Context, charges: Optional[int] = 1):
-        """Perform prayers to gain grace."""
+    async def pray(self, ctx: commands.Context):
+        """Perform a prayer to gain grace (1 charge per use)."""
         await ctx.defer()
 
         try:
-            if charges < 1:
-                raise ValidationError("charges", "Must pray at least 1 time")
-            if charges > 5:
-                raise ValidationError("charges", "Cannot pray more than 5 times at once")
-
             async with RedisService.acquire_lock(f"pray:{ctx.author.id}", timeout=5):
                 async with DatabaseService.get_transaction() as session:
                     player = await PlayerService.get_player_with_regen(
@@ -67,24 +62,23 @@ class PrayCog(commands.Cog):
                         await ctx.send(embed=embed, ephemeral=True)
                         return
 
-                    if player.prayer_charges < charges:
+                    if player.prayer_charges < 1:
                         raise InsufficientResourcesError(
-                            resource="prayer charges",
-                            required=charges,
+                            resource="prayer_charges",
+                            required=1,
                             current=player.prayer_charges,
                         )
 
                     result = await PrayerService.perform_prayer(
-                        session, player, charges=charges
+                        session, player, charges=1
                     )
 
                     await TransactionLogger.log_transaction(
                         player_id=ctx.author.id,
                         transaction_type="prayer_performed",
                         details={
-                            "charges_spent": charges,
+                            "charges_spent": 1,
                             "grace_gained": result["grace_gained"],
-                            "class_bonus": result.get("class_bonus", 0),
                             "remaining_charges": result["remaining_charges"],
                             "modifiers_applied": result.get("modifiers_applied", {}),
                         },
@@ -95,7 +89,7 @@ class PrayCog(commands.Cog):
                         "prayer_completed",
                         {
                             "player_id": ctx.author.id,
-                            "charges_spent": charges,
+                            "charges_spent": 1,
                             "grace_gained": result["grace_gained"],
                             "channel_id": ctx.channel.id,
                             "__topic__": "prayer_completed",
@@ -105,16 +99,13 @@ class PrayCog(commands.Cog):
 
                     # --- Embed Construction ---
                     # Simple display: +X grace, total balance
-                    charges_text = "charge" if charges == 1 else "charges"
-
                     embed = EmbedBuilder.success(
                         title="🙏 Prayer Complete",
                         description=(
-                            f"Used **{charges} {charges_text}**\n\n"
                             f"+**{result['grace_gained']} Grace**\n"
                             f"**Total Grace:** {result['total_grace']}"
                         ),
-                        footer=f"Charges: {result['remaining_charges']}/{player.max_prayer_charges} | Next: {result['next_charge_in']}"
+                        footer=f"Next charge: {result['next_charge_in']}"
                     )
 
                     view = PrayActionView(ctx.author.id, result["total_grace"])
@@ -161,9 +152,9 @@ class PrayCog(commands.Cog):
             await ctx.send(embed=embed, ephemeral=True)
 
     @commands.command(name="rp", hidden=True)
-    async def pray_short(self, ctx: commands.Context, charges: Optional[int] = 1):
+    async def pray_short(self, ctx: commands.Context):
         """Alias: rp -> pray"""
-        await self.pray(ctx, charges)
+        await self.pray(ctx)
 
 
 class PrayActionView(discord.ui.View):

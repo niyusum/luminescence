@@ -42,7 +42,7 @@ class PrayerService:
         charges: int = 1
     ) -> Dict[str, Any]:
         """
-        Perform prayer to gain grace, consuming prayer charges.
+        Perform prayer to gain grace, consuming exactly 1 prayer charge.
 
         Uses ResourceService for grace granting, which applies:
         - Leader income_boost modifiers
@@ -52,21 +52,19 @@ class PrayerService:
         Args:
             session: Database session (transaction managed by caller)
             player: Player object (must be locked with SELECT FOR UPDATE)
-            charges: Number of prayer charges to spend (1-5)
+            charges: Must be exactly 1 (no multi-pray allowed)
 
         Returns:
             {
-                "grace_gained": 5,
+                "grace_gained": 1,
                 "total_grace": 100,
-                "remaining_charges": 4,
-                "charges_spent": 1,
                 "modifiers_applied": {"income_boost": 1.2, "xp_boost": 1.0},
-                "next_charge_in": "4m 32s"
+                "next_available": "4m 32s"
             }
 
         Raises:
             InsufficientResourcesError: Player lacks prayer charges
-            ValidationError: Invalid charge amount
+            ValidationError: Invalid charge amount (must be exactly 1)
         """
         # Validation
         if charges != 1:
@@ -148,8 +146,8 @@ class PrayerService:
 
         Returns:
             {
-                "charges": 5,
-                "max_charges": 5,
+                "charges": 1,
+                "max_charges": 1,  # DEPRECATED field, always 1
                 "next_regen": "Ready!",
                 "grace_per_prayer": 1,
                 "total_prayers": 142

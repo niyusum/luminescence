@@ -281,10 +281,10 @@ class EmbedBuilder:
         next_regen_str = next_regen() if callable(next_regen) else "N/A"
         
         embed.add_field(
-            name="🙏 Prayer Charges",
+            name="🙏 Prayer Charge",
             value=(
-                f"**{player.prayer_charges}/{player.max_prayer_charges}**\n"
-                f"Next Regen: {next_regen_str}"
+                f"**{'✅ Ready!' if player.prayer_charges >= 1 else '⏳ Regenerating'}**\n"
+                f"Next: {next_regen_str}"
             ),
             inline=True
         )

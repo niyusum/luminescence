@@ -299,13 +299,13 @@ class StatsCog(commands.Cog):
             stats_json = _as_dict(getattr(player, "stats", None))
             prayers_performed = int(stats_json.get("prayers_performed", 0))
             prayer_charges = int(getattr(player, "prayer_charges", 0))
-            max_prayer_charges = int(getattr(player, "max_prayer_charges", 0))
-            
+            prayer_status = "✅ Ready!" if prayer_charges >= 1 else "⏳ Regenerating"
+
             embed.add_field(
                 name="🙏 Prayer Statistics",
                 value=_safe_value(
                     f"**Total Prayers:** {prayers_performed:,}\n"
-                    f"**Current Charges:** {prayer_charges}/{max_prayer_charges}"
+                    f"**Charge:** {prayer_status}"
                 ),
                 inline=True
             )
