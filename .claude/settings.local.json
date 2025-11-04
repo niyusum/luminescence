@@ -17,7 +17,9 @@
       "Bash(where:*)",
       "Bash(nul)",
       "Bash(.venv/Scripts/python.exe -m py_compile:*)",
-      "Bash(.venv/Scripts/python.exe:*)"
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)"
     ],
     "deny": [],
     "ask": []

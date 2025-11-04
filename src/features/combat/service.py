@@ -106,51 +106,8 @@ class CombatTurn:
 # ============================================================================
 # ELEMENT BONUS DEFINITIONS
 # ============================================================================
-
-ELEMENT_BONUSES = {
-    "infernal": {
-        "name": "Infernal General",
-        "emoji": "🔥",
-        "bonus_text": "+10% ATK",
-        "applies_to": "attack",
-        "multiplier": 1.10
-    },
-    "abyssal": {
-        "name": "Abyssal General",
-        "emoji": "🌊",
-        "bonus_text": "+10% DEF",
-        "applies_to": "defense",
-        "multiplier": 1.10
-    },
-    "tempest": {
-        "name": "Tempest General",
-        "emoji": "⚡",
-        "bonus_text": "+5% Critical Rate",
-        "applies_to": "crit_rate",
-        "value": 0.05
-    },
-    "earth": {
-        "name": "Earth General",
-        "emoji": "🌍",
-        "bonus_text": "+100 Max HP",
-        "applies_to": "hp",
-        "value": 100
-    },
-    "radiant": {
-        "name": "Radiant General",
-        "emoji": "✨",
-        "bonus_text": "+5% HP Regen/Turn",
-        "applies_to": "hp_regen",
-        "value": 0.05
-    },
-    "umbral": {
-        "name": "Umbral General",
-        "emoji": "🌑",
-        "bonus_text": "-5% Enemy ATK",
-        "applies_to": "enemy_atk_reduction",
-        "multiplier": 0.95
-    }
-}
+# NOTE: Element bonuses now configured via ConfigManager.get("combat_element_bonuses.{element}")
+# This allows live balance tuning without code changes (RIKI LAW Article IV)
 
 
 # ============================================================================
@@ -238,16 +195,18 @@ class CombatService:
         
         # Apply element bonuses
         if "infernal" in generals:
-            total_power = int(total_power * ELEMENT_BONUSES["infernal"]["multiplier"])
-        
+            multiplier = ConfigManager.get("combat_element_bonuses.infernal.multiplier", 1.10)
+            total_power = int(total_power * multiplier)
+
         if "abyssal" in generals:
-            total_defense = int(total_defense * ELEMENT_BONUSES["abyssal"]["multiplier"])
+            multiplier = ConfigManager.get("combat_element_bonuses.abyssal.multiplier", 1.10)
+            total_defense = int(total_defense * multiplier)
         
         # Apply leader bonus
         if include_leader_bonus:
             player = await session.get(Player, player_id)
             if player and player.leader_maiden_id:
-                from src.features.leader.service import LeaderService
+                from src.features.maiden.leader_service import LeaderService
                 modifiers = await LeaderService.get_active_modifiers(player)
                 
                 atk_multiplier = modifiers.get("income_boost", 1.0)
@@ -272,21 +231,21 @@ class CombatService:
     def _format_element_bonuses(generals: Dict[str, Dict]) -> List[Dict[str, str]]:
         """
         Format active element bonuses for display.
-        
+
         Returns list of active bonuses with emoji and description.
         """
         bonuses = []
-        
+
         for element, general in generals.items():
-            if element in ELEMENT_BONUSES:
-                bonus_data = ELEMENT_BONUSES[element]
+            bonus_data = ConfigManager.get(f"combat_element_bonuses.{element}")
+            if bonus_data:
                 bonuses.append({
                     "element": element,
-                    "emoji": bonus_data["emoji"],
-                    "name": bonus_data["name"],
-                    "bonus": bonus_data["bonus_text"]
+                    "emoji": bonus_data.get("emoji", "❓"),
+                    "name": bonus_data.get("name", element.capitalize()),
+                    "bonus": bonus_data.get("bonus_text", "Unknown")
                 })
-        
+
         return bonuses
     
     # ========================================================================
@@ -334,7 +293,7 @@ class CombatService:
         if include_leader_bonus:
             player = await session.get(Player, player_id)
             if player and player.leader_maiden_id:
-                from src.features.leader.service import LeaderService
+                from src.features.maiden.leader_service import LeaderService
                 modifiers = await LeaderService.get_active_modifiers(player)
                 atk_multiplier = modifiers.get("income_boost", 1.0)
                 total_power = int(total_power * atk_multiplier)
@@ -452,7 +411,8 @@ class CombatService:
         # Apply umbral reduction
         effective_boss_atk = boss_atk
         if umbral_general_present:
-            effective_boss_atk = int(boss_atk * ELEMENT_BONUSES["umbral"]["multiplier"])
+            multiplier = ConfigManager.get("combat_element_bonuses.umbral.multiplier", 0.95)
+            effective_boss_atk = int(boss_atk * multiplier)
         
         # Calculate damage
         raw_damage = effective_boss_atk - generals_total_def
@@ -515,6 +475,7 @@ class CombatService:
     @staticmethod
     def get_element_emoji(element: str) -> str:
         """Get emoji for element type."""
-        if element in ELEMENT_BONUSES:
-            return ELEMENT_BONUSES[element]["emoji"]
+        bonus_data = ConfigManager.get(f"combat_element_bonuses.{element}")
+        if bonus_data:
+            return bonus_data.get("emoji", "⚪")
         return "⚪"

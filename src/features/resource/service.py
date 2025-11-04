@@ -30,7 +30,7 @@ import time
 from src.database.models.core.player import Player
 from src.core.config.config_manager import ConfigManager
 from src.core.infra.transaction_logger import TransactionLogger
-from src.features.leader.service import LeaderService
+from src.features.maiden.leader_service import LeaderService
 from src.core.exceptions import InsufficientResourcesError
 from src.core.logging.logger import get_logger
 

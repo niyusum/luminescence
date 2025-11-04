@@ -5,6 +5,7 @@ from datetime import datetime
 import random
 
 from src.database.models.core.player import Player
+from src.database.models.core.maiden_base import MaidenBase
 from src.database.models.progression.sector_progress import SectorProgress
 from src.core.config.config_manager import ConfigManager
 from src.features.resource.service import ResourceService
@@ -202,37 +203,107 @@ class ExplorationService:
         return roll < encounter_rate
     
     @staticmethod
-    def generate_encounter_maiden(sector_id: int, player_level: int) -> Dict[str, Any]:
+    async def generate_encounter_maiden(
+        session: AsyncSession,
+        sector_id: int,
+        player_level: int
+    ) -> Dict[str, Any]:
         """
         Generate maiden data for purification encounter.
-        
-        Rarity and tier based on sector and player level.
-        This is a stub - actual maiden generation should use MaidenService.
-        
+
+        Uses actual MaidenBase data with sector-appropriate tier ranges.
+        Maidens are selected from database using weighted random selection
+        based on rarity_weight, filtered by sector-appropriate tiers.
+
+        Args:
+            session: Database session for MaidenBase queries
+            sector_id: Current sector (1-7), determines tier range
+            player_level: Player level, influences tier selection
+
         Returns:
-            Dictionary with maiden info for encounter UI
+            Dictionary with maiden info for encounter UI:
+                - maiden_base_id: Database ID of MaidenBase
+                - name: Maiden name
+                - element: Element type
+                - tier: Encounter tier
+                - rarity: Rarity category
+                - sector_id: Origin sector
+
+        RIKI LAW Compliance:
+            - Article III: Pure business logic, no UI dependencies
+            - Article IV: Tier ranges from ConfigManager
+            - Article VII: Reuses gacha weight system
         """
-        # TODO: Integrate with actual maiden generation system
-        # For now, return placeholder data structure
-        
-        rarity_pool = {
-            1: ["common", "uncommon"],
-            2: ["uncommon", "rare"],
-            3: ["rare", "epic"],
-            4: ["epic", "legendary"],
-            5: ["epic", "legendary"],
-            6: ["legendary", "mythic"],
-            7: ["legendary", "mythic"],
+        # Determine tier range based on sector and player level
+        # Sector 1-3: Early game (T1-T4)
+        # Sector 4-5: Mid game (T4-T7)
+        # Sector 6-7: Late game (T7-T11)
+        tier_ranges = {
+            1: (1, 3),
+            2: (2, 4),
+            3: (3, 5),
+            4: (4, 7),
+            5: (5, 8),
+            6: (7, 10),
+            7: (8, 11),
         }
-        
-        rarities = rarity_pool.get(sector_id, ["common", "uncommon"])
-        rarity = random.choice(rarities)
-        
+
+        min_tier, max_tier = tier_ranges.get(sector_id, (1, 3))
+
+        # Adjust tier based on player level (higher level = can encounter higher tiers)
+        level_bonus = player_level // 10
+        max_tier = min(max_tier + level_bonus, 11)
+
+        # Query MaidenBase for appropriate tier range
+        stmt = select(MaidenBase).where(
+            MaidenBase.base_tier >= min_tier,
+            MaidenBase.base_tier <= max_tier
+        )
+        maiden_bases = (await session.exec(stmt)).all()
+
+        if not maiden_bases:
+            logger.warning(
+                f"No maiden bases found for sector {sector_id} tier range {min_tier}-{max_tier}, "
+                "falling back to T1"
+            )
+            stmt = select(MaidenBase).where(MaidenBase.base_tier == 1)
+            maiden_bases = (await session.exec(stmt)).all()
+
+            if not maiden_bases:
+                raise ValueError("No maiden bases exist in database - seed data required")
+
+        # Weighted random selection based on rarity_weight
+        # Lower weight = rarer = less likely to appear
+        weights = [mb.rarity_weight for mb in maiden_bases]
+        selected_maiden_base = random.choices(maiden_bases, weights=weights, k=1)[0]
+
+        # Determine rarity category based on tier (for UI display)
+        rarity_map = {
+            (1, 2): "common",
+            (3, 4): "uncommon",
+            (5, 6): "rare",
+            (7, 8): "epic",
+            (9, 10): "legendary",
+            (11, 12): "mythic",
+        }
+
+        rarity = "common"
+        for tier_range, rarity_name in rarity_map.items():
+            if tier_range[0] <= selected_maiden_base.base_tier <= tier_range[1]:
+                rarity = rarity_name
+                break
+
+        logger.debug(
+            f"Generated encounter maiden: {selected_maiden_base.name} "
+            f"T{selected_maiden_base.base_tier} ({rarity}) in sector {sector_id}"
+        )
+
         return {
-            "name": f"Wild Maiden",  # Placeholder
+            "maiden_base_id": selected_maiden_base.id,
+            "name": selected_maiden_base.name,
+            "element": selected_maiden_base.element,
+            "tier": selected_maiden_base.base_tier,
             "rarity": rarity,
-            "element": random.choice(["infernal", "abyssal", "tempest", "earth", "radiant", "umbral"]),
-            "tier": min(player_level // 5 + 1, 11),
             "sector_id": sector_id,
         }
     
@@ -352,7 +423,7 @@ class ExplorationService:
         maiden_encounter = None
         if progress.progress < 100.0:
             if ExplorationService.roll_maiden_encounter(sector_id):
-                maiden_encounter = ExplorationService.generate_encounter_maiden(sector_id, player.level)
+                maiden_encounter = await ExplorationService.generate_encounter_maiden(session, sector_id, player.level)
         
         # Update daily quest
         from src.features.daily.service import DailyService

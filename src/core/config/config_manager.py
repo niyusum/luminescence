@@ -300,6 +300,52 @@ class ConfigManager:
             "donation_minimum": 1000,
         },
         
+        # Combat System
+        "combat_element_bonuses": {
+            "infernal": {
+                "name": "Infernal General",
+                "emoji": "🔥",
+                "bonus_text": "+10% ATK",
+                "applies_to": "attack",
+                "multiplier": 1.10
+            },
+            "abyssal": {
+                "name": "Abyssal General",
+                "emoji": "🌊",
+                "bonus_text": "+10% DEF",
+                "applies_to": "defense",
+                "multiplier": 1.10
+            },
+            "tempest": {
+                "name": "Tempest General",
+                "emoji": "⚡",
+                "bonus_text": "+5% Critical Rate",
+                "applies_to": "crit_rate",
+                "value": 0.05
+            },
+            "earth": {
+                "name": "Earth General",
+                "emoji": "🌍",
+                "bonus_text": "+100 Max HP",
+                "applies_to": "hp",
+                "value": 100
+            },
+            "radiant": {
+                "name": "Radiant General",
+                "emoji": "✨",
+                "bonus_text": "+5% HP Regen/Turn",
+                "applies_to": "hp_regen",
+                "value": 0.05
+            },
+            "umbral": {
+                "name": "Umbral General",
+                "emoji": "🌑",
+                "bonus_text": "-5% Enemy ATK",
+                "applies_to": "enemy_atk_reduction",
+                "multiplier": 0.95
+            }
+        },
+
         # Cache Configuration
         "cache": {
             "compression_threshold": 1024,
