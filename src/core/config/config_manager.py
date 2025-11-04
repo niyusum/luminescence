@@ -112,11 +112,12 @@ class ConfigManager:
             }
         },
         
-        # Prayer System
+        # Prayer System (1 charge every 5 minutes - no accumulation)
         "prayer_system": {
             "grace_per_prayer": 1,
-            "max_charges": 5,  # DEPRECATED: Now always 1 charge (no accumulation)
-            "regen_minutes": 5,
+            "max_charges": 1,  # Single charge system (no accumulation/storage)
+            "regen_minutes": 5,  # 300 seconds per charge
+            "regen_interval_seconds": 300,  # Explicit interval for clarity
             "class_bonuses": {"destroyer": 1.0, "adapter": 1.0, "invoker": 1.0}  # Invoker now affects shrines
         },
         

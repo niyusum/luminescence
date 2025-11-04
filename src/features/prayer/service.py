@@ -59,7 +59,8 @@ class PrayerService:
                 "grace_gained": 1,
                 "total_grace": 100,
                 "modifiers_applied": {"income_boost": 1.2, "xp_boost": 1.0},
-                "next_available": "4m 32s"
+                "next_available": "4m 32s",
+                "has_charge": False
             }
 
         Raises:
@@ -81,13 +82,12 @@ class PrayerService:
         old_charges = player.prayer_charges
         old_grace = player.grace
 
-        # Consume prayer charges
-        player.prayer_charges -= charges
+        # Consume prayer charge (set to 0)
+        player.prayer_charges = 0
 
-        # Start regen timer if transitioning from full
-        if old_charges == player.max_prayer_charges and player.last_prayer_regen is None:
-            from datetime import datetime
-            player.last_prayer_regen = datetime.utcnow()
+        # Start regen timer
+        from datetime import datetime
+        player.last_prayer_regen = datetime.utcnow()
 
         # Calculate grace reward
         base_grace_per_prayer = ConfigManager.get("prayer_system.grace_per_prayer", 1)
@@ -115,12 +115,12 @@ class PrayerService:
         grace_gained = grant_result["granted"].get("grace", 0)
 
         logger.info(
-            f"Player {player.discord_id} prayed {charges}x: "
-            f"grace_gained={grace_gained}, charges_remaining={player.prayer_charges}",
+            f"Player {player.discord_id} prayed: "
+            f"grace_gained={grace_gained}, has_charge={player.prayer_charges >= 1}",
             extra={
                 "player_id": player.discord_id,
-                "charges_spent": charges,
                 "grace_gained": grace_gained,
+                "has_charge": player.prayer_charges >= 1,
                 "modifiers": grant_result["modifiers_applied"]
             }
         )
@@ -128,10 +128,9 @@ class PrayerService:
         return {
             "grace_gained": grace_gained,
             "total_grace": player.grace,
-            "remaining_charges": player.prayer_charges,
-            "charges_spent": charges,
+            "has_charge": player.prayer_charges >= 1,
             "modifiers_applied": grant_result["modifiers_applied"],
-            "next_charge_in": player.get_prayer_regen_display(),
+            "next_available": player.get_prayer_regen_display(),
             "base_grace": total_base_grace,
             "caps_hit": grant_result.get("caps_hit", [])
         }
@@ -146,15 +145,15 @@ class PrayerService:
 
         Returns:
             {
-                "charges": 1,
-                "max_charges": 1,  # DEPRECATED field, always 1
+                "has_charge": True,
                 "next_regen": "Ready!",
                 "grace_per_prayer": 1,
-                "total_prayers": 142
+                "total_prayers": 142,
+                "regen_interval_seconds": 300
             }
         """
         base_grace = ConfigManager.get("prayer_system.grace_per_prayer", 1)
-        regen_minutes = ConfigManager.get("prayer_system.regen_minutes", 5)
+        regen_interval = ConfigManager.get("prayer_system.regen_interval_seconds", 300)
 
         # Calculate modifiers for preview
         modifiers = ResourceService.calculate_modifiers(player, ["grace"])
@@ -163,10 +162,9 @@ class PrayerService:
         expected_grace = int(base_grace * income_boost)
 
         return {
-            "charges": player.prayer_charges,
-            "max_charges": player.max_prayer_charges,
+            "has_charge": player.prayer_charges >= 1,
             "next_regen": player.get_prayer_regen_display(),
-            "regen_minutes": regen_minutes,
+            "regen_interval_seconds": regen_interval,
             "grace_per_prayer": expected_grace,
             "base_grace": base_grace,
             "income_boost": income_boost,
@@ -184,11 +182,11 @@ class PrayerService:
 
         Returns:
             {
-                "charges_to_spend": 1,
                 "base_grace": 1,
                 "expected_grace": 1,
                 "modifiers": {"income_boost": 1.2},
-                "can_afford": True
+                "can_afford": True,
+                "has_charge": True
             }
         """
         if charges != 1:
@@ -207,11 +205,10 @@ class PrayerService:
         expected_grace = int(total_base_grace * income_boost)
 
         return {
-            "charges_to_spend": charges,
             "base_grace": total_base_grace,
             "expected_grace": expected_grace,
             "modifiers": modifiers,
-            "can_afford": player.prayer_charges >= charges,
-            "current_charges": player.prayer_charges,
+            "can_afford": player.prayer_charges >= 1,
+            "has_charge": player.prayer_charges >= 1,
             "grace_cap_warning": expected_grace + player.grace > ConfigManager.get("resource_system.grace_max_cap", 999999)
         }

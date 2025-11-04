@@ -280,10 +280,13 @@ class EmbedBuilder:
         next_regen = getattr(player, "get_prayer_regen_display", lambda: "N/A")
         next_regen_str = next_regen() if callable(next_regen) else "N/A"
         
+        # Prayer status (1 charge every 5 minutes)
+        prayer_status = "✅ Ready!" if player.prayer_charges >= 1 else "⏳ Regenerating"
+
         embed.add_field(
-            name="🙏 Prayer Charge",
+            name="🙏 Prayer",
             value=(
-                f"**{'✅ Ready!' if player.prayer_charges >= 1 else '⏳ Regenerating'}**\n"
+                f"**{prayer_status}**\n"
                 f"Next: {next_regen_str}"
             ),
             inline=True

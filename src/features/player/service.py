@@ -80,27 +80,47 @@ class PlayerService:
     @staticmethod
     def regenerate_prayer_charges(player: Player) -> int:
         """
-        Regenerate prayer charges based on time since last regen.
+        Regenerate prayer charge based on time since last regen.
 
-        UPDATED SYSTEM (NO ACCUMULATION):
-        - If 5 minutes passed since last prayer → set charges to 1
+        SINGLE CHARGE SYSTEM (300 SECONDS):
+        - If player has 1 charge → no regen needed
+        - If 300 seconds (5 minutes) passed since last use → grant 1 charge
         - Does NOT accumulate multiple charges
-        - Always 1 charge available every 5 minutes (no storage)
+        - No storage beyond single charge
+
+        Config:
+            prayer_system.regen_minutes: 5 (default)
+            prayer_system.regen_interval_seconds: 300 (explicit)
+
+        Returns:
+            1 if charge granted, 0 otherwise
         """
+        # Already has charge - no regen needed
         if player.prayer_charges >= 1:
             return 0
 
+        # Initialize regen timer if null
         if player.last_prayer_regen is None:
             player.last_prayer_regen = datetime.utcnow()
             return 0
 
-        regen_interval = ConfigManager.get("prayer_system.regen_minutes", 5) * 60
+        # Get regen interval (prefer explicit seconds, fallback to minutes)
+        regen_interval = ConfigManager.get("prayer_system.regen_interval_seconds", 300)
+        if regen_interval == 300:  # If default, check minutes config
+            regen_minutes = ConfigManager.get("prayer_system.regen_minutes", 5)
+            regen_interval = regen_minutes * 60
+
         time_since = (datetime.utcnow() - player.last_prayer_regen).total_seconds()
 
-        # If 5 minutes passed, grant 1 charge (no accumulation)
+        # Grant single charge if interval elapsed
         if time_since >= regen_interval:
-            player.prayer_charges = 1
+            player.prayer_charges = 1  # Set to 1 (not add)
             player.last_prayer_regen = datetime.utcnow()
+            logger.debug(
+                f"Prayer charge regenerated for player {player.discord_id} "
+                f"(waited {int(time_since)}s / {regen_interval}s)",
+                extra={"player_id": player.discord_id, "wait_time": int(time_since)}
+            )
             return 1
 
         return 0

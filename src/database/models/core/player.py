@@ -55,7 +55,7 @@ class Player(SQLModel, table=True):
         energy: Resource for questing and exploration
         stamina: Resource for battles and raids
         hp: Resource for ascension tower (survival stat)
-        prayer_charges: Charges for prayer system (max 5)
+        prayer_charges: Charges for prayer system (0-1, regenerates every 5 minutes)
         fusion_shards: Dictionary of shards per tier for guaranteed fusions
         total_power: Calculated combat power from all maidens
         stat_points_available: Unspent allocation points
@@ -163,8 +163,8 @@ class Player(SQLModel, table=True):
     hp: int = Field(default=500, ge=0)  # NEW: Ascension survival stat
     max_hp: int = Field(default=500, ge=0)  # NEW: Scales with stat allocation
     
-    prayer_charges: int = Field(default=5, ge=0, le=5)
-    max_prayer_charges: int = Field(default=5, ge=0)
+    prayer_charges: int = Field(default=0, ge=0, le=1)
+    max_prayer_charges: int = Field(default=1, ge=0)  # DEPRECATED: Always 1 (single charge system)
     last_prayer_regen: Optional[datetime] = Field(default=None)
     
     # ========================================================================
@@ -396,7 +396,7 @@ class Player(SQLModel, table=True):
         self.energy = max_stats["max_energy"]
         self.stamina = max_stats["max_stamina"]
         self.hp = max_stats["max_hp"]
-        self.prayer_charges = self.max_prayer_charges
+        self.prayer_charges = 1  # Always 1 in new system
         
         # Update max values (in case allocations changed)
         self.max_energy = max_stats["max_energy"]

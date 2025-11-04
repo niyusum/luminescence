@@ -77,9 +77,8 @@ class PrayCog(commands.Cog):
                         player_id=ctx.author.id,
                         transaction_type="prayer_performed",
                         details={
-                            "charges_spent": 1,
                             "grace_gained": result["grace_gained"],
-                            "remaining_charges": result["remaining_charges"],
+                            "has_charge_after": result["has_charge"],
                             "modifiers_applied": result.get("modifiers_applied", {}),
                         },
                         context=f"command:/{ctx.command.name} guild:{ctx.guild.id if ctx.guild else 'DM'}",
@@ -89,8 +88,8 @@ class PrayCog(commands.Cog):
                         "prayer_completed",
                         {
                             "player_id": ctx.author.id,
-                            "charges_spent": 1,
                             "grace_gained": result["grace_gained"],
+                            "has_charge": result["has_charge"],
                             "channel_id": ctx.channel.id,
                             "__topic__": "prayer_completed",
                             "timestamp": discord.utils.utcnow(),
@@ -98,14 +97,16 @@ class PrayCog(commands.Cog):
                     )
 
                     # --- Embed Construction ---
-                    # Simple display: +X grace, total balance
+                    # Simple display: +X grace, total balance, regen timer
+                    status_text = "✅ Ready!" if result['has_charge'] else f"⏳ {result['next_available']}"
+
                     embed = EmbedBuilder.success(
                         title="🙏 Prayer Complete",
                         description=(
                             f"+**{result['grace_gained']} Grace**\n"
                             f"**Total Grace:** {result['total_grace']}"
                         ),
-                        footer=f"Next charge: {result['next_charge_in']}"
+                        footer=f"Next prayer: {status_text}"
                     )
 
                     view = PrayActionView(ctx.author.id, result["total_grace"])
@@ -138,7 +139,7 @@ class PrayCog(commands.Cog):
             embed = EmbedBuilder.error(
                 title="Invalid Input",
                 description=str(e),
-                help_text="You can pray 1–5 times at once. Example: `/pray charges:3`",
+                help_text="Prayer uses 1 charge and regenerates every 5 minutes.",
             )
             await ctx.send(embed=embed, ephemeral=True)
 

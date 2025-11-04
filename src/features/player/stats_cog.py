@@ -296,16 +296,17 @@ class StatsCog(commands.Cog):
             )
             
             # === PRAYER STATISTICS ===
+            # Single charge system: 1 charge every 5 minutes (300s)
             stats_json = _as_dict(getattr(player, "stats", None))
             prayers_performed = int(stats_json.get("prayers_performed", 0))
-            prayer_charges = int(getattr(player, "prayer_charges", 0))
-            prayer_status = "✅ Ready!" if prayer_charges >= 1 else "⏳ Regenerating"
+            has_charge = int(getattr(player, "prayer_charges", 0)) >= 1
+            prayer_status = "✅ Ready!" if has_charge else "⏳ Regenerating"
 
             embed.add_field(
                 name="🙏 Prayer Statistics",
                 value=_safe_value(
                     f"**Total Prayers:** {prayers_performed:,}\n"
-                    f"**Charge:** {prayer_status}"
+                    f"**Status:** {prayer_status}"
                 ),
                 inline=True
             )

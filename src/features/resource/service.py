@@ -168,7 +168,8 @@ class ResourceService:
                     player.stamina = new_val
                     
                 elif resource == "prayer_charges":
-                    new_val = min(player.prayer_charges + final_amount, player.max_prayer_charges)
+                    # Single charge system: cap at 1 (not max_prayer_charges)
+                    new_val = min(player.prayer_charges + final_amount, 1)
                     final_amount = new_val - player.prayer_charges
                     player.prayer_charges = new_val
                     
@@ -451,9 +452,10 @@ class ResourceService:
         
         if "prayer_charges" in regen_amounts and regen_amounts["prayer_charges"] > 0:
             old_charges = player.prayer_charges
+            # Single charge system: cap at 1
             player.prayer_charges = min(
                 player.prayer_charges + regen_amounts["prayer_charges"],
-                player.max_prayer_charges
+                1
             )
             actual_regen["prayer_charges"] = player.prayer_charges - old_charges
         
@@ -497,7 +499,8 @@ class ResourceService:
                 },
                 "prayer_charges": {
                     "current": player.prayer_charges,
-                    "max": player.max_prayer_charges,
+                    "max": 1,  # Single charge system
+                    "has_charge": player.prayer_charges >= 1,
                     "next_regen": player.get_prayer_regen_display() if hasattr(player, 'get_prayer_regen_display') else "N/A"
                 }
             },
