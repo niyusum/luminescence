@@ -16,7 +16,6 @@ from typing import Optional
 from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
 from src.features.player.allocation_service import AllocationService
-from src.database.models.core.player import Player
 from src.core.exceptions import InvalidOperationError
 from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
@@ -65,7 +64,7 @@ class AllocationCog(commands.Cog):
                     embed = EmbedBuilder.warning(
                         title="No Points Available",
                         description="You don't have any stat points to allocate!",
-                        footer="Gain 5 points per level up"
+                        footer="Gain points each time you level up"
                     )
                     
                     # Show current allocation
@@ -102,7 +101,7 @@ class AllocationCog(commands.Cog):
                         f"**Available Points:** {player.stat_points_available}\n\n"
                         "Choose how to allocate your stat points!"
                     ),
-                    footer="Gain 5 points per level | Full refresh on level up"
+                    footer="Gain points per level | Full refresh on allocation"
                 )
                 
                 # Current stats
@@ -116,29 +115,18 @@ class AllocationCog(commands.Cog):
                     ),
                     inline=True
                 )
-                
-                # Allocation ratios
-                embed.add_field(
-                    name="Per Point Gain",
-                    value=(
-                        f"⚡ +{Player.ENERGY_PER_POINT} Energy\n"
-                        f"💪 +{Player.STAMINA_PER_POINT} Stamina\n"
-                        f"❤️ +{Player.HP_PER_POINT} HP"
-                    ),
-                    inline=True
-                )
-                
+
                 # Total spent
                 total_spent = spent["energy"] + spent["stamina"] + spent["hp"]
                 embed.add_field(
-                    name="Total Allocated",
+                    name="Points Invested",
                     value=(
-                        f"⚡ {spent['energy']} to Energy\n"
-                        f"💪 {spent['stamina']} to Stamina\n"
-                        f"❤️ {spent['hp']} to HP\n"
+                        f"⚡ {spent['energy']} in Energy\n"
+                        f"💪 {spent['stamina']} in Stamina\n"
+                        f"❤️ {spent['hp']} in HP\n"
                         f"**Total:** {total_spent} points"
                     ),
-                    inline=False
+                    inline=True
                 )
                 
                 # Recommended builds
@@ -315,20 +303,24 @@ class AllocationModal(discord.ui.Modal, title="Allocate Stat Points"):
             # Success embed
             embed = EmbedBuilder.success(
                 title="✅ Stats Allocated!",
-                description=f"Successfully spent {total} points"
+                description=f"Successfully invested {total} points"
             )
-            
+
             # Show changes
+            old_max = result["old_max_stats"]
             new_max = result["new_max_stats"]
+
+            # Calculate actual gains
+            energy_gain = new_max['max_energy'] - old_max['max_energy']
+            stamina_gain = new_max['max_stamina'] - old_max['max_stamina']
+            hp_gain = new_max['max_hp'] - old_max['max_hp']
+
             embed.add_field(
                 name="New Max Stats",
                 value=(
-                    f"⚡ **Energy:** {new_max['max_energy']} "
-                    f"(+{energy_pts * Player.ENERGY_PER_POINT})\n"
-                    f"💪 **Stamina:** {new_max['max_stamina']} "
-                    f"(+{stamina_pts * Player.STAMINA_PER_POINT})\n"
-                    f"❤️ **HP:** {new_max['max_hp']} "
-                    f"(+{hp_pts * Player.HP_PER_POINT})"
+                    f"⚡ **Energy:** {new_max['max_energy']}" + (f" (+{energy_gain})" if energy_gain > 0 else "") + "\n"
+                    f"💪 **Stamina:** {new_max['max_stamina']}" + (f" (+{stamina_gain})" if stamina_gain > 0 else "") + "\n"
+                    f"❤️ **HP:** {new_max['max_hp']}" + (f" (+{hp_gain})" if hp_gain > 0 else "")
                 ),
                 inline=False
             )

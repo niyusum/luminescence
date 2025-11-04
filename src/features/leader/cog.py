@@ -275,7 +275,6 @@ class LeaderSelectDropdown(discord.ui.Select):
                     await EventBus.publish("leader_set", {
                         "player_id": self.user_id,
                         "channel_id": interaction.channel_id,
-                        "bot": self.view.bot,
                         "maiden_id": maiden_id,
                         "maiden_name": result["maiden_name"],
                         "element": result["element"],

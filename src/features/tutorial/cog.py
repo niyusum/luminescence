@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 
 from src.core.infra.database_service import DatabaseService
+from src.core.infra.transaction_logger import TransactionLogger
 from src.features.player.service import PlayerService
 from src.features.tutorial.service import TutorialService, TRIGGER_INDEX
 from src.core.event.event_bus import EventBus
@@ -29,6 +30,7 @@ class TutorialCog(commands.Cog):
         """
         Expected payload:
         {
+          "__topic__": str (required),
           "player_id": int,
           "channel_id": Optional[int],
           ...other fields...
@@ -37,37 +39,73 @@ class TutorialCog(commands.Cog):
         try:
             player_id = payload.get("player_id")
             channel_id = payload.get("channel_id")
-            topic = payload.get("topic") or payload.get("event")  # optional
+            topic = payload.get("__topic__")
 
-            # Best effort: infer topic from subscription by checking fields we got
-            # EventBus should give us the topic; if not, payload should imply it by caller convention.
-            if not player_id or not channel_id:
+            # Validate required fields
+            if not topic:
+                logger.warning(
+                    "Tutorial event missing required __topic__ field",
+                    extra={"payload": payload}
+                )
                 return
 
-            # Determine which step to complete from topic name; fallback to payload-provided.
-            # We pass the topic explicitly on publish in all cogs, so rely on that:
-            trigger = payload.get("__topic__") or topic or payload.get("trigger")
-            # If not provided, try a smart guess: the handler was bound to a specific topic per subscribe.
-            # For simplicity, check common keys by presence:
-            if not trigger:
-                # No strong inference -> bail quietly
+            if not player_id:
+                logger.warning(
+                    "Tutorial event missing player_id",
+                    extra={"payload": payload, "topic": topic}
+                )
                 return
 
-            step = TRIGGER_INDEX.get(trigger)
+            if not channel_id:
+                logger.warning(
+                    "Tutorial event missing channel_id",
+                    extra={"payload": payload, "topic": topic, "player_id": player_id}
+                )
+                return
+
+            # Lookup step from topic
+            step = TRIGGER_INDEX.get(topic)
             if not step:
+                logger.warning(
+                    f"Tutorial event topic '{topic}' not found in TRIGGER_INDEX",
+                    extra={"payload": payload, "topic": topic, "player_id": player_id}
+                )
                 return
 
             async with DatabaseService.get_transaction() as session:
                 player = await PlayerService.get_player_with_regen(session, player_id, lock=True)
                 if not player:
+                    logger.warning(
+                        f"Tutorial event player not found",
+                        extra={"player_id": player_id, "topic": topic, "channel_id": channel_id}
+                    )
                     return
 
                 done = await TutorialService.complete_step(session, player, step["key"])
                 if not done:
-                    return  # already completed or invalid
+                    # Step already completed or invalid - this is expected behavior, no warning needed
+                    return
+
+                # Log transaction for tutorial step completion
+                await TransactionLogger.log_transaction(
+                    player_id=player_id,
+                    transaction_type="tutorial_step_complete",
+                    details={
+                        "step_key": step["key"],
+                        "step_title": done["title"],
+                        "rikis_rewarded": done["reward"].get("rikis", 0),
+                        "grace_rewarded": done["reward"].get("grace", 0),
+                        "trigger": topic,
+                    },
+                    context=f"tutorial_step:{step['key']}",
+                )
 
             channel = self.bot.get_channel(int(channel_id))
             if not channel:
+                logger.warning(
+                    f"Tutorial event channel not found",
+                    extra={"channel_id": channel_id, "player_id": player_id, "topic": topic}
+                )
                 return
 
             # Public congrats embed

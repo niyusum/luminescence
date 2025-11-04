@@ -36,56 +36,64 @@ class AllocationService:
     ) -> Dict[str, Any]:
         """
         Allocate stat points to energy, stamina, or hp.
-        
+
         Validates points available and applies allocation.
         Refreshes current values to new max (generous).
-        
+
         Args:
             session: Database session
             player: Player object (must be with_for_update=True)
             energy: Points to allocate to energy
             stamina: Points to allocate to stamina
             hp: Points to allocate to hp
-        
+
         Returns:
             {
                 "allocated": {"energy": 2, "stamina": 1, "hp": 2},
+                "old_max_stats": {"max_energy": 100, "max_stamina": 50, "max_hp": 500},
                 "new_max_stats": {"max_energy": 120, "max_stamina": 55, "max_hp": 700},
                 "points_remaining": 0
             }
-        
+
         Raises:
             InvalidOperationError: Insufficient points or invalid values
         """
         total_points = energy + stamina + hp
-        
+
         # Validation
         if total_points == 0:
             raise InvalidOperationError("Must allocate at least 1 point")
-        
+
         if any(v < 0 for v in [energy, stamina, hp]):
             raise InvalidOperationError("Cannot allocate negative points")
-        
+
         if total_points > player.stat_points_available:
             raise InvalidOperationError(
                 f"Insufficient points. Have {player.stat_points_available}, "
                 f"trying to spend {total_points}"
             )
-        
+
+        # Store old max stats
+        old_max_stats = {
+            "max_energy": player.max_energy,
+            "max_stamina": player.max_stamina,
+            "max_hp": player.max_hp
+        }
+
         # Update spent tracking
         player.stat_points_spent["energy"] += energy
         player.stat_points_spent["stamina"] += stamina
         player.stat_points_spent["hp"] += hp
-        
+
         # Deduct available points
         player.stat_points_available -= total_points
-        
+
         # Recalculate max stats
         max_stats = player.calculate_max_stats()
         player.max_energy = max_stats["max_energy"]
         player.max_stamina = max_stats["max_stamina"]
         player.max_hp = max_stats["max_hp"]
-        
+
         # Refresh current values to new max (generous)
         player.energy = player.max_energy
         player.stamina = player.max_stamina
@@ -99,22 +107,24 @@ class AllocationService:
             details={
                 "allocated": {"energy": energy, "stamina": stamina, "hp": hp},
                 "new_totals": player.stat_points_spent.copy(),
+                "old_max_stats": old_max_stats,
                 "new_max_stats": max_stats,
                 "points_remaining": player.stat_points_available
             },
             context="allocation_command"
         )
-        
+
         logger.info(
             f"Player {player.discord_id} allocated stats: "
             f"energy={energy}, stamina={stamina}, hp={hp}, "
             f"remaining={player.stat_points_available}"
         )
-        
+
         await session.flush()
-        
+
         return {
             "allocated": {"energy": energy, "stamina": stamina, "hp": hp},
+            "old_max_stats": old_max_stats,
             "new_max_stats": max_stats,
             "points_remaining": player.stat_points_available
         }

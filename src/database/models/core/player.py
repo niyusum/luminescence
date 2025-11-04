@@ -18,6 +18,11 @@ Features:
 - Comprehensive statistics tracking
 - Performance-optimized indexes for leaderboards and queries
 
+Player Classes (Choose ONE - Permanent):
+- DESTROYER: +25% stamina regeneration (faster combat recovery)
+- ADAPTER: +25% energy regeneration (faster exploration recovery)
+- INVOKER: +25% rewards from shrines (more rikis/items from shrine visits)
+
 Stat Allocation Mechanics:
 - Players gain 5 allocation points per level
 - Points can be allocated to Energy, Stamina, or HP
@@ -83,7 +88,17 @@ class Player(SQLModel, table=True):
     STAMINA_PER_POINT = 5
     HP_PER_POINT = 100
     POINTS_PER_LEVEL = 5
-    
+
+    # ========================================================================
+    # PLAYER CLASS SYSTEM
+    # ========================================================================
+
+    DESTROYER = "destroyer"  # Combat specialist - +25% stamina regeneration
+    ADAPTER = "adapter"      # Exploration specialist - +25% energy regeneration
+    INVOKER = "invoker"      # Shrine specialist - +25% shrine rewards
+
+    VALID_CLASSES = [DESTROYER, ADAPTER, INVOKER]
+
     # ========================================================================
     # TABLE CONFIGURATION
     # ========================================================================
@@ -214,7 +229,7 @@ class Player(SQLModel, table=True):
     player_class: Optional[str] = Field(default=None, max_length=20, index=True)
     # Classes: "destroyer" (+25% stamina regen)
     #          "adapter" (+25% energy regen)
-    #          "invoker" (+20% grace from prayers)
+    #          "invoker" (+25% shrine rewards)
     
     # ========================================================================
     # TUTORIAL SYSTEM
@@ -267,8 +282,8 @@ class Player(SQLModel, table=True):
         """Get human-readable description of current class bonuses."""
         bonuses = {
             "destroyer": "+25% stamina regeneration",
-            "adapter": "+25% energy regeneration", 
-            "invoker": "+20% grace from prayers"
+            "adapter": "+25% energy regeneration",
+            "invoker": "+25% rewards from shrines"
         }
         return bonuses.get(self.player_class, "No class selected")
     

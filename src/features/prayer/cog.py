@@ -4,10 +4,10 @@ from typing import Optional
 
 from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
+from src.features.prayer.service import PrayerService
 from src.core.infra.redis_service import RedisService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.event.event_bus import EventBus
-from src.features.resource.service import ResourceService
 from src.core.exceptions import InsufficientResourcesError, ValidationError
 from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
@@ -74,8 +74,8 @@ class PrayCog(commands.Cog):
                             current=player.prayer_charges,
                         )
 
-                    result = await PlayerService.perform_prayer(
-                        session, player, charges_to_spend=charges
+                    result = await PrayerService.perform_prayer(
+                        session, player, charges=charges
                     )
 
                     await TransactionLogger.log_transaction(
@@ -104,53 +104,17 @@ class PrayCog(commands.Cog):
                     )
 
                     # --- Embed Construction ---
+                    # Simple display: +X grace, total balance
+                    charges_text = "charge" if charges == 1 else "charges"
+
                     embed = EmbedBuilder.success(
                         title="🙏 Prayer Complete",
                         description=(
-                            f"Your prayers have been answered!\n\n"
-                            f"You gained **{result['grace_gained']} Grace**."
+                            f"Used **{charges} {charges_text}**\n\n"
+                            f"+**{result['grace_gained']} Grace**\n"
+                            f"**Total Grace:** {result['total_grace']}"
                         ),
-                        footer=f"Total Grace: {result['total_grace']}",
-                    )
-
-                    embed.add_field(
-                        name="Prayer Charges",
-                        value=(
-                            f"**Remaining:** {result['remaining_charges']}/{player.max_prayer_charges}\n"
-                            f"**Next Regen:** {player.get_prayer_regen_display()}"
-                        ),
-                        inline=True,
-                    )
-
-                    # Class bonus (existing)
-                    if result.get("class_bonus", 0) > 0:
-                        embed.add_field(
-                            name="✨ Class Bonus",
-                            value=f"+{result['class_bonus']} grace from **{player.player_class}** class",
-                            inline=True,
-                        )
-
-                    # NEW: Active modifier bonuses (leader/class effects)
-                    modifiers = result.get("modifiers_applied", {})
-                    income_boost = modifiers.get("income_boost", 1.0)
-                    xp_boost = modifiers.get("xp_boost", 1.0)
-
-                    if income_boost > 1.0 or xp_boost > 1.0:
-                        bonus_lines = []
-                        if income_boost > 1.0:
-                            bonus_lines.append(f"💰 **Grace Boost:** +{(income_boost - 1.0) * 100:.0f}%")
-                        if xp_boost > 1.0:
-                            bonus_lines.append(f"📈 **XP Bonus:** +{(xp_boost - 1.0) * 100:.0f}%")
-                        embed.add_field(
-                            name="🌟 Active Modifiers",
-                            value="\n".join(bonus_lines),
-                            inline=False,
-                        )
-
-                    embed.add_field(
-                        name="💡 Tip",
-                        value="Prayer charges regenerate every 5 minutes. Use them regularly to maximize grace!",
-                        inline=False,
+                        footer=f"Charges: {result['remaining_charges']}/{player.max_prayer_charges} | Next: {result['next_charge_in']}"
                     )
 
                     view = PrayActionView(ctx.author.id, result["total_grace"])

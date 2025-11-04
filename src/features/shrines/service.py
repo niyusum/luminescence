@@ -226,6 +226,10 @@ class ShrineService:
         if amount <= 0:
             raise InvalidOperationError("This shrine produced nothing at this time.")
 
+        # Apply invoker class bonus (+25% shrine rewards)
+        if player.player_class == "invoker":
+            amount = int(amount * 1.25)
+
         # Grant yield (modifiers apply by default to incomes)
         from src.features.resource.service import ResourceService
         grant = await ResourceService.grant_resources(
@@ -234,7 +238,7 @@ class ShrineService:
             resources={target_key: amount},
             source="shrine_collect",
             apply_modifiers=True,
-            context={"type": shrine_type, "slot": slot, "level": shrine.level},
+            context={"type": shrine_type, "slot": slot, "level": shrine.level, "invoker_bonus": player.player_class == "invoker"},
         )
 
         shrine.last_collected_at = now

@@ -11,6 +11,8 @@ from discord.ext import commands
 from typing import Optional, Dict, Any
 
 from src.core.infra.database_service import DatabaseService
+from src.core.infra.transaction_logger import TransactionLogger
+from src.core.infra.redis_service import RedisService
 from src.features.player.service import PlayerService
 from src.features.exploration.matron_service import MatronService
 from src.features.combat.service import CombatService
@@ -83,10 +85,29 @@ class ExplorationCog(commands.Cog):
                 
                 # Generate matron
                 matron = MatronService.generate_matron(sector, sublevel)
-                
+
                 # Get player power (total, not strategic)
                 player_power = await CombatService.calculate_total_power(
                     session, player.discord_id, include_leader_bonus=True
+                )
+
+                # Log matron encounter start
+                await TransactionLogger.log_transaction(
+                    session=session,
+                    player_id=player.discord_id,
+                    transaction_type="exploration_matron_start",
+                    details={
+                        "zone": f"sector_{sector}_sublevel_{sublevel}",
+                        "matron_name": matron["name"],
+                        "matron_element": matron["element"],
+                        "matron_hp": matron["hp"],
+                        "matron_max_hp": matron["max_hp"],
+                        "optimal_turns": matron["optimal_turns"],
+                        "turn_limit": matron["turn_limit"],
+                        "is_sector_boss": matron["is_sector_boss"],
+                        "player_power": player_power
+                    },
+                    context=f"exploration:sector_{sector}_sublevel_{sublevel}"
                 )
             
             # Build matron encounter embed
@@ -251,51 +272,73 @@ class MatronCombatView(discord.ui.View):
                 ephemeral=True
             )
             return
-        
+
         await interaction.response.defer()
-        
+
         try:
-            self.turn_count += 1
-            
-            async with DatabaseService.get_transaction() as session:
-                player = await PlayerService.get_player_with_regen(
-                    session, self.user_id, lock=True
-                )
-                
-                # Execute attack
-                result = await MatronService.attack_matron(
-                    session=session,
-                    player=player,
-                    matron=self.matron,
-                    attack_type=attack_type,
-                    turn_count=self.turn_count
-                )
-            
-            # Update matron HP
-            self.matron["hp"] = result["matron_hp"]
-            
-            # Check outcome
-            if result["victory"]:
-                # Victory!
-                embed = self._build_victory_embed(result)
-                await interaction.edit_original_response(embed=embed, view=None)
-            
-            elif result["dismissed"]:
-                # Dismissed!
-                embed = self._build_dismissal_embed(result)
-                await interaction.edit_original_response(embed=embed, view=None)
-            
-            else:
-                # Continue combat
-                embed = self._build_turn_embed(result)
-                
-                # Warning at turn limit - 2
-                if self.turn_count >= self.matron["turn_limit"] - 2:
-                    for item in self.children:
-                        if isinstance(item, discord.ui.Button):
-                            item.style = discord.ButtonStyle.danger
-                
-                await interaction.edit_original_response(embed=embed, view=self)
+            # Acquire Redis lock to prevent double-clicks
+            async with RedisService.acquire_lock(f"exploration_combat:{self.user_id}", timeout=5):
+                self.turn_count += 1
+
+                async with DatabaseService.get_transaction() as session:
+                    player = await PlayerService.get_player_with_regen(
+                        session, self.user_id, lock=True
+                    )
+
+                    # Execute attack
+                    result = await MatronService.attack_matron(
+                        session=session,
+                        player=player,
+                        matron=self.matron,
+                        attack_type=attack_type,
+                        turn_count=self.turn_count
+                    )
+
+                # Update matron HP
+                self.matron["hp"] = result["matron_hp"]
+
+                # Log attack action
+                async with DatabaseService.get_transaction() as log_session:
+                    await TransactionLogger.log_transaction(
+                        session=log_session,
+                        player_id=self.user_id,
+                        transaction_type="exploration_matron_attack",
+                        details={
+                            "attack_type": attack_type,
+                            "damage_dealt": result["damage_dealt"],
+                            "matron_hp_remaining": result["matron_hp"],
+                            "matron_max_hp": self.matron["max_hp"],
+                            "turn_number": result["turns_taken"],
+                            "stamina_cost": result["stamina_cost"],
+                            "gem_cost": result.get("gem_cost", 0),
+                            "matron_name": self.matron["name"],
+                            "zone": f"sector_{self.matron['sector_id']}_sublevel_{self.matron['sublevel']}"
+                        },
+                        context=f"exploration:sector_{self.matron['sector_id']}_sublevel_{self.matron['sublevel']}"
+                    )
+
+                # Check outcome
+                if result["victory"]:
+                    # Victory!
+                    embed = self._build_victory_embed(result)
+                    await interaction.edit_original_response(embed=embed, view=None)
+
+                elif result["dismissed"]:
+                    # Dismissed!
+                    embed = self._build_dismissal_embed(result)
+                    await interaction.edit_original_response(embed=embed, view=None)
+
+                else:
+                    # Continue combat
+                    embed = self._build_turn_embed(result)
+
+                    # Warning at turn limit - 2
+                    if self.turn_count >= self.matron["turn_limit"] - 2:
+                        for item in self.children:
+                            if isinstance(item, discord.ui.Button):
+                                item.style = discord.ButtonStyle.danger
+
+                    await interaction.edit_original_response(embed=embed, view=self)
         
         except InsufficientResourcesError as e:
             embed = EmbedBuilder.error(

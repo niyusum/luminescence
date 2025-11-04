@@ -8,9 +8,11 @@ from typing import Optional
 from src.core.logging.logger import get_logger
 from src.core.exceptions import InvalidOperationError
 from src.core.infra.database_service import DatabaseService
+from src.core.infra.redis_service import RedisService
 from src.features.guilds.service import GuildService
 from src.core.config.config_manager import ConfigManager
 from src.utils.embed_builder import EmbedBuilder  # assumes your shared embed util
+from src.utils.decorators import ratelimit
 
 logger = get_logger(__name__)
 
@@ -94,6 +96,7 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @guild.command(name="create")
     @app_commands.describe(name="Unique guild name (max 50 chars)")
+    @ratelimit(uses=3, per_seconds=300, command_name="guild_create")
     async def guild_create(self, ctx: commands.Context, name: str):
         """Create a new guild where you are the leader."""
         owner_id = ctx.author.id
@@ -111,6 +114,7 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @guild.command(name="invite")
     @app_commands.describe(user="User to invite")
+    @ratelimit(uses=10, per_seconds=60, command_name="guild_invite")
     async def guild_invite(self, ctx: commands.Context, user: discord.Member):
         """Invite a player to your guild (leader/officer only)."""
         actor_id = ctx.author.id
@@ -128,6 +132,7 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @guild.command(name="revoke_invite")
     @app_commands.describe(user="User whose pending invite should be revoked")
+    @ratelimit(uses=10, per_seconds=60, command_name="guild_revoke")
     async def guild_revoke_invite(self, ctx: commands.Context, user: discord.Member):
         """Revoke a pending invite (leader/officer only)."""
         actor_id = ctx.author.id
@@ -145,6 +150,7 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @guild.command(name="accept")
     @app_commands.describe(guild_id="The guild ID you are accepting an invite for")
+    @ratelimit(uses=5, per_seconds=60, command_name="guild_accept")
     async def guild_accept(self, ctx: commands.Context, guild_id: int):
         """Accept an invite to a guild."""
         player_id = ctx.author.id
@@ -161,12 +167,19 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @guild.command(name="donate")
     @app_commands.describe(rikis="Amount of rikis to donate to the guild treasury")
+    @ratelimit(uses=20, per_seconds=60, command_name="guild_donate")
     async def guild_donate(self, ctx: commands.Context, rikis: int):
         """Donate rikis to the guild treasury."""
         player_id = ctx.author.id
         async with DatabaseService.get_transaction() as session:
             try:
-                res = await GuildService.donate_to_treasury(session, player_id=player_id, rikis=rikis)
+                # Get guild_id first
+                mem = await GuildService._get_membership(session, player_id)
+                if not mem:
+                    raise InvalidOperationError("You are not in a guild.")
+
+                async with RedisService.acquire_lock(f"guild_treasury:{mem.guild_id}", timeout=5):
+                    res = await GuildService.donate_to_treasury(session, player_id=player_id, rikis=rikis)
                 embed = _ok("Donation Complete", f"Donated **{rikis:,}** rikis.\nTreasury: **{res['treasury']:,}**")
             except InvalidOperationError as e:
                 embed = _err("Cannot Donate", str(e))
@@ -176,12 +189,19 @@ class GuildCog(commands.Cog, name="Guild"):
         await _send_ctx(ctx, embed)
 
     @guild.command(name="upgrade")
+    @ratelimit(uses=5, per_seconds=60, command_name="guild_upgrade")
     async def guild_upgrade(self, ctx: commands.Context):
         """Upgrade your guild level (treasury pays the cost)."""
         actor_id = ctx.author.id
         async with DatabaseService.get_transaction() as session:
             try:
-                g = await GuildService.upgrade_guild(session, actor_id=actor_id)
+                # Get guild_id first
+                mem = await GuildService._get_membership(session, actor_id)
+                if not mem:
+                    raise InvalidOperationError("You are not in a guild.")
+
+                async with RedisService.acquire_lock(f"guild_treasury:{mem.guild_id}", timeout=5):
+                    g = await GuildService.upgrade_guild(session, actor_id=actor_id)
                 embed = _ok(
                     "Guild Upgraded",
                     f"**{g.name}** is now **Level {g.level}**!\n"
@@ -197,6 +217,7 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @guild.command(name="promote")
     @app_commands.describe(user="Member to promote")
+    @ratelimit(uses=10, per_seconds=60, command_name="guild_promote")
     async def guild_promote(self, ctx: commands.Context, user: discord.Member):
         """Promote a member (leader → officer, officer → leader)."""
         actor_id = ctx.author.id
@@ -214,6 +235,7 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @guild.command(name="demote")
     @app_commands.describe(user="Member to demote")
+    @ratelimit(uses=10, per_seconds=60, command_name="guild_demote")
     async def guild_demote(self, ctx: commands.Context, user: discord.Member):
         """Demote a member (leader only)."""
         actor_id = ctx.author.id
@@ -231,6 +253,7 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @guild.command(name="kick")
     @app_commands.describe(user="Member to kick")
+    @ratelimit(uses=10, per_seconds=60, command_name="guild_kick")
     async def guild_kick(self, ctx: commands.Context, user: discord.Member):
         """Kick a member (leader/officer)."""
         actor_id = ctx.author.id
@@ -248,6 +271,7 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @guild.command(name="transfer")
     @app_commands.describe(user="New leader")
+    @ratelimit(uses=2, per_seconds=300, command_name="guild_transfer")
     async def guild_transfer(self, ctx: commands.Context, user: discord.Member):
         """Transfer leadership to another member (leader only)."""
         actor_id = ctx.author.id
@@ -264,6 +288,7 @@ class GuildCog(commands.Cog, name="Guild"):
         await _send_ctx(ctx, embed)
 
     @guild.command(name="leave")
+    @ratelimit(uses=5, per_seconds=60, command_name="guild_leave")
     async def guild_leave(self, ctx: commands.Context):
         """Leave your current guild."""
         player_id = ctx.author.id
@@ -280,6 +305,7 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @guild.command(name="info")
     @app_commands.describe(guild_id="Optional guild ID. If omitted, shows your guild.")
+    @ratelimit(uses=30, per_seconds=60, command_name="guild_info")
     async def guild_info(self, ctx: commands.Context, guild_id: Optional[int] = None):
         """Show an overview embed for a guild."""
         async with DatabaseService.get_transaction() as session:
@@ -338,6 +364,7 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @guild.command(name="set_description")
     @app_commands.describe(text="New guild description (max 250 chars)")
+    @ratelimit(uses=5, per_seconds=300, command_name="guild_set_desc")
     async def guild_set_description(self, ctx: commands.Context, *, text: str):
         """Set or clear the guild description (leader/officer)."""
         actor_id = ctx.author.id
@@ -354,6 +381,7 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @guild.command(name="set_emblem")
     @app_commands.describe(url="Public image URL for your guild emblem")
+    @ratelimit(uses=5, per_seconds=300, command_name="guild_set_emblem")
     async def guild_set_emblem(self, ctx: commands.Context, url: str):
         """Set the guild emblem URL (leader/officer)."""
         actor_id = ctx.author.id

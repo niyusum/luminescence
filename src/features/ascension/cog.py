@@ -16,6 +16,7 @@ from src.features.player.service import PlayerService
 from src.features.ascension.service import AscensionService
 from src.features.combat.service import CombatService
 from src.core.infra.transaction_logger import TransactionLogger
+from src.core.infra.redis_service import RedisService
 from src.core.exceptions import InsufficientResourcesError, InvalidOperationError
 from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
@@ -62,7 +63,22 @@ class AscensionCog(commands.Cog):
                 
                 # Initiate floor
                 combat_data = await AscensionService.initiate_floor(session, player)
-            
+
+                # Log floor initiation
+                await TransactionLogger.log_transaction(
+                    session=session,
+                    player_id=ctx.author.id,
+                    transaction_type="ascension_floor_initiate",
+                    details={
+                        "floor_number": combat_data["floor"],
+                        "player_stats": combat_data["player_stats"],
+                        "monster_name": combat_data["monster"]["name"],
+                        "monster_hp": combat_data["monster"]["hp"],
+                        "monster_atk": combat_data["monster"]["atk"],
+                    },
+                    context=f"ascension:floor_{combat_data['floor']}"
+                )
+
             # Build floor encounter embed
             embed = self._build_floor_embed(combat_data)
             
@@ -261,59 +277,115 @@ class AscensionCombatView(discord.ui.View):
                 ephemeral=True
             )
             return
-        
+
         await interaction.response.defer()
-        
+
         try:
-            async with DatabaseService.get_transaction() as session:
-                player = await PlayerService.get_player_with_regen(
-                    session, self.user_id, lock=True
-                )
-                
-                # Execute attack turn
-                result = await AscensionService.execute_attack_turn(
-                    session=session,
-                    player=player,
-                    monster=self.combat_data["monster"],
-                    attack_type=attack_type,
-                    combat_state=self.combat_data["combat_state"]
-                )
-            
-            # Update monster HP
-            self.combat_data["monster"]["hp"] = result["boss_hp"]
-            self.combat_data["combat_state"]["player_hp"] = result["player_hp"]
-            self.combat_data["combat_state"]["critical_gauge"] = result["critical_gauge"]
-            self.combat_data["combat_state"]["momentum"] = result["momentum"]
-            self.combat_data["combat_state"]["turns_taken"] = result["turns_taken"]
-            
-            # Check outcome
-            if result["victory"]:
-                # Victory!
+            # Acquire Redis lock to prevent double-clicks
+            floor_id = self.combat_data["floor"]
+            lock_key = f"ascension_combat:{self.user_id}:{floor_id}"
+
+            async with RedisService.acquire_lock(lock_key, timeout=5):
                 async with DatabaseService.get_transaction() as session:
                     player = await PlayerService.get_player_with_regen(
                         session, self.user_id, lock=True
                     )
-                    victory_result = await AscensionService.resolve_victory(
+
+                    # Execute attack turn
+                    result = await AscensionService.execute_attack_turn(
                         session=session,
                         player=player,
-                        floor=self.combat_data["floor"],
-                        turns_taken=result["turns_taken"]
+                        monster=self.combat_data["monster"],
+                        attack_type=attack_type,
+                        combat_state=self.combat_data["combat_state"]
                     )
-                
-                embed = self._build_victory_embed(result, victory_result)
-                view = AscensionVictoryView(self.user_id, victory_result["new_floor"])
-                
-                await interaction.edit_original_response(embed=embed, view=view)
-            
-            elif result["defeat"]:
-                # Defeated!
-                embed = self._build_defeat_embed(result)
-                await interaction.edit_original_response(embed=embed, view=None)
-            
-            else:
-                # Continue combat
-                embed = self._build_combat_turn_embed(result)
-                await interaction.edit_original_response(embed=embed, view=self)
+
+                    # Log attack action
+                    await TransactionLogger.log_transaction(
+                        session=session,
+                        player_id=self.user_id,
+                        transaction_type="ascension_attack",
+                        details={
+                            "floor_number": self.combat_data["floor"],
+                            "attack_type": attack_type,
+                            "damage_dealt": result.get("player_damage", 0),
+                            "boss_hp_remaining": result["boss_hp"],
+                            "player_hp_remaining": result["player_hp"],
+                            "turn_number": result["turns_taken"],
+                            "critical": result.get("critical", False),
+                            "stamina_cost": result.get("stamina_cost", 0),
+                            "gem_cost": result.get("gem_cost", 0),
+                        },
+                        context=f"ascension:floor_{self.combat_data['floor']}"
+                    )
+
+                # Update monster HP
+                self.combat_data["monster"]["hp"] = result["boss_hp"]
+                self.combat_data["combat_state"]["player_hp"] = result["player_hp"]
+                self.combat_data["combat_state"]["critical_gauge"] = result["critical_gauge"]
+                self.combat_data["combat_state"]["momentum"] = result["momentum"]
+                self.combat_data["combat_state"]["turns_taken"] = result["turns_taken"]
+
+                # Check outcome
+                if result["victory"]:
+                    # Victory!
+                    async with DatabaseService.get_transaction() as session:
+                        player = await PlayerService.get_player_with_regen(
+                            session, self.user_id, lock=True
+                        )
+                        victory_result = await AscensionService.resolve_victory(
+                            session=session,
+                            player=player,
+                            floor=self.combat_data["floor"],
+                            turns_taken=result["turns_taken"]
+                        )
+
+                        # Log victory
+                        await TransactionLogger.log_transaction(
+                            session=session,
+                            player_id=self.user_id,
+                            transaction_type="ascension_floor_victory",
+                            details={
+                                "floor_number": self.combat_data["floor"],
+                                "rewards": victory_result.get("rewards", {}),
+                                "turns_taken": result["turns_taken"],
+                                "damage_dealt": result.get("player_damage", 0),
+                                "damage_taken": result.get("boss_damage", 0),
+                                "is_record": victory_result.get("is_record", False),
+                            },
+                            context=f"ascension:floor_{self.combat_data['floor']}"
+                        )
+
+                    embed = self._build_victory_embed(result, victory_result)
+                    view = AscensionVictoryView(self.user_id, victory_result["new_floor"])
+
+                    await interaction.edit_original_response(embed=embed, view=view)
+
+                elif result["defeat"]:
+                    # Defeated!
+                    async with DatabaseService.get_transaction() as session:
+                        # Log defeat
+                        await TransactionLogger.log_transaction(
+                            session=session,
+                            player_id=self.user_id,
+                            transaction_type="ascension_floor_defeat",
+                            details={
+                                "floor_number": self.combat_data["floor"],
+                                "turns_survived": result["turns_taken"],
+                                "damage_dealt": result.get("player_damage", 0),
+                                "damage_taken": result.get("boss_damage", 0),
+                                "final_player_hp": result["player_hp"],
+                            },
+                            context=f"ascension:floor_{self.combat_data['floor']}"
+                        )
+
+                    embed = self._build_defeat_embed(result)
+                    await interaction.edit_original_response(embed=embed, view=None)
+
+                else:
+                    # Continue combat
+                    embed = self._build_combat_turn_embed(result)
+                    await interaction.edit_original_response(embed=embed, view=self)
         
         except InsufficientResourcesError as e:
             embed = EmbedBuilder.error(

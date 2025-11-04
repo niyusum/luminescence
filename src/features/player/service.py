@@ -79,8 +79,15 @@ class PlayerService:
 
     @staticmethod
     def regenerate_prayer_charges(player: Player) -> int:
-        """Regenerate prayer charges based on time since last regen."""
-        if player.prayer_charges >= player.max_prayer_charges:
+        """
+        Regenerate prayer charges based on time since last regen.
+
+        UPDATED SYSTEM (NO ACCUMULATION):
+        - If 5 minutes passed since last prayer → set charges to 1
+        - Does NOT accumulate multiple charges
+        - Always 1 charge available every 5 minutes (no storage)
+        """
+        if player.prayer_charges >= 1:
             return 0
 
         if player.last_prayer_regen is None:
@@ -89,16 +96,12 @@ class PlayerService:
 
         regen_interval = ConfigManager.get("prayer_system.regen_minutes", 5) * 60
         time_since = (datetime.utcnow() - player.last_prayer_regen).total_seconds()
-        charges_to_regen = int(time_since // regen_interval)
 
-        if charges_to_regen > 0:
-            charges_regenerated = min(
-                charges_to_regen,
-                player.max_prayer_charges - player.prayer_charges
-            )
-            player.prayer_charges += charges_regenerated
-            player.last_prayer_regen += timedelta(seconds=regen_interval * charges_to_regen)
-            return charges_regenerated
+        # If 5 minutes passed, grant 1 charge (no accumulation)
+        if time_since >= regen_interval:
+            player.prayer_charges = 1
+            player.last_prayer_regen = datetime.utcnow()
+            return 1
 
         return 0
 
@@ -145,49 +148,10 @@ class PlayerService:
         return 0
 
     # =========================================================================
-    # PRAYER SYSTEM
+    # PRAYER SYSTEM (DEPRECATED - Use PrayerService)
     # =========================================================================
-    @staticmethod
-    async def perform_prayer(session: AsyncSession, player: Player) -> Dict[str, Any]:
-        """
-        Execute prayer action, consuming 1 charge and granting grace.
-
-        Grace amount affected by player class (invoker gets +20%).
-        Uses ResourceService for grace granting with modifier application.
-        """
-        if player.prayer_charges <= 0:
-            raise InsufficientResourcesError(resource="prayer_charges", required=1, current=0)
-
-        old_charges = player.prayer_charges
-        player.prayer_charges -= 1
-
-        if player.prayer_charges == player.max_prayer_charges - 1 and player.last_prayer_regen is None:
-            player.last_prayer_regen = datetime.utcnow()
-
-        base_grace = ConfigManager.get("prayer_system.grace_per_prayer", 5)
-        result = await ResourceService.grant_resources(
-            session=session,
-            player=player,
-            resources={"grace": base_grace},
-            source="prayer_performed",
-            apply_modifiers=True,
-            context={
-                "old_charges": old_charges,
-                "new_charges": player.prayer_charges,
-                "player_class": player.player_class
-            }
-        )
-
-        grace_gained = result["granted"]["grace"]
-        player.stats["prayers_performed"] = player.stats.get("prayers_performed", 0) + 1
-
-        return {
-            "grace_gained": grace_gained,
-            "total_grace": player.grace,
-            "charges_remaining": player.prayer_charges,
-            "next_charge_in": player.get_prayer_regen_display(),
-            "modifiers_applied": result["modifiers_applied"]
-        }
+    # NOTE: Prayer logic has been moved to src.features.prayer.service.PrayerService
+    # This method is kept for backwards compatibility only and will be removed in future versions.
 
     # =========================================================================
     # EXPERIENCE AND LEVELING

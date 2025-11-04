@@ -171,7 +171,7 @@ class ValidationError(RIKIException):
         )
 
 
-class FusionError(RIKIException):
+class InvalidFusionError(RIKIException):
     """Raised when fusion operation fails for business logic reasons."""
     
     DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected business rule
