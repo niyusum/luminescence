@@ -1,12 +1,14 @@
 import discord
 from discord.ext import commands
+from typing import Optional
 
 from src.core.infra.database_service import DatabaseService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.features.player.service import PlayerService
-from src.features.tutorial.service import TutorialService, TRIGGER_INDEX
+from src.features.tutorial.service import TutorialService, TRIGGER_INDEX, TUTORIAL_STEPS
 from src.core.event.event_bus import EventBus
 from src.core.logging.logger import get_logger
+from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 
 logger = get_logger(__name__)
@@ -16,6 +18,7 @@ class TutorialCog(commands.Cog):
     """
     Reacts to gameplay events and announces tangible tutorial completions.
     Sends a public embed, followed by a plain text reward line.
+    Also provides `/tutorial` command to view progress.
     """
 
     def __init__(self, bot: commands.Bot):
@@ -25,6 +28,124 @@ class TutorialCog(commands.Cog):
         # Subscribe to all tutorial triggers
         for topic in TRIGGER_INDEX.keys():
             EventBus.subscribe(topic, self._handle_event)
+
+    @commands.hybrid_command(
+        name="tutorial",
+        aliases=["rtutorial", "guide"],
+        description="View your tutorial progress and hints"
+    )
+    @ratelimit(uses=10, per_seconds=60, command_name="tutorial")
+    async def tutorial(self, ctx: commands.Context):
+        """Display tutorial progress with checklist and hints."""
+        await ctx.defer(ephemeral=True)
+
+        try:
+            async with DatabaseService.get_session() as session:
+                player = await PlayerService.get_player_with_regen(
+                    session, ctx.author.id, lock=False
+                )
+
+                if not player:
+                    embed = EmbedBuilder.error(
+                        title="Not Registered",
+                        description="You need to register first!",
+                        help_text="Use `/register` to create your account."
+                    )
+                    await ctx.send(embed=embed, ephemeral=True)
+                    return
+
+                # Get tutorial state
+                tutorial_state = player.tutorial_state or {}
+                completed_steps = tutorial_state.get("completed_steps", [])
+
+                # Build progress embed
+                embed = discord.Embed(
+                    title="📚 Tutorial Progress",
+                    description="Complete tutorial steps to earn rewards and learn the game!",
+                    color=0x3498db,
+                    timestamp=discord.utils.utcnow()
+                )
+
+                # Count progress
+                total_steps = len(TUTORIAL_STEPS)
+                completed_count = len(completed_steps)
+                progress_pct = (completed_count / total_steps * 100) if total_steps > 0 else 0
+
+                embed.add_field(
+                    name="📊 Overall Progress",
+                    value=f"{completed_count}/{total_steps} steps completed ({progress_pct:.0f}%)",
+                    inline=False
+                )
+
+                # Show step checklist
+                step_lines = []
+                next_step_hint = None
+
+                for i, step in enumerate(TUTORIAL_STEPS, 1):
+                    key = step["key"]
+                    title = step["title"]
+                    reward = step["reward"]
+
+                    # Check if completed
+                    if key in completed_steps:
+                        status = "✅"
+                    else:
+                        status = "⬜"
+                        # Mark first incomplete step
+                        if not next_step_hint:
+                            status = "🔸"  # Highlight next step
+                            next_step_hint = step.get("congrats", "Complete this step!")
+
+                    # Build reward text
+                    reward_parts = []
+                    if reward.get("rikis", 0) > 0:
+                        reward_parts.append(f"+{reward['rikis']} rikis")
+                    if reward.get("grace", 0) > 0:
+                        reward_parts.append(f"+{reward['grace']} grace")
+
+                    reward_text = f" ({', '.join(reward_parts)})" if reward_parts else ""
+
+                    step_lines.append(f"{status} **{i}.** {title}{reward_text}")
+
+                # Split into chunks to fit Discord field limits
+                chunk_size = 10
+                for i in range(0, len(step_lines), chunk_size):
+                    chunk = step_lines[i:i+chunk_size]
+                    field_name = f"Steps {i+1}-{min(i+chunk_size, len(step_lines))}"
+                    embed.add_field(
+                        name=field_name,
+                        value="\n".join(chunk),
+                        inline=False
+                    )
+
+                # Add next step hint
+                if next_step_hint:
+                    embed.add_field(
+                        name="💡 Next Step Hint",
+                        value=next_step_hint,
+                        inline=False
+                    )
+                else:
+                    embed.add_field(
+                        name="🎉 Congratulations!",
+                        value="You've completed all tutorial steps!",
+                        inline=False
+                    )
+
+                embed.set_footer(
+                    text=f"Player ID: {player.discord_id} • Keep playing to complete more!"
+                )
+
+                await ctx.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            logger.error(f"Tutorial command error for {ctx.author.id}: {e}", exc_info=True)
+            embed = EmbedBuilder.error(
+                title="Tutorial Error",
+                description="Unable to load tutorial progress.",
+                help_text="Please try again shortly."
+            )
+            await ctx.send(embed=embed, ephemeral=True)
 
     async def _handle_event(self, payload: dict):
         """

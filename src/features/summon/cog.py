@@ -40,7 +40,7 @@ class SummonCog(commands.Cog):
 
     @commands.hybrid_command(
         name="summon",
-        aliases=["rs"],
+        aliases=["rs", "rsummon"],
         description="Summon powerful maidens using grace"
     )
     @ratelimit(uses=20, per_seconds=60, command_name="summon")

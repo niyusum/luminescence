@@ -36,7 +36,7 @@ class ExplorationCog(commands.Cog):
     
     @commands.hybrid_command(
         name="matron",
-        aliases=["boss", "mb"],
+        aliases=["mb", "rmatron", "boss", "rboss"],
         description="Challenge a sector Matron (speed combat)"
     )
     @ratelimit(uses=10, per_seconds=60, command_name="matron")

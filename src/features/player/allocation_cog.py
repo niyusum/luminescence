@@ -36,7 +36,7 @@ class AllocationCog(commands.Cog):
     
     @commands.hybrid_command(
         name="allocate",
-        aliases=["stats", "alloc"],
+        aliases=["alloc", "ralloc", "rallocate"],
         description="Allocate stat points to Energy, Stamina, or HP"
     )
     @ratelimit(uses=10, per_seconds=60, command_name="allocate")

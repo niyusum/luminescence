@@ -29,6 +29,7 @@ class HelpCog(commands.Cog):
 
     @commands.hybrid_command(
         name="help",
+        aliases=["rhelp", "commands"],
         description="View all available commands and how to use them",
     )
     async def help(self, ctx: commands.Context, command: Optional[str] = None):

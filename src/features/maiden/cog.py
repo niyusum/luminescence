@@ -33,7 +33,7 @@ class MaidenCog(BaseCog):
 
     @commands.hybrid_command(
         name="maidens",
-        aliases=["rm"],
+        aliases=["rm", "rmaidens", "collection"],
         description="View your maiden collection and manage your leader",
     )
     async def maidens(self, ctx: commands.Context):

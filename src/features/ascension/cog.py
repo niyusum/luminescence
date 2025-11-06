@@ -38,7 +38,7 @@ class AscensionCog(commands.Cog):
     
     @commands.hybrid_command(
         name="ascension",
-        aliases=["ra", "tower"],
+        aliases=["ra", "rascension", "tower"],
         description="Climb the infinite tower (strategic combat)"
     )
     @ratelimit(uses=10, per_seconds=60, command_name="ascension")

@@ -38,7 +38,7 @@ class FusionCog(commands.Cog):
 
     @commands.hybrid_command(
         name="fusion",
-        aliases=["rf"],
+        aliases=["rf", "rfusion"],
         description="Fuse two maidens to create a higher tier maiden",
     )
     @ratelimit(uses=15, per_seconds=60, command_name="fusion")

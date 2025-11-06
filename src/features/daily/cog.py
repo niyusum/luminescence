@@ -37,7 +37,7 @@ class DailyCog(commands.Cog):
 
     @commands.hybrid_command(
         name="daily",
-        aliases=["rd"],
+        aliases=["rd", "rdaily"],
         description="Claim your daily rewards",
     )
     @ratelimit(uses=5, per_seconds=60, command_name="daily")

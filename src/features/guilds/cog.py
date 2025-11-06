@@ -58,9 +58,9 @@ class GuildCog(commands.Cog, name="Guild"):
 
     @commands.command(name="rguild", aliases=["rg"])
     async def rguild_menu(self, ctx: commands.Context):
-        """Prefix quick menu for guild commands."""
+        """Prefix quick menu for guild commands with interactive buttons."""
         embed = _ok(
-            "Guild Commands",
+            "🏰 Guild Commands",
             (
                 "**Slash / Hybrid**\n"
                 "• `/guild create <name>` — Create your guild\n"
@@ -78,11 +78,21 @@ class GuildCog(commands.Cog, name="Guild"):
                 "• `/guild set_emblem <url>` — Set emblem URL (leader/officer)\n"
                 "• `/guild revoke_invite <@user>` — Revoke pending invite (leader/officer)\n\n"
                 "**Tips**\n"
-                "• Use `/guild info` to see your guild’s treasury, perks, members, & recent activity.\n"
-                "• Officers can invite & manage members; only leaders can transfer leadership."
+                "• Use `/guild info` to see your guild's treasury, perks, members, & recent activity.\n"
+                "• Officers can invite & manage members; only leaders can transfer leadership.\n\n"
+                "Use the buttons below for quick access to common actions!"
             )
         )
+
+        # Add interactive menu with buttons
+        view = GuildMenuView(ctx.author.id)
         await _send_ctx(ctx, embed, ephemeral=False)
+
+        # Send view in a second message if we can
+        try:
+            await ctx.send(view=view)
+        except Exception:
+            pass  # Buttons couldn't be added, that's okay
 
     # ------------- HYBRID GROUP -------------
 
@@ -395,6 +405,96 @@ class GuildCog(commands.Cog, name="Guild"):
                 logger.exception("guild_set_emblem error")
                 embed = _err("Error", "Failed to set emblem.")
         await _send_ctx(ctx, embed)
+
+
+class GuildMenuView(discord.ui.View):
+    """Interactive menu for guild quick actions."""
+
+    def __init__(self, user_id: int):
+        super().__init__(timeout=180)
+        self.user_id = user_id
+
+    @discord.ui.button(
+        label="📊 Guild Info",
+        style=discord.ButtonStyle.primary,
+        custom_id="guild_info"
+    )
+    async def guild_info_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show guild info."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "This button isn't for you!",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "Use `/guild info` to view your guild's details!",
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="💰 Donate",
+        style=discord.ButtonStyle.success,
+        custom_id="guild_donate"
+    )
+    async def guild_donate_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Quick donate to guild."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "This button isn't for you!",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "Use `/guild donate <amount>` to donate rikis to your guild treasury!",
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="⬆️ Upgrade",
+        style=discord.ButtonStyle.success,
+        custom_id="guild_upgrade"
+    )
+    async def guild_upgrade_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Quick upgrade guild."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "This button isn't for you!",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "Use `/guild upgrade` to level up your guild!",
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="👥 Invite",
+        style=discord.ButtonStyle.secondary,
+        custom_id="guild_invite"
+    )
+    async def guild_invite_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Quick invite to guild."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "This button isn't for you!",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "Use `/guild invite @user` to invite someone to your guild!",
+            ephemeral=True
+        )
+
+    async def on_timeout(self):
+        """Disable buttons on timeout."""
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
 
 
 async def setup(bot: commands.Bot):

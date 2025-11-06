@@ -38,7 +38,7 @@ class PrayCog(commands.Cog):
 
     @commands.hybrid_command(
         name="pray",
-        aliases=["rp"],
+        aliases=["rp", "rpray"],
         description="Perform a prayer to gain grace for summoning",
     )
     @ratelimit(uses=10, per_seconds=60, command_name="pray")

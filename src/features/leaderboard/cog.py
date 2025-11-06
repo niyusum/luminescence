@@ -44,13 +44,13 @@ class LeaderboardCog(commands.Cog):
 
     @commands.hybrid_group(
         name="top",
-        aliases=["rt", "rtop"],
+        aliases=["rt", "rtop", "leaderboard"],
         description="View global leaderboards and rankings",
         fallback="menu"
     )
     @ratelimit(uses=10, per_seconds=60, command_name="top")
     async def top(self, ctx: commands.Context):
-        """Show leaderboard category menu."""
+        """Show leaderboard category menu with interactive selector."""
         await ctx.defer()
 
         embed = discord.Embed(
@@ -66,15 +66,17 @@ class LeaderboardCog(commands.Cog):
             name = category_info["name"]
             embed.add_field(
                 name=f"{icon} {name}",
-                value=f"`/leaderboard {category_key}`",
+                value=f"`/top {category_key}`",
                 inline=True
             )
 
         embed.set_footer(
-            text="Leaderboards update every 10 minutes"
+            text="Leaderboards update every 10 minutes • Use dropdown to view"
         )
 
-        await ctx.send(embed=embed)
+        # Add interactive category selector
+        view = LeaderboardCategoryView(ctx.author.id, self)
+        await ctx.send(embed=embed, view=view)
 
     @top.command(
         name="power",
@@ -331,6 +333,134 @@ class LeaderboardCog(commands.Cog):
                 description="Failed to load leaderboard data."
             )
             await ctx.send(embed=embed, ephemeral=True)
+
+
+class LeaderboardCategoryView(discord.ui.View):
+    """Interactive dropdown for selecting leaderboard categories."""
+
+    def __init__(self, user_id: int, cog: LeaderboardCog):
+        super().__init__(timeout=180)
+        self.user_id = user_id
+        self.cog = cog
+
+        # Create dropdown options
+        options = []
+        for category_key, category_info in LeaderboardService.CATEGORIES.items():
+            options.append(discord.SelectOption(
+                label=category_info["name"],
+                value=category_key,
+                description=f"View {category_info['name'].lower()} rankings",
+                emoji=category_info["icon"]
+            ))
+
+        self.select = discord.ui.Select(
+            placeholder="Select a leaderboard category...",
+            options=options,
+            custom_id="leaderboard_category_select"
+        )
+        self.select.callback = self.select_callback
+        self.add_item(self.select)
+
+    async def select_callback(self, interaction: discord.Interaction):
+        """Handle category selection."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "This dropdown isn't for you!",
+                ephemeral=True
+            )
+            return
+
+        category = self.select.values[0]
+
+        # Create a mock context for the leaderboard display
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            # Show the leaderboard in a new ephemeral message
+            async with DatabaseService.get_session() as session:
+                category_info = LeaderboardService.CATEGORIES[category]
+                icon = category_info["icon"]
+                name = category_info["name"]
+                value_format = category_info["format"]
+
+                # Get cached leaderboard
+                all_rankings = await LeaderboardService.get_cached_leaderboard(
+                    session, category, limit=10
+                )
+
+                if not all_rankings:
+                    # Fallback to real-time
+                    all_rankings = await LeaderboardService.get_top_players(
+                        session, category, limit=10
+                    )
+
+                if not all_rankings:
+                    embed = EmbedBuilder.warning(
+                        title="No Data",
+                        description=f"No rankings available for {name}."
+                    )
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+
+                # Build embed
+                embed = discord.Embed(
+                    title=f"{icon} {name} Leaderboard",
+                    description="Top 10 players",
+                    color=0xFFD700,
+                    timestamp=discord.utils.utcnow()
+                )
+
+                # Format rankings
+                lines = []
+                for entry in all_rankings[:10]:
+                    rank = entry["rank"]
+                    username = entry["username"][:20]
+                    value = entry["value"]
+
+                    # Rank display
+                    if rank == 1:
+                        rank_display = "🥇"
+                    elif rank == 2:
+                        rank_display = "🥈"
+                    elif rank == 3:
+                        rank_display = "🥉"
+                    else:
+                        rank_display = f"`#{rank:2}`"
+
+                    value_display = value_format.format(value)
+                    lines.append(f"{rank_display} **{username}** — {value_display}")
+
+                embed.description = "\n".join(lines)
+
+                # Check player's rank
+                player = await PlayerService.get_player(session, self.user_id)
+                if player:
+                    player_rank_data = await LeaderboardService.get_cached_rank(
+                        session, player.discord_id, category
+                    )
+                    if player_rank_data:
+                        player_rank = player_rank_data["rank"]
+                        embed.set_footer(
+                            text=f"Your rank: #{player_rank:,} • Use /top {category} for full view"
+                        )
+                    else:
+                        embed.set_footer(
+                            text=f"Use /top {category} for full view"
+                        )
+
+                await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            logger.error(f"Leaderboard dropdown error for {category}: {e}", exc_info=True)
+            embed = EmbedBuilder.error(
+                title="Error",
+                description="Failed to load leaderboard data."
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def on_timeout(self):
+        """Disable dropdown on timeout."""
+        self.select.disabled = True
 
 
 async def setup(bot: commands.Bot):
