@@ -1,3 +1,4 @@
+from src.core.bot.base_cog import BaseCog
 from __future__ import annotations
 
 import discord
@@ -52,6 +53,7 @@ class GuildCog(commands.Cog, name="Guild"):
     """
 
     def __init__(self, bot: commands.Bot):
+        super().__init__(bot, self.__class__.__name__)
         self.bot = bot
 
     # ------------- HELP / MENU (prefix quick view) -------------

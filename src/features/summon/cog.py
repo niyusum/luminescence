@@ -1,3 +1,4 @@
+from src.core.bot.base_cog import BaseCog
 import discord
 from discord.ext import commands
 from typing import List, Dict, Any
@@ -17,7 +18,7 @@ from utils.embed_builder import EmbedBuilder
 logger = get_logger(__name__)
 
 
-class SummonCog(commands.Cog):
+class SummonCog(BaseCog):
     """
     Maiden summoning system with batch support.
     Players spend grace to summon maidens. Batch summons (x5/x10) use
@@ -35,20 +36,21 @@ class SummonCog(commands.Cog):
     """
 
     def __init__(self, bot: commands.Bot):
+        super().__init__(bot, self.__class__.__name__)
         self.bot = bot
         self.active_summon_sessions: Dict[int, List[Dict[str, Any]]] = {}
 
     @commands.hybrid_command(
-        name="summon",
-        aliases=["rs", "rsummon"],
-        description="Summon powerful maidens using grace"
+        name="pull",
+        aliases=["rp", "rpull", "rikipull"],
+        description="Pull/summon powerful maidens using grace"
     )
-    @ratelimit(uses=20, per_seconds=60, command_name="summon")
-    async def summon(self, ctx: commands.Context, count: int = 1):
+    @ratelimit(uses=20, per_seconds=60, command_name="pull")
+    async def pull(self, ctx: commands.Context, count: int = 1):
         """
-        Summon maidens using grace.
+        Pull maidens using grace.
 
-        Single summons show results immediately. Batch summons (x5/x10)
+        Single pulls show results immediately. Batch pulls (x5/x10)
         use an interactive flow to reveal each result before a summary.
         """
         await ctx.defer()  # public by default

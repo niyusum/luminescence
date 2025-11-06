@@ -19,7 +19,8 @@
       "Bash(.venv/Scripts/python.exe -m py_compile:*)",
       "Bash(.venv/Scripts/python.exe:*)",
       "Bash(cp:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []

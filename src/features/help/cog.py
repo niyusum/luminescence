@@ -1,3 +1,4 @@
+from src.core.bot.base_cog import BaseCog
 """
 Interactive help system with categorized commands.
 
@@ -16,7 +17,7 @@ from typing import Dict, Optional
 from utils.embed_builder import EmbedBuilder
 
 
-class HelpCog(commands.Cog):
+class HelpCog(BaseCog):
     """
     Interactive help system with categorized commands.
 
@@ -25,6 +26,7 @@ class HelpCog(commands.Cog):
     """
 
     def __init__(self, bot: commands.Bot):
+        super().__init__(bot, self.__class__.__name__)
         self.bot = bot
 
     @commands.hybrid_command(

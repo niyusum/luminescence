@@ -1,37 +1,47 @@
 """
-Unified player profile and statistics system.
+Unified player management system.
 
-Provides streamlined profile overview with detailed analytics behind interactive buttons.
-Shows key metrics upfront with conditional action buttons based on player state.
+Consolidates registration, profile viewing, stat allocation, and transaction history
+into a single cohesive player management cog.
 
 RIKI LAW Compliance:
-    - Read-only (no locks, Article I.11)
-    - Player activity tracking (Article I.7)
+    - All business logic delegated to services (Article I.7)
+    - BaseCog pattern for standardized error handling
+    - Read-only operations use no locks (Article I.11)
+    - State modifications use pessimistic locking (Article I.1)
+    - Transaction logging via services (Article II)
     - Specific exception handling (Article I.5)
-    - Command/Query separation (Article I.11)
 """
 
 import discord
 from discord.ext import commands
 from typing import Optional, Dict, Any
 
+from src.core.bot.base_cog import BaseCog
 from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
+from src.features.player.allocation_logic import AllocationService
 from src.features.resource.service import ResourceService
 from src.features.combat.service import CombatService
-from src.features.ascension.token_service import TokenService
+from src.features.ascension.token_logic import TokenService
 from src.features.ascension.constants import get_token_emoji, get_token_display_name
-from src.features.exploration.mastery_service import MasteryService
+from src.features.exploration.mastery_logic import MasteryService
 from src.features.exploration.constants import RELIC_TYPES
+from src.features.tutorial.service import TutorialService
 from src.database.models.core.player import Player
 from src.database.models.economy.transaction_log import TransactionLog
-from src.core.exceptions import PlayerNotFoundError
-from src.core.logging.logger import get_logger
+from src.core.config.config_manager import ConfigManager
+from src.core.infra.transaction_logger import TransactionLogger
+from src.core.event.event_bus import EventBus
+from src.core.exceptions import (
+    PlayerNotFoundError,
+    ValidationError,
+    DatabaseError,
+    InvalidOperationError
+)
 from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 from sqlalchemy import select, desc
-
-logger = get_logger(__name__)
 
 
 def _safe_value(text: str, limit: int = 1024) -> str:
@@ -64,20 +74,139 @@ def _fusion_success_rate(player: Player) -> float:
     return round((successes / total) * 100.0, 1)
 
 
-class ProfileCog(commands.Cog):
+class PlayerCog(BaseCog):
     """
-    Unified player profile system.
+    Unified player management system.
 
-    Displays streamlined profile with key stats and interactive menu for
-    detailed views and quick actions. Conditional buttons adapt to player state.
+    Handles player registration, profile viewing, stat allocation,
+    and transaction history through a cohesive interface.
+
+    Commands:
+        /register (rr) - Create your RIKI RPG account
+        /me (rme, profile, mystats, ms, stats) - View player profile
+        /allocate (alloc, ralloc, rallocate) - Allocate stat points
+        /transactions (rt, rtrans) - View transaction history
     """
 
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
+    def __init__(self, bot: commands.Bot, *, support_url: str = "https://discord.gg/yourserver"):
+        super().__init__(bot, "PlayerCog")
+        self.support_url = support_url
 
     # ===============================================================
-    # Main Profile Command
+    # REGISTRATION COMMAND
     # ===============================================================
+
+    @commands.hybrid_command(
+        name="register",
+        aliases=["rr"],
+        description="Register your RIKI RPG account and begin your journey"
+    )
+    async def register(self, ctx: commands.Context):
+        """Register a new player account with ToS acknowledgement."""
+        await self.safe_defer(ctx)
+
+        try:
+            async with self.get_session() as session:
+                existing = await session.get(Player, ctx.author.id, with_for_update=True)
+                if existing:
+                    embed = EmbedBuilder.warning(
+                        title="Already Registered",
+                        description=(
+                            f"Welcome back, {ctx.author.mention}!\n"
+                            f"You registered on <t:{int(existing.created_at.timestamp())}:D>."
+                        ),
+                        footer=f"Level {existing.level} • {existing.total_maidens_owned} Maidens"
+                    )
+                    embed.add_field(
+                        name="Next Steps",
+                        value="`/me` to view profile • `/pray` to gain grace • `/summon` to pull maidens",
+                        inline=False
+                    )
+                    await ctx.send(embed=embed)
+                    return
+
+                starting_rikis = ConfigManager.get("player.starting_rikis", 1000)
+                starting_grace = ConfigManager.get("player.starting_grace", 5)
+                starting_energy = ConfigManager.get("player.starting_max_energy", 100)
+                starting_stamina = ConfigManager.get("player.starting_max_stamina", 50)
+
+                new_player = Player(
+                    discord_id=ctx.author.id,
+                    username=ctx.author.name,
+                    rikis=starting_rikis,
+                    grace=starting_grace,
+                    energy=starting_energy,
+                    max_energy=starting_energy,
+                    stamina=starting_stamina,
+                    max_stamina=starting_stamina,
+                    tutorial_completed=False,
+                    tutorial_step=0
+                )
+
+                session.add(new_player)
+                await session.flush()
+
+                await TransactionLogger.log_transaction(
+                    session=session,
+                    player_id=ctx.author.id,
+                    transaction_type="player_registered",
+                    details={
+                        "username": ctx.author.name,
+                        "starting_rikis": starting_rikis,
+                        "starting_grace": starting_grace,
+                        "starting_energy": starting_energy,
+                        "starting_stamina": starting_stamina
+                    },
+                    context=f"command:/{ctx.command.name} guild:{ctx.guild.id if ctx.guild else 'DM'}"
+                )
+
+                await session.commit()
+
+            # Public welcome + ToS post
+            embed = EmbedBuilder.success(
+                title="🎉 Welcome to RIKI RPG!",
+                description=(
+                    f"{ctx.author.mention} has joined the world of RIKI!\n\n"
+                    "By registering, you agree to follow our **Terms of Service** and community rules.\n"
+                    "Be kind, no cheating, and have fun."
+                ),
+                footer="Use /help for all commands"
+            )
+            embed.add_field(
+                name="📜 Terms of Service",
+                value="Review and accept to continue using the bot.",
+                inline=False
+            )
+            embed.add_field(
+                name="💬 Support",
+                value=f"[Join our Support Server]({self.support_url}) for help, events, and announcements.",
+                inline=False
+            )
+            embed.add_field(
+                name="🚀 First Steps",
+                value="`/pray` to gain grace • `/summon` to pull maidens • `/me` to view your profile",
+                inline=False
+            )
+
+            view = TosAgreeView(player_id=ctx.author.id, support_url=self.support_url)
+            await ctx.send(embed=embed, view=view)
+
+            self.log_command_use("register", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None)
+
+        except ValidationError as e:
+            await self.send_error(ctx, "Registration Failed", str(e), help_text="Contact support.")
+        except DatabaseError as e:
+            self.log_cog_error("register", e, user_id=ctx.author.id)
+            await self.send_error(ctx, "Registration Error", "System error during registration.", help_text="Try again shortly.")
+        except Exception as e:
+            self.log_cog_error("register", e, user_id=ctx.author.id)
+            if not await self.handle_standard_errors(ctx, e):
+                await self.send_error(ctx, "Something Went Wrong", "Unexpected error.", help_text="Please try again later.")
+
+    # ===============================================================
+    # PROFILE COMMAND
+    # ===============================================================
+
     @commands.hybrid_command(
         name="me",
         aliases=["rme", "profile", "mystats", "ms", "stats"],
@@ -90,31 +219,32 @@ class ProfileCog(commands.Cog):
 
         Shows brief summary with interactive buttons for detailed views and actions.
         """
-        await ctx.defer()
+        await self.safe_defer(ctx)
 
         target = user or ctx.author
         is_self = target == ctx.author
 
         try:
-            async with DatabaseService.get_transaction() as session:
+            async with self.get_session() as session:
                 player: Optional[Player] = await PlayerService.get_player_with_regen(
                     session, target.id, lock=False
                 )
 
                 if not player:
                     if is_self:
-                        embed = EmbedBuilder.error(
-                            title="Not Registered",
-                            description="You haven't registered yet!",
+                        await self.send_error(
+                            ctx,
+                            "Not Registered",
+                            "You haven't registered yet!",
                             help_text="Use `/register` to create your account."
                         )
                     else:
-                        embed = EmbedBuilder.error(
-                            title="Player Not Found",
-                            description=f"{target.mention} hasn't registered yet.",
-                            footer="They can use /register to join RIKI RPG."
+                        await self.send_error(
+                            ctx,
+                            "Player Not Found",
+                            f"{target.mention} hasn't registered yet.",
+                            help_text="They can use /register to join RIKI RPG."
                         )
-                    await ctx.send(embed=embed, ephemeral=True)
                     return
 
                 # Get combat power
@@ -215,46 +345,160 @@ class ProfileCog(commands.Cog):
             )
             await ctx.send(embed=embed, view=view)
 
+            self.log_command_use("me", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None, viewed_user=target.id)
+
         except Exception as e:
-            logger.error(
-                f"Profile command error for {target.id}: {e}",
-                exc_info=True
-            )
-            embed = EmbedBuilder.error(
-                title="Profile Error",
-                description="Unable to load profile data.",
-                help_text="Please try again shortly."
-            )
-            await ctx.send(embed=embed, ephemeral=True)
+            self.log_cog_error("me", e, user_id=ctx.author.id)
+            if not await self.handle_standard_errors(ctx, e):
+                await self.send_error(
+                    ctx,
+                    "Profile Error",
+                    "Unable to load profile data.",
+                    help_text="Please try again shortly."
+                )
 
     # ===============================================================
-    # Transactions Command
+    # ALLOCATION COMMAND
     # ===============================================================
+
+    @commands.hybrid_command(
+        name="allocate",
+        aliases=["alloc", "ralloc", "rallocate"],
+        description="Allocate stat points to Energy, Stamina, or HP"
+    )
+    @ratelimit(uses=10, per_seconds=60, command_name="allocate")
+    async def allocate(self, ctx: commands.Context):
+        """View stat allocation interface."""
+        await self.safe_defer(ctx)
+
+        try:
+            async with self.get_session() as session:
+                player = await self.require_player(ctx, session, ctx.author.id)
+                if not player:
+                    return
+
+                # Check if player has points
+                if player.stat_points_available == 0:
+                    embed = EmbedBuilder.warning(
+                        title="No Points Available",
+                        description="You don't have any stat points to allocate!",
+                        footer="Gain points each time you level up"
+                    )
+
+                    # Show current allocation
+                    spent = player.stat_points_spent
+                    total_spent = spent["energy"] + spent["stamina"] + spent["hp"]
+
+                    embed.add_field(
+                        name="📊 Current Stats",
+                        value=(
+                            f"⚡ **Energy:** {player.max_energy} "
+                            f"({spent['energy']} points)\n"
+                            f"💪 **Stamina:** {player.max_stamina} "
+                            f"({spent['stamina']} points)\n"
+                            f"❤️ **HP:** {player.max_hp} "
+                            f"({spent['hp']} points)\n\n"
+                            f"**Total Allocated:** {total_spent} points"
+                        ),
+                        inline=False
+                    )
+
+                    embed.add_field(
+                        name="💡 Gain More Points",
+                        value="Level up to gain 5 allocation points!",
+                        inline=False
+                    )
+
+                    await ctx.send(embed=embed, ephemeral=True)
+                    return
+
+                # Show allocation UI
+                embed = EmbedBuilder.primary(
+                    title="📊 Stat Allocation",
+                    description=(
+                        f"**Available Points:** {player.stat_points_available}\n\n"
+                        "Choose how to allocate your stat points!"
+                    ),
+                    footer="Gain points per level | Full refresh on allocation"
+                )
+
+                # Current stats
+                spent = player.stat_points_spent
+                embed.add_field(
+                    name="Current Max Stats",
+                    value=(
+                        f"⚡ Energy: {player.max_energy}\n"
+                        f"💪 Stamina: {player.max_stamina}\n"
+                        f"❤️ HP: {player.max_hp}"
+                    ),
+                    inline=True
+                )
+
+                # Total spent
+                total_spent = spent["energy"] + spent["stamina"] + spent["hp"]
+                embed.add_field(
+                    name="Points Invested",
+                    value=(
+                        f"⚡ {spent['energy']} in Energy\n"
+                        f"💪 {spent['stamina']} in Stamina\n"
+                        f"❤️ {spent['hp']} in HP\n"
+                        f"**Total:** {total_spent} points"
+                    ),
+                    inline=True
+                )
+
+                # Recommended builds
+                builds = AllocationService.get_recommended_builds(player.level)
+                build_text = ""
+                for name, build in builds.items():
+                    build_text += (
+                        f"**{name.title()}**\n"
+                        f"{build['description']}\n"
+                        f"⚡{build['energy']} 💪{build['stamina']} ❤️{build['hp']}\n"
+                        f"✅ {build['pros']}\n"
+                        f"❌ {build['cons']}\n\n"
+                    )
+
+                embed.add_field(
+                    name="📋 Recommended Builds",
+                    value=build_text,
+                    inline=False
+                )
+
+                view = AllocationView(ctx.author.id, player.stat_points_available)
+                await ctx.send(embed=embed, view=view)
+
+                self.log_command_use("allocate", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None)
+
+        except Exception as e:
+            self.log_cog_error("allocate", e, user_id=ctx.author.id)
+            if not await self.handle_standard_errors(ctx, e):
+                await self.send_error(
+                    ctx,
+                    "Allocation Error",
+                    "Failed to load allocation interface.",
+                    help_text="Please try again."
+                )
+
+    # ===============================================================
+    # TRANSACTIONS COMMAND
+    # ===============================================================
+
     @commands.hybrid_command(
         name="transactions",
+        aliases=["rt", "rtrans"],
         description="View recent resource transaction history"
     )
     @ratelimit(uses=5, per_seconds=60, command_name="transactions")
     async def transactions(self, ctx: commands.Context, limit: Optional[int] = 10):
         """Display the player's recent resource transactions."""
-        await ctx.defer()
+        await self.safe_defer(ctx)
         limit = max(1, min(limit or 10, 20))
 
         try:
-            async with DatabaseService.get_transaction() as session:
-                player = await PlayerService.get_player_with_regen(
-                    session, ctx.author.id, lock=False
-                )
-
+            async with self.get_session() as session:
+                player = await self.require_player(ctx, session, ctx.author.id)
                 if not player:
-                    await ctx.send(
-                        embed=EmbedBuilder.error(
-                            title="Not Registered",
-                            description="You need to register first.",
-                            help_text="Use `/register` to start your journey."
-                        ),
-                        ephemeral=True
-                    )
                     return
 
                 # Query recent transactions
@@ -268,11 +512,10 @@ class ProfileCog(commands.Cog):
                 logs = result.scalars().all()
 
             if not logs:
-                await ctx.send(
-                    embed=EmbedBuilder.warning(
-                        title="📜 No Transactions",
-                        description="You have no resource transaction history yet."
-                    )
+                await self.send_info(
+                    ctx,
+                    "📜 No Transactions",
+                    "You have no resource transaction history yet."
                 )
                 return
 
@@ -320,16 +563,94 @@ class ProfileCog(commands.Cog):
 
             await ctx.send(embed=embed)
 
+            self.log_command_use("transactions", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None)
+
         except Exception as e:
-            logger.error(f"Transaction view error for {ctx.author.id}: {e}", exc_info=True)
-            await ctx.send(
-                embed=EmbedBuilder.error(
-                    title="Transaction Error",
-                    description="Unable to fetch transaction history.",
+            self.log_cog_error("transactions", e, user_id=ctx.author.id)
+            if not await self.handle_standard_errors(ctx, e):
+                await self.send_error(
+                    ctx,
+                    "Transaction Error",
+                    "Unable to fetch transaction history.",
                     help_text="Please try again shortly."
-                ),
-                ephemeral=True
-            )
+                )
+
+
+# ===============================================================
+# VIEWS AND INTERACTIVE COMPONENTS
+# ===============================================================
+
+class TosAgreeView(discord.ui.View):
+    """Public post with buttons; only the registering user can 'Agree'."""
+
+    def __init__(self, player_id: int, support_url: str):
+        super().__init__(timeout=600)
+        self.player_id = player_id
+
+        # Update support button URL
+        for item in self.children:
+            if isinstance(item, discord.ui.Button) and item.style == discord.ButtonStyle.link:
+                item.url = support_url
+
+    @discord.ui.button(label="✅ I Agree", style=discord.ButtonStyle.success, custom_id="tos_agree")
+    async def agree(self, interaction: discord.Interaction, _: discord.ui.Button):
+        if interaction.user.id != self.player_id:
+            await interaction.response.send_message("This button is not for you!", ephemeral=True)
+            return
+
+        async with DatabaseService.get_transaction() as session:
+            player = await session.get(Player, self.player_id, with_for_update=True)
+            if player:
+                done = await TutorialService.complete_step(session, player, "tos_agreed")
+                await session.commit()
+
+                # Announce publicly in the same channel
+                try:
+                    channel = interaction.channel
+                    if channel and done:
+                        embed = EmbedBuilder.success(
+                            title=f"🎉 Tutorial Complete: {done['title']}",
+                            description=done["congrats"],
+                            footer="You're all set — try `/pray` next!"
+                        )
+                        await channel.send(embed=embed)
+                        # Plain text reward line (ToS likely has no rewards)
+                        rk = done["reward"].get("rikis", 0)
+                        gr = done["reward"].get("grace", 0)
+                        if rk or gr:
+                            parts = []
+                            if rk:
+                                parts.append(f"+{rk} rikis")
+                            if gr:
+                                parts.append(f"+{gr} grace")
+                            await channel.send(f"You received {' and '.join(parts)} as a tutorial reward!")
+                except Exception:
+                    pass
+
+                # Also publish the tutorial event with topic metadata
+                try:
+                    await EventBus.publish("tos_agreed", {
+                        "player_id": self.player_id,
+                        "channel_id": interaction.channel_id,
+                        "__topic__": "tos_agreed"
+                    })
+                except Exception:
+                    pass
+
+        # Private confirmation (so the clicker gets immediate feedback)
+        await interaction.response.send_message(
+            "Thanks! You've accepted the ToS. Start with `/pray`, then try `/summon`.",
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="🔗 Support Server", style=discord.ButtonStyle.link, url="https://discord.gg/yourserver")
+    async def support(self, *_):
+        pass
+
+    async def on_timeout(self):
+        for c in self.children:
+            if isinstance(c, discord.ui.Button) and c.style != discord.ButtonStyle.link:
+                c.disabled = True
 
 
 class UnifiedProfileView(discord.ui.View):
@@ -616,8 +937,7 @@ class UnifiedProfileView(discord.ui.View):
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
-        except Exception as e:
-            logger.error(f"Advanced stats error for {self.user_id}: {e}", exc_info=True)
+        except Exception:
             embed = EmbedBuilder.error(
                 title="Advanced Stats Error",
                 description="Unable to load detailed statistics.",
@@ -761,6 +1081,214 @@ class UnifiedProfileView(discord.ui.View):
                 pass
 
 
+class AllocationView(discord.ui.View):
+    """Interactive view for stat allocation."""
+
+    def __init__(self, user_id: int, available_points: int):
+        super().__init__(timeout=300)
+        self.user_id = user_id
+        self.available_points = available_points
+        self.message: Optional[discord.Message] = None
+
+    def set_message(self, message: discord.Message):
+        self.message = message
+
+    @discord.ui.button(
+        label="✏️ Allocate Points",
+        style=discord.ButtonStyle.primary,
+        custom_id="allocate_modal"
+    )
+    async def allocate_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        """Open allocation modal."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "This allocation interface is not for you!",
+                ephemeral=True
+            )
+            return
+
+        modal = AllocationModal(self.user_id, self.available_points)
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(
+        label="📊 Preview Build",
+        style=discord.ButtonStyle.secondary,
+        custom_id="preview_build"
+    )
+    async def preview_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        """Preview recommended builds."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "This allocation interface is not for you!",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "Use the recommended builds shown above as a guide! "
+            "Click **Allocate Points** to customize your allocation.",
+            ephemeral=True
+        )
+
+    async def on_timeout(self):
+        """Disable buttons on timeout."""
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except Exception:
+                pass
+
+
+class AllocationModal(discord.ui.Modal, title="Allocate Stat Points"):
+    """Modal for stat point allocation input."""
+
+    energy = discord.ui.TextInput(
+        label="Energy Points",
+        placeholder="0",
+        default="0",
+        required=False,
+        max_length=3
+    )
+
+    stamina = discord.ui.TextInput(
+        label="Stamina Points",
+        placeholder="0",
+        default="0",
+        required=False,
+        max_length=3
+    )
+
+    hp = discord.ui.TextInput(
+        label="HP Points",
+        placeholder="0",
+        default="0",
+        required=False,
+        max_length=3
+    )
+
+    def __init__(self, user_id: int, available_points: int):
+        super().__init__()
+        self.user_id = user_id
+        self.available_points = available_points
+
+    async def on_submit(self, interaction: discord.Interaction):
+        """Process allocation."""
+        await interaction.response.defer()
+
+        try:
+            # Parse input
+            energy_pts = int(self.energy.value or 0)
+            stamina_pts = int(self.stamina.value or 0)
+            hp_pts = int(self.hp.value or 0)
+
+            # Validate
+            if energy_pts < 0 or stamina_pts < 0 or hp_pts < 0:
+                raise ValueError("Cannot allocate negative points")
+
+            total = energy_pts + stamina_pts + hp_pts
+            if total == 0:
+                raise ValueError("Must allocate at least 1 point")
+
+            if total > self.available_points:
+                raise ValueError(
+                    f"Insufficient points. Have {self.available_points}, "
+                    f"trying to spend {total}"
+                )
+
+            # Execute allocation
+            async with DatabaseService.get_transaction() as session:
+                player = await PlayerService.get_player_with_regen(
+                    session, self.user_id, lock=True
+                )
+
+                result = await AllocationService.allocate_points(
+                    session,
+                    player,
+                    energy=energy_pts,
+                    stamina=stamina_pts,
+                    hp=hp_pts
+                )
+
+                await session.commit()
+
+            # Success embed
+            embed = EmbedBuilder.success(
+                title="✅ Stats Allocated!",
+                description=f"Successfully invested {total} points"
+            )
+
+            # Show changes
+            old_max = result["old_max_stats"]
+            new_max = result["new_max_stats"]
+
+            # Calculate actual gains
+            energy_gain = new_max['max_energy'] - old_max['max_energy']
+            stamina_gain = new_max['max_stamina'] - old_max['max_stamina']
+            hp_gain = new_max['max_hp'] - old_max['max_hp']
+
+            embed.add_field(
+                name="New Max Stats",
+                value=(
+                    f"⚡ **Energy:** {new_max['max_energy']}" + (f" (+{energy_gain})" if energy_gain > 0 else "") + "\n"
+                    f"💪 **Stamina:** {new_max['max_stamina']}" + (f" (+{stamina_gain})" if stamina_gain > 0 else "") + "\n"
+                    f"❤️ **HP:** {new_max['max_hp']}" + (f" (+{hp_gain})" if hp_gain > 0 else "")
+                ),
+                inline=False
+            )
+
+            # Resources refreshed
+            embed.add_field(
+                name="💫 Resources Refreshed",
+                value="All resources restored to new maximum values!",
+                inline=False
+            )
+
+            # Remaining points
+            if result["points_remaining"] > 0:
+                embed.add_field(
+                    name="Points Remaining",
+                    value=f"{result['points_remaining']} unspent points",
+                    inline=False
+                )
+
+            await interaction.edit_original_response(embed=embed, view=None)
+
+        except ValueError as e:
+            embed = EmbedBuilder.error(
+                title="Invalid Input",
+                description=str(e),
+                help_text="Enter valid positive numbers for allocation."
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except InvalidOperationError as e:
+            embed = EmbedBuilder.error(
+                title="Allocation Failed",
+                description=str(e)
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception:
+            embed = EmbedBuilder.error(
+                title="Allocation Error",
+                description="An unexpected error occurred.",
+                help_text="Please try again."
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+
 async def setup(bot: commands.Bot):
     """Required for Discord cog loading."""
-    await bot.add_cog(ProfileCog(bot))
+    await bot.add_cog(PlayerCog(bot))

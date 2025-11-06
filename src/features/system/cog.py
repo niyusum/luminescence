@@ -1,3 +1,4 @@
+from src.core.bot.base_cog import BaseCog
 """
 System administration and background tasks.
 
@@ -22,7 +23,7 @@ from utils.embed_builder import EmbedBuilder
 logger = get_logger(__name__)
 
 
-class SystemTasksCog(commands.Cog):
+class SystemTasksCog(BaseCog):
     """
     Background maintenance tasks for system health and cleanup.
     
@@ -42,6 +43,7 @@ class SystemTasksCog(commands.Cog):
     """
 
     def __init__(self, bot: commands.Bot):
+        super().__init__(bot, self.__class__.__name__)
         self.bot = bot
         self.last_cleanup: datetime | None = None
         self.last_cache_refresh: datetime | None = None

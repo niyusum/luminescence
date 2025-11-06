@@ -330,7 +330,7 @@ class MatronService:
             
             # Tokens (if sector boss)
             if matron["is_sector_boss"]:
-                from src.features.ascension.token_service import TokenService
+                from src.features.ascension.token_logic import TokenService
                 await TokenService.grant_token(
                     session=session,
                     player_id=player.discord_id,

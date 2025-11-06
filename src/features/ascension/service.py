@@ -499,7 +499,7 @@ class AscensionService:
         
         # Grant token (CORRECTED IMPORT PATH)
         if rewards.get("token"):
-            from src.features.ascension.token_service import TokenService
+            from src.features.ascension.token_logic import TokenService
             await TokenService.grant_token(
                 session=session,
                 player_id=player.discord_id,

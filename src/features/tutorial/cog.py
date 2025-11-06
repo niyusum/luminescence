@@ -1,3 +1,4 @@
+from src.core.bot.base_cog import BaseCog
 import discord
 from discord.ext import commands
 from typing import Optional
@@ -14,7 +15,7 @@ from utils.embed_builder import EmbedBuilder
 logger = get_logger(__name__)
 
 
-class TutorialCog(commands.Cog):
+class TutorialCog(BaseCog):
     """
     Reacts to gameplay events and announces tangible tutorial completions.
     Sends a public embed, followed by a plain text reward line.
@@ -22,6 +23,7 @@ class TutorialCog(commands.Cog):
     """
 
     def __init__(self, bot: commands.Bot):
+        super().__init__(bot, self.__class__.__name__)
         self.bot = bot
 
     async def cog_load(self):

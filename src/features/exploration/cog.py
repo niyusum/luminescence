@@ -1,3 +1,4 @@
+from src.core.bot.base_cog import BaseCog
 """
 Exploration and Matron combat interface.
 
@@ -14,7 +15,9 @@ from src.core.infra.database_service import DatabaseService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.infra.redis_service import RedisService
 from src.features.player.service import PlayerService
-from src.features.exploration.matron_service import MatronService
+from src.features.exploration.matron_logic import MatronService
+from src.features.exploration.mastery_logic import MasteryService
+from src.features.exploration.constants import RELIC_TYPES
 from src.features.combat.service import CombatService
 from src.core.exceptions import InsufficientResourcesError, InvalidOperationError
 from src.core.logging.logger import get_logger
@@ -24,7 +27,7 @@ from utils.embed_builder import EmbedBuilder
 logger = get_logger(__name__)
 
 
-class ExplorationCog(commands.Cog):
+class ExplorationCog(BaseCog):
     """
     Exploration and Matron combat system.
     
@@ -32,6 +35,7 @@ class ExplorationCog(commands.Cog):
     """
     
     def __init__(self, bot: commands.Bot):
+        super().__init__(bot, self.__class__.__name__)
         self.bot = bot
     
     @commands.hybrid_command(
@@ -518,6 +522,204 @@ class MatronCombatView(discord.ui.View):
                 await self.message.edit(view=self)
             except Exception:
                 pass
+
+
+    # ===============================================================
+    # MASTERY COMMAND
+    # ===============================================================
+
+    @commands.hybrid_group(
+        name="mastery",
+        description="View exploration mastery ranks and relic bonuses",
+        fallback="overview"
+    )
+    @ratelimit(uses=10, per_seconds=60, command_name="mastery")
+    async def mastery(self, ctx: commands.Context):
+        """View mastery overview with all active relics."""
+        await self.safe_defer(ctx)
+
+        try:
+            async with self.get_session() as session:
+                # Get player
+                player = await self.require_player(ctx, session, ctx.author.id)
+                if not player:
+                    return
+
+                # Get all active relics
+                relics = await MasteryService.get_player_relics(session, player.discord_id)
+
+                # Get active bonuses
+                bonuses = await MasteryService.get_active_bonuses(session, player.discord_id)
+
+                # Build embed
+                embed = discord.Embed(
+                    title=f"🏆 {ctx.author.display_name}'s Mastery",
+                    description=(
+                        "Complete exploration sectors to earn permanent relic bonuses.\n"
+                        "Each sector has 3 mastery ranks with increasing rewards."
+                    ),
+                    color=0x9B59B6,  # Purple
+                    timestamp=discord.utils.utcnow()
+                )
+
+                # Show total relics
+                embed.add_field(
+                    name="📦 Total Relics",
+                    value=f"**{len(relics)}** active relics",
+                    inline=True
+                )
+
+                # Show active bonuses summary
+                if bonuses:
+                    bonus_text = []
+                    for relic_type, value in bonuses.items():
+                        relic_info = RELIC_TYPES.get(relic_type, {})
+                        icon = relic_info.get("icon", "🏆")
+                        name = relic_info.get("name", relic_type)
+
+                        if relic_type in ["energy_regen", "stamina_regen", "hp_boost"]:
+                            bonus_text.append(f"{icon} **{name}:** +{value:,.0f}")
+                        else:
+                            bonus_text.append(f"{icon} **{name}:** +{value:.1f}%")
+
+                    embed.add_field(
+                        name="✨ Active Bonuses",
+                        value="\n".join(bonus_text) if bonus_text else "No active bonuses",
+                        inline=False
+                    )
+                else:
+                    embed.add_field(
+                        name="✨ Active Bonuses",
+                        value="No active relics yet. Complete sectors to earn bonuses!",
+                        inline=False
+                    )
+
+                # Show sector completion status
+                sector_status = []
+                for sector_id in range(1, 7):
+                    status = await MasteryService.get_sector_mastery_status(
+                        session, player.discord_id, sector_id
+                    )
+                    rank = status["current_rank"]
+                    stars = "★" * rank + "☆" * (3 - rank)
+                    sector_status.append(f"Sector {sector_id}: {stars}")
+
+                embed.add_field(
+                    name="🗺️ Sector Progress",
+                    value="\n".join(sector_status),
+                    inline=False
+                )
+
+                embed.set_footer(
+                    text="Use /mastery sector <id> to view detailed sector mastery"
+                )
+
+                await ctx.send(embed=embed)
+
+                self.log_command_use("mastery", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None)
+
+        except Exception as e:
+            self.log_cog_error("mastery", e, user_id=ctx.author.id)
+            if not await self.handle_standard_errors(ctx, e):
+                await self.send_error(ctx, "Error", "Failed to load mastery data.")
+
+    @mastery.command(
+        name="sector",
+        description="View detailed mastery for a specific sector"
+    )
+    @ratelimit(uses=10, per_seconds=60, command_name="mastery_sector")
+    async def mastery_sector(
+        self,
+        ctx: commands.Context,
+        sector_id: int
+    ):
+        """View detailed mastery information for specific sector."""
+        await self.safe_defer(ctx)
+
+        # Validate sector
+        if sector_id < 1 or sector_id > 6:
+            await self.send_error(
+                ctx,
+                "Invalid Sector",
+                "Sector must be between 1 and 6.",
+                help_text="Example: `/mastery sector 1`"
+            )
+            return
+
+        try:
+            async with self.get_session() as session:
+                # Get player
+                player = await self.require_player(ctx, session, ctx.author.id)
+                if not player:
+                    return
+
+                # Get sector mastery status
+                status = await MasteryService.get_sector_mastery_status(
+                    session, player.discord_id, sector_id
+                )
+
+                # Build embed
+                embed = discord.Embed(
+                    title=f"🗺️ Sector {sector_id} Mastery",
+                    description=f"Complete all 9 sublevels to unlock mastery ranks.",
+                    color=0x9B59B6,  # Purple
+                    timestamp=discord.utils.utcnow()
+                )
+
+                # Current rank
+                current_rank = status["current_rank"]
+
+                if status["fully_mastered"]:
+                    embed.add_field(
+                        name="🏆 Status",
+                        value="**Fully Mastered!** ★★★",
+                        inline=False
+                    )
+                else:
+                    stars = "★" * current_rank + "☆" * (3 - current_rank)
+                    embed.add_field(
+                        name="🏆 Current Rank",
+                        value=f"{stars} Rank {current_rank}/3",
+                        inline=False
+                    )
+
+                # Progress
+                if not status["fully_mastered"]:
+                    next_rank = status.get("next_rank", {})
+                    if next_rank:
+                        embed.add_field(
+                            name="📈 Progress to Next Rank",
+                            value=(
+                                f"**Required:** Clear all {next_rank['sublevels_required']} sublevels\n"
+                                f"**Reward:** {next_rank['relic_reward']['name']} {next_rank['relic_reward']['icon']}"
+                            ),
+                            inline=False
+                        )
+
+                # Earned relics for this sector
+                sector_relics = [r for r in await MasteryService.get_player_relics(session, player.discord_id) if r.sector_id == sector_id]
+                if sector_relics:
+                    relic_lines = []
+                    for relic in sector_relics:
+                        relic_info = RELIC_TYPES.get(relic.relic_type, {})
+                        icon = relic_info.get("icon", "🏆")
+                        name = relic_info.get("name", relic.relic_type)
+                        relic_lines.append(f"{icon} {name} (Rank {relic.mastery_rank})")
+
+                    embed.add_field(
+                        name="🎁 Earned Relics",
+                        value="\n".join(relic_lines),
+                        inline=False
+                    )
+
+                await ctx.send(embed=embed)
+
+                self.log_command_use("mastery_sector", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None, sector=sector_id)
+
+        except Exception as e:
+            self.log_cog_error("mastery_sector", e, user_id=ctx.author.id)
+            if not await self.handle_standard_errors(ctx, e):
+                await self.send_error(ctx, "Error", "Failed to load sector mastery.")
 
 
 async def setup(bot: commands.Bot):

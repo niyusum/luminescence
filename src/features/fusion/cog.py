@@ -1,3 +1,4 @@
+from src.core.bot.base_cog import BaseCog
 import discord
 from discord.ext import commands
 from typing import Optional, List, Dict, Any
@@ -16,7 +17,7 @@ from utils.embed_builder import EmbedBuilder
 logger = get_logger(__name__)
 
 
-class FusionCog(commands.Cog):
+class FusionCog(BaseCog):
     """
     Maiden fusion system for tier progression.
 
@@ -34,6 +35,7 @@ class FusionCog(commands.Cog):
     """
 
     def __init__(self, bot: commands.Bot):
+        super().__init__(bot, self.__class__.__name__)
         self.bot = bot
 
     @commands.hybrid_command(

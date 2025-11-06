@@ -1,3 +1,4 @@
+from src.core.bot.base_cog import BaseCog
 """
 Leaderboard ranking system Discord interface.
 
@@ -24,7 +25,7 @@ from src.utils.embed_builder import EmbedBuilder
 logger = get_logger(__name__)
 
 
-class LeaderboardCog(commands.Cog):
+class LeaderboardCog(BaseCog):
     """
     Global leaderboard rankings and player stats.
 
@@ -40,6 +41,7 @@ class LeaderboardCog(commands.Cog):
     """
 
     def __init__(self, bot: commands.Bot):
+        super().__init__(bot, self.__class__.__name__)
         self.bot = bot
 
     @commands.hybrid_group(
