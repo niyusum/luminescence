@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 from src.core.bot.base_cog import BaseCog
 from src.features.shrines.service import ShrineService
 from src.core.config.config_manager import ConfigManager
+from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 
 
@@ -31,16 +32,21 @@ class ShrineCog(BaseCog):
     shrines that provide passive resource yields.
 
     Commands:
-        /shrines (rs, rshrine, rshrines) - View shrines and manage them
+        shrines (rsh, rshrines, rikishrines) - View shrines and manage them
     """
 
     def __init__(self, bot: commands.Bot):
         super().__init__(bot, "ShrineCog")
 
-    @commands.hybrid_command(
+    @commands.command(
         name="shrines",
-        aliases=["rs", "rshrine", "rshrines"],
+        aliases=["rsh", "rshrines", "rikishrines"],
         description="View and manage your personal shrines"
+    )
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.shrines.status.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.shrines.status.period", 60),
+        command_name="shrines"
     )
     async def shrines(self, ctx: commands.Context):
         """Show shrine overview with interactive management menu."""
@@ -142,7 +148,8 @@ class ShrineCog(BaseCog):
 
                 # Send with interactive menu
                 view = ShrineMenuView(ctx.author.id, self.bot, ctx, shrines)
-                await ctx.send(embed=embed, view=view)
+                message = await ctx.send(embed=embed, view=view)
+                view.message = message
 
                 self.log_command_use("shrines", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None)
 
@@ -366,15 +373,16 @@ class ShrineMenuView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
     async def on_timeout(self):
-        """Disable buttons on timeout."""
+        """Disable all buttons visually when the view expires."""
         for item in self.children:
             if isinstance(item, discord.ui.Button):
                 item.disabled = True
-        if self.message:
-            try:
+
+        try:
+            if self.message:
                 await self.message.edit(view=self)
-            except Exception:
-                pass
+        except discord.HTTPException:
+            pass
 
 
 class ShrineUpgradeView(discord.ui.View):
@@ -496,9 +504,15 @@ class ShrineUpgradeView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
     async def on_timeout(self):
-        """Disable all items on timeout."""
+        """Disable all buttons visually when the view expires."""
         for item in self.children:
             item.disabled = True
+
+        try:
+            if self.message:
+                await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
 
 async def setup(bot: commands.Bot):

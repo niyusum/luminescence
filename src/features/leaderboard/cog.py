@@ -17,6 +17,7 @@ from typing import Optional
 from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
 from src.features.leaderboard.service import LeaderboardService
+from src.core.config.config_manager import ConfigManager
 from src.core.exceptions import InvalidOperationError
 from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
@@ -44,13 +45,17 @@ class LeaderboardCog(BaseCog):
         super().__init__(bot, self.__class__.__name__)
         self.bot = bot
 
-    @commands.hybrid_group(
+    @commands.group(
         name="top",
-        aliases=["rt", "rtop", "leaderboard"],
+        aliases=["rtop", "rleaderboard", "rikitop"],
         description="View global leaderboards and rankings",
         fallback="menu"
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="top")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.leaderboard.view.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.leaderboard.view.period", 60),
+        command_name="top"
+    )
     async def top(self, ctx: commands.Context):
         """Show leaderboard category menu with interactive selector."""
         await ctx.defer()
@@ -85,7 +90,11 @@ class LeaderboardCog(BaseCog):
         aliases=["total_power"],
         description="Top players by total power"
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="top_power")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.leaderboard.view.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.leaderboard.view.period", 60),
+        command_name="top_power"
+    )
     async def top_power(self, ctx: commands.Context, page: int = 1):
         """View total power rankings."""
         await self._show_leaderboard(ctx, "total_power", page)
@@ -94,7 +103,11 @@ class LeaderboardCog(BaseCog):
         name="level",
         description="Top players by level"
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="top_level")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.leaderboard.view.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.leaderboard.view.period", 60),
+        command_name="top_level"
+    )
     async def top_level(self, ctx: commands.Context, page: int = 1):
         """View level rankings."""
         await self._show_leaderboard(ctx, "level", page)
@@ -104,7 +117,11 @@ class LeaderboardCog(BaseCog):
         aliases=["floor", "highest_floor"],
         description="Top players by ascension floor"
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="top_ascension")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.leaderboard.view.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.leaderboard.view.period", 60),
+        command_name="top_ascension"
+    )
     async def top_ascension(self, ctx: commands.Context, page: int = 1):
         """View ascension floor rankings."""
         await self._show_leaderboard(ctx, "highest_floor", page)
@@ -114,7 +131,11 @@ class LeaderboardCog(BaseCog):
         aliases=["total_fusions"],
         description="Top players by fusion count"
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="top_fusions")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.leaderboard.view.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.leaderboard.view.period", 60),
+        command_name="top_fusions"
+    )
     async def top_fusions(self, ctx: commands.Context, page: int = 1):
         """View fusion count rankings."""
         await self._show_leaderboard(ctx, "total_fusions", page)
@@ -124,7 +145,11 @@ class LeaderboardCog(BaseCog):
         aliases=["rikis", "rich"],
         description="Top players by rikis"
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="top_wealth")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.leaderboard.view.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.leaderboard.view.period", 60),
+        command_name="top_wealth"
+    )
     async def top_wealth(self, ctx: commands.Context, page: int = 1):
         """View wealth rankings."""
         await self._show_leaderboard(ctx, "rikis", page)
@@ -134,7 +159,11 @@ class LeaderboardCog(BaseCog):
         aliases=["rank", "myrank"],
         description="View your rankings across all categories"
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="top_me")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.leaderboard.view.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.leaderboard.view.period", 60),
+        command_name="top_me"
+    )
     async def top_me(self, ctx: commands.Context):
         """View player's rankings in all categories."""
         await ctx.defer()
@@ -344,6 +373,7 @@ class LeaderboardCategoryView(discord.ui.View):
         super().__init__(timeout=180)
         self.user_id = user_id
         self.cog = cog
+        self.message: Optional[discord.Message] = None
 
         # Create dropdown options
         options = []
@@ -461,8 +491,15 @@ class LeaderboardCategoryView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
     async def on_timeout(self):
-        """Disable dropdown on timeout."""
-        self.select.disabled = True
+        """Disable all buttons visually when the view expires."""
+        for item in self.children:
+            item.disabled = True
+
+        try:
+            if self.message:
+                await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
 
 async def setup(bot: commands.Bot):

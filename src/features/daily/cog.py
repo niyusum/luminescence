@@ -1,16 +1,31 @@
+"""
+Daily rewards system.
+
+Handles the claim of daily rewards, applying streak bonuses, leader/class
+modifiers, and ensuring atomic state changes via pessimistic locking.
+
+RIKI LAW Compliance:
+    - Article I.1: SELECT FOR UPDATE (Pessimistic Locking) for state mutation
+    - Article I.9: Command latency metrics for observability
+    - Article II: Structured Transaction and Error logging with full context
+    - Article I.5: Specific exception handling (CooldownError)
+    - Article I.7: All business logic delegated to DailyService
+"""
+
 from src.core.bot.base_cog import BaseCog
 import discord
 from discord.ext import commands
 from typing import Optional
+import time
 
 from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
 from src.features.daily.service import DailyService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.event.event_bus import EventBus
-from src.features.resource.service import ResourceService
+from src.core.config.config_manager import ConfigManager
 from src.core.exceptions import CooldownError
-from src.core.logging.logger import get_logger
+from src.core.logging.logger import get_logger, LogContext
 from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 
@@ -21,34 +36,33 @@ class DailyCog(BaseCog):
     """
     Daily rewards system.
 
-    Players can claim daily rewards once per 24 hours. Rewards include
-    rikis, grace, and bonus items based on streak. Leader and class modifiers
-    can further increase rewards.
-
-    RIKI LAW Compliance:
-        - SELECT FOR UPDATE (Article I.1)
-        - Transaction logging (Article I.2)
-        - ConfigManager for rewards (Article I.4)
-        - Specific exception handling (Article I.5)
-        - All logic through DailyService (Article I.7)
+    Commands:
+        /daily (rd) - Claim daily rewards.
     """
 
     def __init__(self, bot: commands.Bot):
         super().__init__(bot, self.__class__.__name__)
         self.bot = bot
 
-    @commands.hybrid_command(
+    @commands.command(
         name="daily",
-        aliases=["rd", "rdaily"],
+        aliases=["rd", "rdaily", "rikidaily"],
         description="Claim your daily rewards",
     )
-    @ratelimit(uses=5, per_seconds=60, command_name="daily")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.daily.claim.uses", 5),
+        per_seconds=ConfigManager.get("rate_limits.daily.claim.period", 60),
+        command_name="daily"
+    )
     async def daily(self, ctx: commands.Context):
         """Claim daily rewards."""
+        # RIKI LAW Article I.9 - Latency Metric Start
+        start_time = time.perf_counter()
         await ctx.defer()
 
         try:
             async with DatabaseService.get_transaction() as session:
+                # RIKI LAW Article I.1: Pessimistic locking for state mutation
                 player = await PlayerService.get_player_with_regen(
                     session, ctx.author.id, lock=True
                 )
@@ -62,9 +76,12 @@ class DailyCog(BaseCog):
                     await ctx.send(embed=embed, ephemeral=True)
                     return
 
+                # RIKI LAW Article I.7: All business logic delegated to service
                 result = await DailyService.claim_daily(session, player)
 
+                # RIKI LAW Article II: Transaction logging
                 await TransactionLogger.log_transaction(
+                    session=session,
                     player_id=ctx.author.id,
                     transaction_type="daily_claimed",
                     details={
@@ -109,7 +126,7 @@ class DailyCog(BaseCog):
                     inline=True,
                 )
 
-            # 🔹 NEW: Display applied modifiers (leader/class bonuses)
+            # Display applied modifiers (leader/class bonuses)
             modifiers = result.get("modifiers_applied", {})
             income_boost = modifiers.get("income_boost", 1.0)
             xp_boost = modifiers.get("xp_boost", 1.0)
@@ -132,10 +149,19 @@ class DailyCog(BaseCog):
                 inline=False,
             )
 
-            view = DailyActionView(ctx.author.id)
-            await ctx.send(embed=embed, view=view)
+            await ctx.send(embed=embed)
+
+            # RIKI LAW Article I.9 - Latency Metric Logging (Success)
+            latency = (time.perf_counter() - start_time) * 1000
+            self.log_command_use(
+                "daily",
+                ctx.author.id,
+                guild_id=ctx.guild.id if ctx.guild else None,
+                latency_ms=round(latency, 2)
+            )
 
         except CooldownError as e:
+            # RIKI LAW Article I.5: Specific exception handled
             hours = int(e.remaining_seconds // 3600)
             minutes = int((e.remaining_seconds % 3600) // 60)
 
@@ -160,8 +186,28 @@ class DailyCog(BaseCog):
 
             await ctx.send(embed=embed, ephemeral=True)
 
+            # RIKI LAW Article I.9 - Latency Metric Logging (Cooldown)
+            latency = (time.perf_counter() - start_time) * 1000
+            self.log_command_use(
+                "daily",
+                ctx.author.id,
+                guild_id=ctx.guild.id if ctx.guild else None,
+                latency_ms=round(latency, 2),
+                status="cooldown"
+            )
+
+
         except Exception as e:
-            logger.error(f"Daily claim error for {ctx.author.id}: {e}", exc_info=True)
+            # RIKI LAW Article II: Structured Error Logging
+            latency = (time.perf_counter() - start_time) * 1000
+            self.log_cog_error(
+                "daily",
+                e,
+                user_id=ctx.author.id,
+                guild_id=ctx.guild.id if ctx.guild else None,
+                latency_ms=round(latency, 2)
+            )
+            
             embed = EmbedBuilder.error(
                 title="Daily Claim Failed",
                 description="An error occurred while claiming daily rewards.",
@@ -173,60 +219,6 @@ class DailyCog(BaseCog):
     async def daily_short(self, ctx: commands.Context):
         """Alias: rd -> daily"""
         await self.daily(ctx)
-
-
-class DailyActionView(discord.ui.View):
-    """Action buttons after daily claim."""
-
-    def __init__(self, user_id: int):
-        super().__init__(timeout=120)
-        self.user_id = user_id
-        self.message: Optional[discord.Message] = None
-
-    def set_message(self, message: discord.Message):
-        self.message = message
-
-    @discord.ui.button(
-        label="📊 View Profile",
-        style=discord.ButtonStyle.primary,
-        custom_id="profile_after_daily",
-    )
-    async def profile_button(self, interaction: discord.Interaction, _: discord.ui.Button):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "This button is not for you!", ephemeral=True
-            )
-            return
-
-        await interaction.response.send_message(
-            "Use `/profile` to view your updated stats!", ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="✨ Summon",
-        style=discord.ButtonStyle.success,
-        custom_id="summon_after_daily",
-    )
-    async def summon_button(self, interaction: discord.Interaction, _: discord.ui.Button):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "This button is not for you!", ephemeral=True
-            )
-            return
-
-        await interaction.response.send_message(
-            "Use `/summon` to summon maidens with your grace!", ephemeral=True
-        )
-
-    async def on_timeout(self):
-        for item in self.children:
-            if isinstance(item, discord.ui.Button):
-                item.disabled = True
-        if self.message:
-            try:
-                await self.message.edit(view=self)
-            except Exception:
-                pass
 
 
 async def setup(bot: commands.Bot):

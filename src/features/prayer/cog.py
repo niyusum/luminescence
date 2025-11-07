@@ -8,6 +8,7 @@ from src.features.player.service import PlayerService
 from src.features.prayer.service import PrayerService
 from src.core.infra.redis_service import RedisService
 from src.core.infra.transaction_logger import TransactionLogger
+from src.core.config.config_manager import ConfigManager
 from src.core.event.event_bus import EventBus
 from src.core.exceptions import InsufficientResourcesError, ValidationError
 from src.core.logging.logger import get_logger
@@ -38,12 +39,16 @@ class PrayCog(BaseCog):
         super().__init__(bot, "PrayCog")
         self.bot = bot
 
-    @commands.hybrid_command(
+    @commands.command(
         name="pray",
-        aliases=["rp", "rpray"],
+        aliases=["rp", "rpray", "rikipray"],
         description="Perform a prayer to gain grace for summoning",
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="pray")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.prayer.pray.uses", 20),
+        per_seconds=ConfigManager.get("rate_limits.prayer.pray.period", 60),
+        command_name="pray"
+    )
     async def pray(self, ctx: commands.Context):
         """Perform a prayer to gain grace (1 charge per use)."""
         await ctx.defer()
@@ -112,7 +117,8 @@ class PrayCog(BaseCog):
                     )
 
                     view = PrayActionView(ctx.author.id, result["total_grace"])
-                    await ctx.send(embed=embed, view=view)
+                    message = await ctx.send(embed=embed, view=view)
+                    view.message = message
 
         except InsufficientResourcesError as e:
             embed = EmbedBuilder.error(
@@ -219,13 +225,16 @@ class PrayActionView(discord.ui.View):
         )
 
     async def on_timeout(self):
+        """Disable all buttons visually when the view expires."""
         for item in self.children:
-            item.disabled = True
-        if self.message:
-            try:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+
+        try:
+            if self.message:
                 await self.message.edit(view=self)
-            except Exception:
-                pass
+        except discord.HTTPException:
+            pass
 
 
 async def setup(bot: commands.Bot):

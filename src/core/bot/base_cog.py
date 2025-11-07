@@ -1,39 +1,18 @@
 """
-Base Discord cog for RIKI LAW compliant command modules.
+Base Discord Cog for RIKI LAW–compliant prefix-only command modules.
 
-Provides common utilities and enforces architectural patterns
-for all feature cogs in the RIKI RPG Bot.
+Enforces architectural patterns for all feature cogs
+in the RIKI RPG Bot (post-slash-removal architecture).
 
 RIKI LAW Compliance:
-- Article VI: Enforces Discord layer only (no business logic in cogs)
-- Article VII: Standardizes error handling and user feedback
-- Article II: Ensures transaction logging compliance
-
-Usage:
-    Cogs should inherit BaseCog and use provided utilities:
-
-    >>> class MyCog(BaseCog):
-    ...     def __init__(self, bot: commands.Bot):
-    ...         super().__init__(bot, cog_name="MyCog")
-    ...
-    ...     @commands.hybrid_command(name="mycommand")
-    ...     async def my_command(self, ctx: commands.Context):
-    ...         await self.safe_defer(ctx)
-    ...         try:
-    ...             # ... your logic ...
-    ...         except InsufficientResourcesError as e:
-    ...             await self.send_error(ctx, "Insufficient Resources", str(e))
-
-Design Philosophy:
-    - Cogs handle Discord interactions only
-    - All business logic delegated to service layer
-    - Standardized error handling and user feedback
-    - Common patterns extracted to reduce boilerplate
+- Article VI: Cogs handle Discord layer only (UI and context)
+- Article VII: Standardized error handling and user feedback
+- Article II: Enforces transaction logging and audit integrity
 """
 
 import discord
 from discord.ext import commands
-from typing import Optional, Union
+from typing import Optional
 from datetime import datetime
 
 from src.core.infra.database_service import DatabaseService
@@ -50,19 +29,19 @@ from utils.embed_builder import EmbedBuilder
 
 class BaseCog(commands.Cog):
     """
-    Base class for all feature cogs.
-
+    Base class for all feature cogs (prefix-only).
+    
     Provides common utilities for error handling, database access,
-    and user feedback while enforcing RIKI LAW principles.
+    and consistent feedback while enforcing RIKI LAW.
     """
 
     def __init__(self, bot: commands.Bot, cog_name: str):
         """
-        Initialize base cog.
+        Initialize BaseCog.
 
         Args:
             bot: Discord bot instance
-            cog_name: Name of the cog for logging (e.g., "AscensionCog")
+            cog_name: Name of the cog (e.g., "AscensionCog")
         """
         self.bot = bot
         self.cog_name = cog_name
@@ -73,220 +52,91 @@ class BaseCog(commands.Cog):
     # ========================================================================
 
     async def get_session(self):
-        """
-        Get database session for transactions.
-
-        Returns:
-            AsyncSession context manager
-
-        Example:
-            >>> async with self.get_session() as session:
-            ...     player = await PlayerService.get_player(session, user_id)
-        """
+        """Return an async database transaction context."""
         return DatabaseService.get_transaction()
 
     # ========================================================================
-    # USER INTERACTION UTILITIES
+    # USER FEEDBACK UTILITIES
     # ========================================================================
 
-    async def safe_defer(
-        self,
-        ctx_or_interaction: Union[commands.Context, discord.Interaction],
-        ephemeral: bool = False
-    ) -> None:
+    async def defer(self, ctx: commands.Context):
         """
-        Safely defer response (handles both Context and Interaction).
+        Indicate to the user that a long operation is in progress.
 
-        Args:
-            ctx_or_interaction: Context or Interaction object
-            ephemeral: Whether response should be ephemeral
-
-        Example:
-            >>> await self.safe_defer(ctx)
-            >>> # Long operation
-            >>> await ctx.send(embed=embed)
+        Uses ctx.typing() instead of Discord interaction defer.
         """
         try:
-            if isinstance(ctx_or_interaction, discord.Interaction):
-                if not ctx_or_interaction.response.is_done():
-                    await ctx_or_interaction.response.defer(ephemeral=ephemeral)
-            else:
-                await ctx_or_interaction.defer(ephemeral=ephemeral)
+            await ctx.typing()
         except Exception as e:
-            self.logger.warning(f"Failed to defer: {e}")
+            self.logger.warning(f"Failed to start typing indicator: {e}")
 
     async def send_error(
         self,
-        ctx_or_interaction: Union[commands.Context, discord.Interaction],
+        ctx: commands.Context,
         title: str,
         description: str,
-        help_text: Optional[str] = None,
-        ephemeral: bool = True
-    ) -> None:
-        """
-        Send error embed to user.
-
-        Args:
-            ctx_or_interaction: Context or Interaction object
-            title: Error title
-            description: Error description
-            help_text: Optional help text
-            ephemeral: Whether message should be ephemeral
-
-        Example:
-            >>> await self.send_error(
-            ...     ctx,
-            ...     "Insufficient Resources",
-            ...     "You need 1000 rikis to perform this fusion."
-            ... )
-        """
-        embed = EmbedBuilder.error(
-            title=title,
-            description=description,
-            help_text=help_text
-        )
-        await self._send_embed(ctx_or_interaction, embed, ephemeral)
+        help_text: Optional[str] = None
+    ):
+        """Send standardized error feedback."""
+        embed = EmbedBuilder.error(title=title, description=description, help_text=help_text)
+        await self._safe_send(ctx, embed)
 
     async def send_success(
         self,
-        ctx_or_interaction: Union[commands.Context, discord.Interaction],
+        ctx: commands.Context,
         title: str,
         description: str,
-        footer: Optional[str] = None,
-        ephemeral: bool = False
-    ) -> None:
-        """
-        Send success embed to user.
-
-        Args:
-            ctx_or_interaction: Context or Interaction object
-            title: Success title
-            description: Success description
-            footer: Optional footer text
-            ephemeral: Whether message should be ephemeral
-
-        Example:
-            >>> await self.send_success(
-            ...     ctx,
-            ...     "Fusion Complete!",
-            ...     "Your maiden has been upgraded to Tier 6."
-            ... )
-        """
-        embed = EmbedBuilder.success(
-            title=title,
-            description=description,
-            footer=footer
-        )
-        await self._send_embed(ctx_or_interaction, embed, ephemeral)
+        footer: Optional[str] = None
+    ):
+        """Send standardized success feedback."""
+        embed = EmbedBuilder.success(title=title, description=description, footer=footer)
+        await self._safe_send(ctx, embed)
 
     async def send_info(
         self,
-        ctx_or_interaction: Union[commands.Context, discord.Interaction],
+        ctx: commands.Context,
         title: str,
         description: str,
-        footer: Optional[str] = None,
-        ephemeral: bool = False
-    ) -> None:
-        """
-        Send info embed to user.
+        footer: Optional[str] = None
+    ):
+        """Send standardized informational feedback."""
+        embed = EmbedBuilder.info(title=title, description=description, footer=footer)
+        await self._safe_send(ctx, embed)
 
-        Args:
-            ctx_or_interaction: Context or Interaction object
-            title: Info title
-            description: Info description
-            footer: Optional footer text
-            ephemeral: Whether message should be ephemeral
-
-        Example:
-            >>> await self.send_info(
-            ...     ctx,
-            ...     "Current Progress",
-            ...     f"You are on floor {floor} of the ascension tower."
-            ... )
-        """
-        embed = EmbedBuilder.info(
-            title=title,
-            description=description,
-            footer=footer
-        )
-        await self._send_embed(ctx_or_interaction, embed, ephemeral)
-
-    async def _send_embed(
-        self,
-        ctx_or_interaction: Union[commands.Context, discord.Interaction],
-        embed: discord.Embed,
-        ephemeral: bool = False
-    ) -> None:
-        """Send embed handling both Context and Interaction."""
+    async def _safe_send(self, ctx: commands.Context, embed: discord.Embed):
+        """Send embed safely to the invoking context."""
         try:
-            if isinstance(ctx_or_interaction, discord.Interaction):
-                if ctx_or_interaction.response.is_done():
-                    await ctx_or_interaction.followup.send(embed=embed, ephemeral=ephemeral)
-                else:
-                    await ctx_or_interaction.response.send_message(embed=embed, ephemeral=ephemeral)
-            else:
-                await ctx_or_interaction.send(embed=embed, ephemeral=ephemeral)
+            await ctx.reply(embed=embed)
         except Exception as e:
-            self.logger.error(f"Failed to send embed: {e}")
+            self.logger.error(f"Failed to send embed in {self.cog_name}: {e}")
 
     # ========================================================================
-    # ERROR HANDLING UTILITIES
+    # STANDARDIZED ERROR HANDLING
     # ========================================================================
 
-    async def handle_standard_errors(
-        self,
-        ctx_or_interaction: Union[commands.Context, discord.Interaction],
-        error: Exception
-    ) -> bool:
+    async def handle_standard_errors(self, ctx: commands.Context, error: Exception) -> bool:
         """
-        Handle standard RIKI exceptions with user-friendly messages.
-
-        Args:
-            ctx_or_interaction: Context or Interaction object
-            error: Exception that occurred
+        Handle known RIKI LAW exceptions with user-friendly responses.
 
         Returns:
-            True if error was handled, False if unhandled
-
-        Example:
-            >>> try:
-            ...     # some operation
-            ... except Exception as e:
-            ...     if not await self.handle_standard_errors(ctx, e):
-            ...         raise  # Re-raise if not handled
+            bool: True if handled, False otherwise.
         """
         if isinstance(error, InsufficientResourcesError):
-            await self.send_error(
-                ctx_or_interaction,
-                "Insufficient Resources",
-                str(error),
-                help_text="Check your inventory and try again."
-            )
+            await self.send_error(ctx, "Insufficient Resources", str(error),
+                                  "Check your inventory and try again.")
             return True
 
-        elif isinstance(error, InvalidOperationError):
-            await self.send_error(
-                ctx_or_interaction,
-                "Invalid Operation",
-                str(error)
-            )
+        if isinstance(error, InvalidOperationError):
+            await self.send_error(ctx, "Invalid Operation", str(error))
             return True
 
-        elif isinstance(error, CooldownError):
-            await self.send_error(
-                ctx_or_interaction,
-                "Cooldown Active",
-                str(error),
-                help_text="Please wait before trying again."
-            )
+        if isinstance(error, CooldownError):
+            await self.send_error(ctx, "Cooldown Active", str(error),
+                                  "Please wait before retrying.")
             return True
 
-        elif isinstance(error, NotFoundError):
-            await self.send_error(
-                ctx_or_interaction,
-                "Not Found",
-                str(error)
-            )
+        if isinstance(error, NotFoundError):
+            await self.send_error(ctx, "Not Found", str(error))
             return True
 
         return False
@@ -295,47 +145,21 @@ class BaseCog(commands.Cog):
     # PLAYER VALIDATION UTILITIES
     # ========================================================================
 
-    async def require_player(
-        self,
-        ctx_or_interaction: Union[commands.Context, discord.Interaction],
-        session,
-        player_id: int,
-        lock: bool = False
-    ):
+    async def require_player(self, ctx: commands.Context, session, player_id: int, lock: bool = False):
         """
-        Get player or send registration error if not found.
-
-        Args:
-            ctx_or_interaction: Context or Interaction object
-            session: Database session
-            player_id: Player's Discord ID
-            lock: Whether to lock row for update
-
-        Returns:
-            Player object or None if not registered
-
-        Example:
-            >>> async with self.get_session() as session:
-            ...     player = await self.require_player(ctx, session, ctx.author.id, lock=True)
-            ...     if not player:
-            ...         return  # Error already sent
-            ...     # Continue with player
+        Retrieve a player or inform them to register if missing.
         """
         from src.features.player.service import PlayerService
 
-        player = await PlayerService.get_player_with_regen(
-            session, player_id, lock=lock
-        )
-
+        player = await PlayerService.get_player_with_regen(session, player_id, lock=lock)
         if not player:
             await self.send_error(
-                ctx_or_interaction,
+                ctx,
                 "Not Registered",
                 "You need to register first!",
-                help_text="Use `/register` to create your account."
+                help_text="Use `rregister` to create your account."
             )
             return None
-
         return player
 
     # ========================================================================
@@ -348,23 +172,9 @@ class BaseCog(commands.Cog):
         user_id: int,
         guild_id: Optional[int] = None,
         **kwargs
-    ) -> None:
+    ):
         """
-        Log command usage for analytics.
-
-        Args:
-            command_name: Name of command
-            user_id: User's Discord ID
-            guild_id: Optional guild ID
-            **kwargs: Additional context
-
-        Example:
-            >>> self.log_command_use(
-            ...     "fusion",
-            ...     user_id=ctx.author.id,
-            ...     guild_id=ctx.guild.id if ctx.guild else None,
-            ...     tier=5
-            ... )
+        Log command usage for observability and analytics.
         """
         context = LogContext(
             service=self.cog_name,
@@ -373,10 +183,7 @@ class BaseCog(commands.Cog):
             guild_id=guild_id,
             **kwargs
         )
-        self.logger.info(
-            f"Command used: /{command_name}",
-            extra={"context": context}
-        )
+        self.logger.info(f"Command used: r{command_name}", extra={"context": context})
 
     def log_cog_error(
         self,
@@ -384,22 +191,9 @@ class BaseCog(commands.Cog):
         error: Exception,
         user_id: Optional[int] = None,
         **kwargs
-    ) -> None:
+    ):
         """
-        Log cog-level errors.
-
-        Args:
-            operation: Operation that failed
-            error: Exception that occurred
-            user_id: Optional user ID
-            **kwargs: Additional context
-
-        Example:
-            >>> try:
-            ...     # some operation
-            ... except Exception as e:
-            ...     self.log_cog_error("process_fusion", e, user_id=ctx.author.id)
-            ...     raise
+        Log cog-level operational errors.
         """
         context = LogContext(
             service=self.cog_name,
@@ -408,7 +202,7 @@ class BaseCog(commands.Cog):
             **kwargs
         )
         self.logger.error(
-            f"{self.cog_name}.{operation} failed: {str(error)}",
+            f"{self.cog_name}.{operation} failed: {error}",
             exc_info=error,
             extra={"context": context}
         )

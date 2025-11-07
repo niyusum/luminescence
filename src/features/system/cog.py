@@ -117,7 +117,7 @@ class SystemTasksCog(BaseCog):
         """Wait until bot ready before starting cache refresh."""
         await self.bot.wait_until_ready()
 
-    @commands.hybrid_group(name="system", aliases=["rsystem", "rsys"], description="System administration commands")
+    @commands.group(name="system", aliases=["rsys", "rsystem", "rikisystem"], description="System administration commands")
     @commands.has_permissions(administrator=True)
     async def system(self, ctx: commands.Context):
         """System administration command group."""

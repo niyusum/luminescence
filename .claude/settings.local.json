@@ -20,7 +20,8 @@
       "Bash(.venv/Scripts/python.exe:*)",
       "Bash(cp:*)",
       "Bash(mv:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(requirements.txt)"
     ],
     "deny": [],
     "ask": []

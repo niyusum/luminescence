@@ -31,6 +31,8 @@ from sqlalchemy import select
 from datetime import datetime
 import asyncio
 import time
+from pathlib import Path
+import yaml
 
 from src.database.models.core.game_config import GameConfig
 from src.core.logging.logger import get_logger
@@ -370,18 +372,80 @@ class ConfigManager:
     # =========================================================================
     # INITIALIZATION / REFRESH
     # =========================================================================
-    
+
+    @classmethod
+    def _load_yaml_configs(cls) -> None:
+        """
+        Load all YAML config files from config/ directory into cache.
+
+        Files are merged into _defaults first, then copied to _cache.
+        Gracefully handles missing yaml library or config files.
+        """
+        try:
+            config_dir = Path("config")
+            if not config_dir.exists():
+                logger.warning("config/ directory not found, skipping YAML loading")
+                return
+
+            yaml_files = list(config_dir.glob("*.yaml")) + list(config_dir.glob("*.yml"))
+            if not yaml_files:
+                logger.info("No YAML config files found in config/")
+                return
+
+            loaded_count = 0
+            for yaml_file in yaml_files:
+                try:
+                    with open(yaml_file, 'r', encoding='utf-8') as f:
+                        data = yaml.safe_load(f)
+                        if data:
+                            # Merge into defaults (preserves existing defaults)
+                            cls._defaults.update(data)
+                            loaded_count += 1
+                            logger.debug(f"Loaded YAML config: {yaml_file.name}")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load YAML config {yaml_file.name}: {e}",
+                        extra={"file": str(yaml_file), "error": str(e)}
+                    )
+
+            # Copy merged defaults to cache
+            cls._cache = cls._defaults.copy()
+
+            logger.info(
+                f"Loaded {loaded_count} YAML config files from config/",
+                extra={"yaml_count": loaded_count, "total_keys": len(cls._cache)}
+            )
+
+        except ImportError:
+            logger.warning(
+                "PyYAML not installed, skipping YAML config loading. "
+                "Install with: pip install pyyaml"
+            )
+        except Exception as e:
+            logger.error(
+                f"Error loading YAML configs: {e}",
+                extra={"error_type": type(e).__name__},
+                exc_info=True
+            )
+
     @classmethod
     async def initialize(cls) -> None:
         """
-        Load configs from database into cache.
-        
+        Load configs from YAML files and database into cache.
+
+        YAML files in config/ directory are loaded first, then merged with database configs.
+        Database configs take precedence over YAML configs.
+
         Raises:
             Exception: If initialization fails critically
         """
         from src.core.infra.database_service import DatabaseService
-        
+
         try:
+            # Step 1: Load YAML configs from config/ directory
+            cls._load_yaml_configs()
+
+            # Step 2: Load database configs (overrides YAML)
             async with DatabaseService.get_session() as session:
                 result = await session.execute(select(GameConfig))
                 configs = result.scalars().all()
@@ -395,19 +459,21 @@ class ConfigManager:
                         extra={"config_count": len(configs), "source": "database"}
                     )
                 else:
-                    cls._cache = cls._defaults.copy()
+                    # No DB configs, use defaults + YAML
+                    if not cls._cache:
+                        cls._cache = cls._defaults.copy()
                     logger.info(
-                        "ConfigManager initialized: using hardcoded defaults (no DB configs)",
-                        extra={"config_count": len(cls._defaults), "source": "defaults"}
+                        "ConfigManager initialized: using defaults + YAML (no DB configs)",
+                        extra={"config_count": len(cls._cache), "source": "defaults+yaml"}
                     )
 
                 cls._initialized = True
-                
+
                 # Start background refresh task
                 if cls._refresh_task is None:
                     cls._refresh_task = asyncio.create_task(cls._background_refresh())
                     logger.info(f"ConfigManager background refresh started (ttl={cls._cache_ttl}s)")
-                    
+
         except Exception as e:
             cls._metrics["errors"] += 1
             logger.error(

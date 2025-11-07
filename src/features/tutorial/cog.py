@@ -7,6 +7,7 @@ from src.core.infra.database_service import DatabaseService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.features.player.service import PlayerService
 from src.features.tutorial.service import TutorialService, TRIGGER_INDEX, TUTORIAL_STEPS
+from src.core.config.config_manager import ConfigManager
 from src.core.event.event_bus import EventBus
 from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
@@ -31,12 +32,16 @@ class TutorialCog(BaseCog):
         for topic in TRIGGER_INDEX.keys():
             EventBus.subscribe(topic, self._handle_event)
 
-    @commands.hybrid_command(
+    @commands.command(
         name="tutorial",
-        aliases=["rtutorial", "guide"],
+        aliases=["rtt", "rtutorial", "rikitutorial"],
         description="View your tutorial progress and hints"
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="tutorial")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.tutorial.progress.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.tutorial.progress.period", 60),
+        command_name="tutorial"
+    )
     async def tutorial(self, ctx: commands.Context):
         """Display tutorial progress with checklist and hints."""
         await ctx.defer(ephemeral=True)

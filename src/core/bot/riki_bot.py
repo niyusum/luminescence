@@ -71,54 +71,38 @@ class StartupMetrics:
 
 class BotMetrics:
     """In-memory metrics for monitoring."""
-    
+
     def __init__(self):
         self.commands_executed = 0
         self.commands_failed = 0
-        self.slash_commands_executed = 0
-        self.slash_commands_failed = 0
         self.errors_by_type = {}
         self.startup_time = None
         self.last_health_check = None
         self.service_health = {}
-    
-    def increment_command(self, success: bool = True, is_slash: bool = False):
+
+    def increment_command(self, success: bool = True):
         """Increment command counter."""
-        if is_slash:
-            if success:
-                self.slash_commands_executed += 1
-            else:
-                self.slash_commands_failed += 1
+        if success:
+            self.commands_executed += 1
         else:
-            if success:
-                self.commands_executed += 1
-            else:
-                self.commands_failed += 1
-    
+            self.commands_failed += 1
+
     def increment_error(self, error_type: str):
         """Track error by type."""
         self.errors_by_type[error_type] = self.errors_by_type.get(error_type, 0) + 1
-    
+
     def get_stats(self) -> dict:
         """Get current metrics as dictionary."""
-        total_commands = (
-            self.commands_executed + 
-            self.commands_failed + 
-            self.slash_commands_executed + 
-            self.slash_commands_failed
-        )
-        total_failed = self.commands_failed + self.slash_commands_failed
-        
+        total_commands = self.commands_executed + self.commands_failed
+
         return {
             "total_commands": total_commands,
-            "commands_succeeded": self.commands_executed + self.slash_commands_executed,
-            "commands_failed": total_failed,
+            "commands_succeeded": self.commands_executed,
+            "commands_failed": self.commands_failed,
             "success_rate": (
-                ((total_commands - total_failed) / total_commands * 100)
+                ((total_commands - self.commands_failed) / total_commands * 100)
                 if total_commands > 0 else 100.0
             ),
-            "prefix_commands": self.commands_executed,
-            "slash_commands": self.slash_commands_executed,
             "errors_by_type": self.errors_by_type,
             "uptime_seconds": (
                 (time.time() - self.startup_time) if self.startup_time else 0
@@ -167,8 +151,11 @@ class RIKIBot(commands.Bot):
     # Prefix Handling
     # --------------------------------------------------------------- #
     def _get_prefix(self, bot: commands.Bot, message: discord.Message) -> List[str]:
-        """Dynamic prefix getter (mention, r, riki)."""
-        return commands.when_mentioned_or("r", "r ", "riki", "riki ")(bot, message)
+        """Smart dynamic prefix with flexible whitespace (0-3 spaces)."""
+        return commands.when_mentioned_or(
+            "r", "r ", "r  ", "r   ",
+            "riki", "riki ", "riki  ", "riki   "
+        )(bot, message)
 
     # --------------------------------------------------------------- #
     # Startup and Initialization
@@ -206,10 +193,8 @@ class RIKIBot(commands.Bot):
             await register_tutorial_listeners(self)
             logger.info("✅ Tutorial listeners registered")
 
-            # Sync slash commands
-            sync_start = time.perf_counter()
-            await self._sync_commands()
-            sync_time = (time.perf_counter() - sync_start) * 1000
+            # Slash commands removed - prefix-only architecture
+            sync_time = 0
 
             # Store startup metrics
             total_time = (time.perf_counter() - startup_start) * 1000
@@ -310,23 +295,6 @@ class RIKIBot(commands.Bot):
                 )
                 self.degraded_mode = True
                 return duration_ms
-
-    async def _sync_commands(self):
-        """
-        Sync commands globally or to dev guild with error handling.
-        """
-        try:
-            if Config.is_development() and Config.DISCORD_GUILD_ID:
-                guild = discord.Object(id=Config.DISCORD_GUILD_ID)
-                self.tree.copy_global_to(guild=guild)
-                await self.tree.sync(guild=guild)
-                logger.info(f"✅ Commands synced to dev guild {Config.DISCORD_GUILD_ID}")
-            elif Config.is_production():
-                await self.tree.sync()
-                logger.info("✅ Commands synced globally")
-        except Exception as e:
-            logger.error(f"⚠️  Command sync failed: {e}. Commands may not update.", exc_info=True)
-            # Don't fail startup - commands can be synced manually
 
     def _log_startup_summary(self):
         """Log comprehensive startup summary with metrics."""
@@ -517,7 +485,7 @@ class RIKIBot(commands.Bot):
             command=f"prefix:{ctx.command}" if ctx.command else "unknown"
         ):
             # Track metrics
-            self.metrics.increment_command(success=False, is_slash=False)
+            self.metrics.increment_command(success=False)
             
             # Ignore command not found
             if isinstance(error, commands.CommandNotFound):
@@ -590,123 +558,11 @@ class RIKIBot(commands.Bot):
             await ctx.send(embed=embed, ephemeral=True)
 
     # --------------------------------------------------------------- #
-    # Error Handling - Slash Commands (Application Commands)
-    # --------------------------------------------------------------- #
-    async def on_app_command_error(
-        self,
-        interaction: discord.Interaction,
-        error: discord.app_commands.AppCommandError
-    ):
-        """
-        Global error handler for slash commands.
-        
-        RIKI LAW Compliance:
-        - Uses LogContext for Discord audit trail (Article II)
-        - Converts domain exceptions to user-friendly embeds
-        - Tracks metrics for monitoring
-        """
-        # Set logging context - RIKI LAW Article II
-        async with LogContext(
-            user_id=interaction.user.id,
-            guild_id=interaction.guild_id,
-            command=f"/{interaction.command.name}" if interaction.command else "unknown"
-        ):
-            # Track metrics
-            self.metrics.increment_command(success=False, is_slash=True)
-            
-            original = getattr(error, "original", error)
-            error_type = type(original).__name__
-            self.metrics.increment_error(error_type)
-
-            # Handle domain exceptions
-            if isinstance(original, RateLimitError):
-                embed = EmbedBuilder.warning(
-                    title="Rate Limited",
-                    description=f"Wait **{original.retry_after:.1f}s** before using this command again.",
-                )
-                return await self._send_error_response(interaction, embed)
-
-            if isinstance(original, InsufficientResourcesError):
-                embed = EmbedBuilder.error(
-                    title="Insufficient Resources",
-                    description=(
-                        f"You need **{original.required:,}** {original.resource}, "
-                        f"but only have **{original.current:,}**."
-                    ),
-                )
-                return await self._send_error_response(interaction, embed)
-
-            if isinstance(original, RIKIException):
-                embed = EmbedBuilder.error(
-                    title="Error",
-                    description=original.message,
-                    help_text="If this persists, contact support.",
-                )
-                logger.warning(f"Domain exception: {original}", extra=original.to_dict())
-                return await self._send_error_response(interaction, embed)
-
-            # Framework-level errors
-            if isinstance(error, discord.app_commands.CommandOnCooldown):
-                embed = EmbedBuilder.warning(
-                    title="Cooldown Active",
-                    description=f"Please wait **{error.retry_after:.1f}s**.",
-                )
-                return await self._send_error_response(interaction, embed)
-
-            if isinstance(error, discord.app_commands.CheckFailure):
-                embed = EmbedBuilder.error(
-                    title="Permission Denied",
-                    description="You lack permission to use this command.",
-                )
-                return await self._send_error_response(interaction, embed)
-
-            # Fallback - unexpected error
-            logger.error(
-                f"Unhandled slash command error: {error}",
-                exc_info=True,
-                extra={"error_type": error_type}
-            )
-            embed = EmbedBuilder.error(
-                title="Unexpected Error",
-                description="Something went wrong while processing your command.",
-                help_text="The issue has been logged.",
-            )
-            await self._send_error_response(interaction, embed)
-
-    async def _send_error_response(
-        self, 
-        interaction: discord.Interaction, 
-        embed: discord.Embed
-    ):
-        """
-        Send error response, handling both responded and unresponded interactions.
-        
-        Args:
-            interaction: Discord interaction
-            embed: Error embed to send
-        """
-        try:
-            if interaction.response.is_done():
-                await interaction.followup.send(embed=embed, ephemeral=True)
-            else:
-                await interaction.response.send_message(embed=embed, ephemeral=True)
-        except Exception as e:
-            logger.error(f"Failed to send error response: {e}", exc_info=True)
-
-    # --------------------------------------------------------------- #
     # Command Execution Tracking
     # --------------------------------------------------------------- #
     async def on_command_completion(self, ctx: commands.Context):
         """Track successful command execution."""
-        self.metrics.increment_command(success=True, is_slash=False)
-
-    async def on_app_command_completion(
-        self,
-        interaction: discord.Interaction,
-        command: discord.app_commands.Command
-    ):
-        """Track successful slash command execution."""
-        self.metrics.increment_command(success=True, is_slash=True)
+        self.metrics.increment_command(success=True)
 
     # --------------------------------------------------------------- #
     # Graceful Shutdown
@@ -731,8 +587,6 @@ class RIKIBot(commands.Bot):
             logger.info(f"  Uptime:          {stats['uptime_seconds']:.0f}s")
             logger.info(f"  Commands:        {stats['total_commands']}")
             logger.info(f"  Success Rate:    {stats['success_rate']:.1f}%")
-            logger.info(f"  Slash Commands:  {stats['slash_commands']}")
-            logger.info(f"  Prefix Commands: {stats['prefix_commands']}")
 
         async def safe_close(name: str, coro):
             """Close a service safely with error handling."""

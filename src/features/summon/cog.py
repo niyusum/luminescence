@@ -40,17 +40,21 @@ class SummonCog(BaseCog):
         self.bot = bot
         self.active_summon_sessions: Dict[int, List[Dict[str, Any]]] = {}
 
-    @commands.hybrid_command(
-        name="pull",
-        aliases=["rp", "rpull", "rikipull"],
-        description="Pull/summon powerful maidens using grace"
+    @commands.command(
+        name="summon",
+        aliases=["rs", "rsummon", "rikisummon"],
+        description="Summon powerful maidens using grace"
     )
-    @ratelimit(uses=20, per_seconds=60, command_name="pull")
-    async def pull(self, ctx: commands.Context, count: int = 1):
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.summon.single.uses", 20),
+        per_seconds=ConfigManager.get("rate_limits.summon.single.period", 60),
+        command_name="summon"
+    )
+    async def summon(self, ctx: commands.Context, count: int = 1):
         """
-        Pull maidens using grace.
+        Summon maidens using grace.
 
-        Single pulls show results immediately. Batch pulls (x5/x10)
+        Single summons show results immediately. Batch summons (x5/x10)
         use an interactive flow to reveal each result before a summary.
         """
         await ctx.defer()  # public by default
@@ -112,7 +116,8 @@ class SummonCog(BaseCog):
                     self.active_summon_sessions[ctx.author.id] = results
                     view = BatchSummonView(ctx.author.id, results, self.active_summon_sessions)
                     first = self._build_result_embed(results[0], 1, count, remaining)
-                    await ctx.send(embed=first, view=view)
+                    message = await ctx.send(embed=first, view=view)
+                    view.message = message
 
         except InsufficientResourcesError as e:
             embed = EmbedBuilder.error(
@@ -143,7 +148,8 @@ class SummonCog(BaseCog):
         """Display a single summon result."""
         embed = self._build_result_embed(result, 1, 1, remaining)
         view = SingleSummonView(ctx.author.id, remaining)
-        await ctx.send(embed=embed, view=view)
+        message = await ctx.send(embed=embed, view=view)
+        view.message = message
 
     def _build_result_embed(
         self,
@@ -206,6 +212,7 @@ class BatchSummonView(discord.ui.View):
         self.results = results
         self.session = session
         self.index = 0
+        self.message: Optional[discord.Message] = None
 
     @discord.ui.button(label="Next ▶️", style=discord.ButtonStyle.primary)
     async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -270,8 +277,17 @@ class BatchSummonView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
 
     async def on_timeout(self):
-        for i in self.children:
-            i.disabled = True
+        """Disable all buttons visually when the view expires."""
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+
+        try:
+            if self.message:
+                await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
+
         if self.user_id in self.session:
             del self.session[self.user_id]
 
@@ -283,6 +299,7 @@ class SingleSummonView(discord.ui.View):
         super().__init__(timeout=120)
         self.user_id = user_id
         self.remaining = remaining
+        self.message: Optional[discord.Message] = None
         if remaining < 1:
             self.summon_again.disabled = True
 
@@ -301,8 +318,16 @@ class SingleSummonView(discord.ui.View):
         await interaction.response.send_message("Use `/collection` to see your maidens!", ephemeral=True)
 
     async def on_timeout(self):
-        for i in self.children:
-            i.disabled = True
+        """Disable all buttons visually when the view expires."""
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+
+        try:
+            if self.message:
+                await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
 
 async def setup(bot: commands.Bot):

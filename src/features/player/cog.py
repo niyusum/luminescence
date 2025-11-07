@@ -20,6 +20,7 @@ from typing import Optional, Dict, Any
 from src.core.bot.base_cog import BaseCog
 from src.core.infra.database_service import DatabaseService
 from src.features.player.service import PlayerService
+from src.features.player.transaction_service import TransactionService
 from src.features.player.allocation_logic import AllocationService
 from src.features.resource.service import ResourceService
 from src.features.combat.service import CombatService
@@ -41,7 +42,6 @@ from src.core.exceptions import (
 )
 from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
-from sqlalchemy import select, desc
 
 
 def _safe_value(text: str, limit: int = 1024) -> str:
@@ -96,9 +96,9 @@ class PlayerCog(BaseCog):
     # REGISTRATION COMMAND
     # ===============================================================
 
-    @commands.hybrid_command(
+    @commands.command(
         name="register",
-        aliases=["rr"],
+        aliases=["rr", "rregister", "rikiregister"],
         description="Register your RIKI RPG account and begin your journey"
     )
     async def register(self, ctx: commands.Context):
@@ -189,7 +189,8 @@ class PlayerCog(BaseCog):
             )
 
             view = TosAgreeView(player_id=ctx.author.id, support_url=self.support_url)
-            await ctx.send(embed=embed, view=view)
+            message = await ctx.send(embed=embed, view=view)
+            view.message = message
 
             self.log_command_use("register", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None)
 
@@ -207,12 +208,16 @@ class PlayerCog(BaseCog):
     # PROFILE COMMAND
     # ===============================================================
 
-    @commands.hybrid_command(
+    @commands.command(
         name="me",
-        aliases=["rme", "profile", "mystats", "ms", "stats"],
+        aliases=["rme", "rstats", "rikistats"],
         description="View your player profile and statistics"
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="me")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.player.profile.uses", 15),
+        per_seconds=ConfigManager.get("rate_limits.player.profile.period", 60),
+        command_name="me"
+    )
     async def me(self, ctx: commands.Context, user: Optional[discord.Member] = None):
         """
         Display unified player profile with key metrics.
@@ -343,7 +348,8 @@ class PlayerCog(BaseCog):
                 self.bot,
                 target
             )
-            await ctx.send(embed=embed, view=view)
+            message = await ctx.send(embed=embed, view=view)
+            view.message = message
 
             self.log_command_use("me", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None, viewed_user=target.id)
 
@@ -361,12 +367,16 @@ class PlayerCog(BaseCog):
     # ALLOCATION COMMAND
     # ===============================================================
 
-    @commands.hybrid_command(
+    @commands.command(
         name="allocate",
-        aliases=["alloc", "ralloc", "rallocate"],
+        aliases=["rall", "rallocate", "rikiallocate"],
         description="Allocate stat points to Energy, Stamina, or HP"
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="allocate")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.player.allocate.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.player.allocate.period", 60),
+        command_name="allocate"
+    )
     async def allocate(self, ctx: commands.Context):
         """View stat allocation interface."""
         await self.safe_defer(ctx)
@@ -466,7 +476,8 @@ class PlayerCog(BaseCog):
                 )
 
                 view = AllocationView(ctx.author.id, player.stat_points_available)
-                await ctx.send(embed=embed, view=view)
+                message = await ctx.send(embed=embed, view=view)
+                view.message = message
 
                 self.log_command_use("allocate", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None)
 
@@ -484,12 +495,16 @@ class PlayerCog(BaseCog):
     # TRANSACTIONS COMMAND
     # ===============================================================
 
-    @commands.hybrid_command(
+    @commands.command(
         name="transactions",
-        aliases=["rt", "rtrans"],
+        aliases=["rlog", "rtransactions", "rikitransactions"],
         description="View recent resource transaction history"
     )
-    @ratelimit(uses=5, per_seconds=60, command_name="transactions")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.player.profile.uses", 15),
+        per_seconds=ConfigManager.get("rate_limits.player.profile.period", 60),
+        command_name="transactions"
+    )
     async def transactions(self, ctx: commands.Context, limit: Optional[int] = 10):
         """Display the player's recent resource transactions."""
         await self.safe_defer(ctx)
@@ -501,15 +516,10 @@ class PlayerCog(BaseCog):
                 if not player:
                     return
 
-                # Query recent transactions
-                result = await session.execute(
-                    select(TransactionLog)
-                    .where(TransactionLog.player_id == ctx.author.id)
-                    .where(TransactionLog.transaction_type.like("resource_%"))
-                    .order_by(desc(TransactionLog.timestamp))
-                    .limit(limit)
+                # Get recent transactions via service
+                logs = await TransactionService.get_recent_transactions(
+                    session, ctx.author.id, limit=limit
                 )
-                logs = result.scalars().all()
 
             if not logs:
                 await self.send_info(
@@ -586,6 +596,7 @@ class TosAgreeView(discord.ui.View):
     def __init__(self, player_id: int, support_url: str):
         super().__init__(timeout=600)
         self.player_id = player_id
+        self.message: Optional[discord.Message] = None
 
         # Update support button URL
         for item in self.children:
@@ -648,9 +659,16 @@ class TosAgreeView(discord.ui.View):
         pass
 
     async def on_timeout(self):
-        for c in self.children:
-            if isinstance(c, discord.ui.Button) and c.style != discord.ButtonStyle.link:
-                c.disabled = True
+        """Disable all buttons visually when the view expires."""
+        for item in self.children:
+            if isinstance(item, discord.ui.Button) and item.style != discord.ButtonStyle.link:
+                item.disabled = True
+
+        try:
+            if self.message:
+                await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
 
 class UnifiedProfileView(discord.ui.View):

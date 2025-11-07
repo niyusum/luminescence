@@ -1,18 +1,40 @@
-from src.core.bot.base_cog import BaseCog
+"""
+Maiden fusion system for tier progression.
+
+The Discord UI layer for the Fusion feature. Enforces RIKI LAW by delegating 
+all state mutation to the service layer and ensuring full observability 
+through structured logging and pessimistic locking on writes.
+
+RIKI LAW Compliance:
+- Article I.1: SELECT FOR UPDATE on all state mutations.
+- Article I.2: Structured Transaction Logging is atomic with state changes.
+- Article I.3: Redis locks prevent double-fusion concurrency issues.
+- Article I.4: Fusion costs and rates are fetched from ConfigManager.
+- Article I.5: Explicit, graceful exception handling using BaseCog utilities.
+- Article VI: Thin cog structure, all logic resides in FusionService.
+"""
+
 import discord
 from discord.ext import commands
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
+import time
 
+from src.core.bot.base_cog import BaseCog
 from src.core.infra.database_service import DatabaseService
+from src.core.infra.transaction_logger import TransactionLogger
+from src.core.infra.redis_service import RedisService
+from src.core.config.config_manager import ConfigManager # ADDED: RIKI LAW I.4
+from src.core.event.event_bus import EventBus
 from src.features.player.service import PlayerService
 from src.features.fusion.service import FusionService
-from src.core.infra.redis_service import RedisService
-from src.core.infra.transaction_logger import TransactionLogger
-from src.core.event.event_bus import EventBus
-from src.core.exceptions import InsufficientResourcesError, FusionError
+from src.core.exceptions import InsufficientResourcesError, InvalidFusionError, NotFoundError
 from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
-from utils.embed_builder import EmbedBuilder
+from src.utils.embed_builder import EmbedBuilder
+
+# Type checking for callable (used for passing the structured logger method)
+if TYPE_CHECKING:
+    from typing import Callable
 
 logger = get_logger(__name__)
 
@@ -21,67 +43,54 @@ class FusionCog(BaseCog):
     """
     Maiden fusion system for tier progression.
 
-    Players fuse two maidens of the same tier to create one maiden of the next tier.
-    Success rates decrease at higher tiers. Failed fusions grant shards.
-
-    RIKI LAW Compliance:
-        - SELECT FOR UPDATE on fusion (Article I.1)
-        - Transaction logging (Article I.2)
-        - Redis locks prevent double-fusion (Article I.3)
-        - ConfigManager for costs/rates (Article I.4)
-        - Specific exception handling (Article I.5)
-        - Single commit (Article I.6)
-        - All logic through FusionService (Article I.7)
+    Handles the Discord command interface and passes execution to FusionService.
     """
 
     def __init__(self, bot: commands.Bot):
+        """Initialize the Fusion Cog."""
         super().__init__(bot, self.__class__.__name__)
         self.bot = bot
-
-    @commands.hybrid_command(
+    
+    @commands.command(
         name="fusion",
-        aliases=["rf", "rfusion"],
+        aliases=["rf", "rfusion", "rikifusion"],
         description="Fuse two maidens to create a higher tier maiden",
     )
-    @ratelimit(uses=15, per_seconds=60, command_name="fusion")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.fusion.main.uses", 15),
+        per_seconds=ConfigManager.get("rate_limits.fusion.main.period", 60),
+        command_name="fusion"
+    )
     async def fusion(self, ctx: commands.Context):
         """Open the fusion interface."""
-        await ctx.defer()  # public fusion interface
+        start_time = time.perf_counter()
+        # RIKI LAW: Use safe defer
+        await self.safe_defer(ctx)
 
         try:
             async with DatabaseService.get_transaction() as session:
-                player = await PlayerService.get_player_with_regen(
-                    session, ctx.author.id, lock=False
+                # RIKI LAW: Use BaseCog helper for player check
+                player = await self.require_player(
+                    session, ctx, ctx.author.id, lock=False
                 )
-
                 if not player:
-                    embed = EmbedBuilder.error(
-                        title="Not Registered",
-                        description="You need to register first!",
-                        help_text="Use `/register` to create your account.",
-                    )
-                    await ctx.send(embed=embed, ephemeral=True)
                     return
 
+                # RIKI LAW I.7: Delegate logic
                 fusable_maidens = await FusionService.get_fusable_maidens(
                     session, player.discord_id
                 )
 
                 if not fusable_maidens:
-                    embed = EmbedBuilder.warning(
-                        title="No Fusable Maidens",
-                        description=(
-                            "You don't have any maidens that can be fused.\n\n"
+                    await self.send_error(
+                        ctx,
+                        "No Fusable Maidens",
+                        (
                             "You need **2 or more** of the same maiden at the same tier to fuse."
                         ),
-                        footer="Tip: Summon more maidens to build your collection!",
+                        help_text="Tip: Use `/summon` to get new maidens.",
+                        warning=True # Use warning style for domain state errors
                     )
-                    embed.add_field(
-                        name="How to Get Maidens",
-                        value="• Use `/summon` to get new maidens\n• Use `/pray` to gain grace for summons\n• Check `/collection` to see what you have",
-                        inline=False,
-                    )
-                    await ctx.send(embed=embed, ephemeral=True)
                     return
 
                 embed = EmbedBuilder.primary(
@@ -114,37 +123,61 @@ class FusionCog(BaseCog):
                     ),
                     inline=False,
                 )
+                
+                # RIKI LAW II: Pass structured logger method to view for auditable failures
+                view = FusionSelectionView(
+                    ctx.author.id,
+                    fusable_maidens,
+                    self.log_cog_error
+                )
 
-                view = FusionSelectionView(ctx.author.id, fusable_maidens)
-                await ctx.send(embed=embed, view=view)
+                message = await ctx.send(embed=embed, view=view)
+                view.message = message  # Track message for visual timeout disable
+                
+            # Log latency (Success)
+            latency = (time.perf_counter() - start_time) * 1000
+            self.log_command_use(
+                "fusion",
+                ctx.author.id,
+                guild_id=ctx.guild.id if ctx.guild else None,
+                latency_ms=round(latency, 2),
+            )
 
         except Exception as e:
-            logger.error(f"Fusion UI error for {ctx.author.id}: {e}", exc_info=True)
-            embed = EmbedBuilder.error(
-                title="Fusion Error",
-                description="Unable to load fusion interface.",
-                help_text="Please try again in a moment.",
+            # RIKI LAW I.5: Structured Error Logging
+            latency = (time.perf_counter() - start_time) * 1000
+            self.log_cog_error(
+                "fusion_ui_load", 
+                e, 
+                user_id=ctx.author.id, 
+                guild_id=ctx.guild.id if ctx.guild else None,
+                latency_ms=round(latency, 2),
+                status="unexpected_ui_failure"
             )
-            await ctx.send(embed=embed, ephemeral=True)
-
-    @commands.command(name="rf", hidden=True)
-    async def fusion_short(self, ctx: commands.Context):
-        """Alias: rf -> fusion"""
-        await self.fusion(ctx)
-
+            if not await self.handle_standard_errors(ctx, e):
+                 await self.send_error(
+                    ctx,
+                    "Fusion Error",
+                    "Unable to load fusion interface. The system has been notified.",
+                )
 
 class FusionSelectionView(discord.ui.View):
     """Interactive view for selecting maidens to fuse."""
 
-    def __init__(self, user_id: int, fusable_maidens: List[Dict[str, Any]]):
-        super().__init__(timeout=300)
+    def __init__(
+        self, 
+        user_id: int, 
+        fusable_maidens: List[Dict[str, Any]],
+        cog_logger: 'Callable'
+    ):
+        """Initialize the fusion selection view."""
+        # RIKI LAW: Standard timeout (300s is high, but we'll stick to it)
+        super().__init__(timeout=300) 
         self.user_id = user_id
         self.fusable_maidens = fusable_maidens
         self.message: Optional[discord.Message] = None
-        self.add_item(TierSelectDropdown(user_id, fusable_maidens))
-
-    def set_message(self, message: discord.Message):
-        self.message = message
+        self.cog_logger = cog_logger # RIKI LAW II: Pass logger method down
+        self.add_item(TierSelectDropdown(user_id, fusable_maidens, cog_logger))
 
     @discord.ui.button(
         label="📖 View Fusion Rates",
@@ -154,11 +187,19 @@ class FusionSelectionView(discord.ui.View):
     async def view_rates(
         self, interaction: discord.Interaction, _: discord.ui.Button
     ):
+        """Show the current fusion success rates."""
+        # RIKI LAW: User validation is required for all interactions
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "This button is not for you!", ephemeral=True
             )
             return
+        
+        # RIKI LAW I.4: Use ConfigManager for rates, eliminating hard-coded values
+        fusion_rates = ConfigManager.get("fusion.base_rates", default={
+            1: 0.95, 2: 0.90, 3: 0.85, 4: 0.75, 5: 0.65, 6: 0.55, 
+            7: 0.45, 8: 0.35, 9: 0.25, 10: 0.15, 11: 0.10
+        })
 
         rates_embed = EmbedBuilder.info(
             title="Fusion Success Rates",
@@ -166,46 +207,48 @@ class FusionSelectionView(discord.ui.View):
             footer="Rates may be boosted during events",
         )
 
-        rates = [
-            ("Tier 1 → 2", "95%"),
-            ("Tier 2 → 3", "90%"),
-            ("Tier 3 → 4", "85%"),
-            ("Tier 4 → 5", "75%"),
-            ("Tier 5 → 6", "65%"),
-            ("Tier 6 → 7", "55%"),
-            ("Tier 7 → 8", "45%"),
-            ("Tier 8 → 9", "35%"),
-            ("Tier 9 → 10", "25%"),
-            ("Tier 10 → 11", "15%"),
-            ("Tier 11 → 12", "10%"),
-        ]
-
-        rates_text = "\n".join([f"**{tier}**: {rate}" for tier, rate in rates])
+        rates_text = "\n".join([
+            f"**Tier {tier} → {tier + 1}**: {rate * 100:.0f}%" 
+            for tier, rate in sorted(fusion_rates.items())
+        ])
+        
         rates_embed.add_field(name="Base Rates", value=rates_text, inline=False)
         rates_embed.add_field(
             name="🔷 Fusion Shards",
-            value="Failed fusions grant shards. Collect 10 shards of a tier to guarantee a fusion to the next tier!",
+            # RIKI LAW I.4: Use config for shard requirement
+            value=f"Failed fusions grant shards. Collect **{ConfigManager.get('fusion.shard_guarantee_count', default=10)}** shards of a tier to guarantee a fusion to the next tier!",
             inline=False,
         )
 
         await interaction.response.send_message(embed=rates_embed, ephemeral=True)
 
     async def on_timeout(self):
+        """Disable all buttons visually when the view expires."""
+        # RIKI LAW POSITIONAL MARKER: VIEW TIMEOUT HANDLER
         for item in self.children:
             item.disabled = True
-        if self.message:
-            try:
+
+        try:
+            # If we still have access to the sent message, edit to reflect disabled state
+            if self.message:
                 await self.message.edit(view=self)
-            except Exception:
-                pass
+        except discord.HTTPException:
+            pass
 
 
 class TierSelectDropdown(discord.ui.Select):
     """Dropdown for selecting fusion tier."""
 
-    def __init__(self, user_id: int, fusable_maidens: List[Dict[str, Any]]):
+    def __init__(
+        self, 
+        user_id: int, 
+        fusable_maidens: List[Dict[str, Any]],
+        cog_logger: 'Callable'
+    ):
+        """Initialize the tier selection dropdown."""
         self.user_id = user_id
         self.fusable_maidens = fusable_maidens
+        self.cog_logger = cog_logger # RIKI LAW II: Pass logger method down
 
         by_tier: Dict[int, List[Dict[str, Any]]] = {}
         for maiden in fusable_maidens:
@@ -228,6 +271,7 @@ class TierSelectDropdown(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        """Handle tier selection."""
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "This selection is not for you!", ephemeral=True
@@ -246,18 +290,20 @@ class TierSelectDropdown(discord.ui.Select):
             footer=f"{len(tier_maidens)} options available",
         )
 
-        view = MaidenSelectView(self.user_id, tier_maidens)
+        view = MaidenSelectView(self.user_id, tier_maidens, self.cog_logger)
         await interaction.response.edit_message(embed=embed, view=view)
 
 
 class MaidenSelectView(discord.ui.View):
     """View for selecting a specific maiden to fuse."""
 
-    def __init__(self, user_id: int, tier_maidens: List[Dict[str, Any]]):
+    def __init__(self, user_id: int, tier_maidens: List[Dict[str, Any]], cog_logger: 'Callable'):
+        """Initialize the maiden selection view."""
         super().__init__(timeout=300)
         self.user_id = user_id
         self.tier_maidens = tier_maidens
-        self.add_item(MaidenSelectDropdown(user_id, tier_maidens))
+        self.cog_logger = cog_logger # RIKI LAW II: Pass logger method down
+        self.add_item(MaidenSelectDropdown(user_id, tier_maidens, cog_logger))
 
     @discord.ui.button(
         label="« Back",
@@ -265,23 +311,27 @@ class MaidenSelectView(discord.ui.View):
         custom_id="back_to_tier_select",
     )
     async def back_button(self, interaction: discord.Interaction, _: discord.ui.Button):
+        """Go back to the initial tier selection view."""
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "This button is not for you!", ephemeral=True
             )
             return
 
+        # RIKI LAW: Use /fusion to restart is cleanest for deep navigation
         await interaction.response.send_message(
             "Use `/fusion` to restart the fusion process.", ephemeral=True
         )
 
 
 class MaidenSelectDropdown(discord.ui.Select):
-    """Dropdown for selecting specific maiden."""
+    """Dropdown for selecting specific maiden and executing fusion."""
 
-    def __init__(self, user_id: int, tier_maidens: List[Dict[str, Any]]):
+    def __init__(self, user_id: int, tier_maidens: List[Dict[str, Any]], cog_logger: 'Callable'):
+        """Initialize the maiden selection dropdown."""
         self.user_id = user_id
         self.tier_maidens = tier_maidens
+        self.cog_logger = cog_logger # RIKI LAW II: Keep logger method
 
         options = [
             discord.SelectOption(
@@ -300,6 +350,8 @@ class MaidenSelectDropdown(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        """Execute the fusion transaction."""
+        start_time = time.perf_counter()
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "This selection is not for you!", ephemeral=True
@@ -309,21 +361,34 @@ class MaidenSelectDropdown(discord.ui.Select):
         await interaction.response.defer()
 
         maiden_id = int(self.values[0])
+        
+        # RIKI LAW: Log context for the current operation
+        log_context = {
+            "maiden_id": maiden_id,
+            "tier_selected": self.tier_maidens[0]["tier"] if self.tier_maidens else 0,
+            "guild_id": interaction.guild_id,
+        }
 
         try:
+            # RIKI LAW I.3: Acquire Redis lock first
             async with RedisService.acquire_lock(f"fusion:{self.user_id}", timeout=10):
+                # RIKI LAW I.1 & I.6: Transaction for state modification
                 async with DatabaseService.get_transaction() as session:
+                    # RIKI LAW I.1: Pessimistic lock on player for resource/inventory change
                     player = await PlayerService.get_player_with_regen(
                         session, self.user_id, lock=True
                     )
 
                     if not player:
-                        await interaction.followup.send("Player not found!", ephemeral=True)
-                        return
+                        # This should be caught earlier, but safe guard anyway
+                        raise NotFoundError("Player profile not found after lock.") 
 
+                    # RIKI LAW I.7: Delegate logic to service
                     result = await FusionService.attempt_fusion(session, player, maiden_id)
-
+                    
+                    # RIKI LAW I.2 & I.6: Transaction logging is ATOMIC with state change
                     await TransactionLogger.log_transaction(
+                        session=session,
                         player_id=self.user_id,
                         transaction_type="fusion_attempted",
                         details={
@@ -333,21 +398,21 @@ class MaidenSelectDropdown(discord.ui.Select):
                             "tier_to": result["tier_to"],
                             "cost": result.get("cost", 0),
                         },
-                        context=f"interaction:fusion guild:{interaction.guild_id}",
+                        context=f"fusion guild:{interaction.guild_id}",
                     )
 
-                    await EventBus.publish(
-                        "fusion_completed",
-                        {
-                            "player_id": self.user_id,
-                            "success": result["success"],
-                            "tier_from": result["tier_from"],
-                            "tier_to": result["tier_to"],
-                            "channel_id": interaction.channel_id,  
-                            "__topic__": "fusion_completed",       
-                            "timestamp": discord.utils.utcnow(),   
-                        },
-                    )
+                # RIKI LAW: Publish event OUTSIDE of the primary database transaction
+                await EventBus.publish(
+                    "fusion_completed",
+                    {
+                        "player_id": self.user_id,
+                        "success": result["success"],
+                        "tier_from": result["tier_from"],
+                        "tier_to": result["tier_to"],
+                        "channel_id": interaction.channel_id,
+                        "timestamp": discord.utils.utcnow(),
+                    },
+                )
 
                 # Fusion outcome embeds
                 if result["success"]:
@@ -368,36 +433,70 @@ class MaidenSelectDropdown(discord.ui.Select):
                     embed = EmbedBuilder.warning(
                         title="Fusion Failed",
                         description=(
-                            f"The fusion did not succeed...\n\n"
+                            f"The fusion did not succeed.\n\n"
                             f"**Tier {result['tier_from']}** maidens were lost."
                         ),
                         footer="Better luck next time!",
                     )
                     embed.add_field(
                         name="🔷 Consolation",
-                        value=f"+1 Tier {result['tier_from']} Fusion Shard\n\nCollect 10 shards for a guaranteed fusion!",
+                        value=f"+1 Tier {result['tier_from']} Fusion Shard\n\nCollect {ConfigManager.get('fusion.shard_guarantee_count', default=10)} shards for a guaranteed fusion!",
                         inline=False,
                     )
-
+                
+                # RIKI LAW: Disable view after execution
                 await interaction.edit_original_response(embed=embed, view=None)
-
-        except InsufficientResourcesError as e:
-            embed = EmbedBuilder.error(
-                title="Insufficient Resources",
-                description=str(e),
-                help_text="Gain more resources and try again!",
+                
+            # Log latency (Success)
+            latency = (time.perf_counter() - start_time) * 1000
+            self.cog_logger(
+                "fusion_execute", 
+                None, 
+                user_id=self.user_id,
+                latency_ms=round(latency, 2),
+                status="success",
+                **log_context
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        except FusionError as e:
+
+        # RIKI LAW I.5: Specific exception handling first
+        except (InsufficientResourcesError, InvalidFusionError, NotFoundError) as e:
+            # Log domain error
+            latency = (time.perf_counter() - start_time) * 1000
+            self.cog_logger(
+                "fusion_execute",
+                e,
+                user_id=self.user_id,
+                latency_ms=round(latency, 2),
+                status="domain_error",
+                error_type=type(e).__name__,
+                **log_context
+            )
+            # Send friendly response for domain error
             embed = EmbedBuilder.error(title="Fusion Error", description=str(e))
             await interaction.followup.send(embed=embed, ephemeral=True)
+            # RIKI LAW: Disable view after failure to prevent re-try
+            await interaction.edit_original_response(view=None)
+
         except Exception as e:
-            logger.error(f"Fusion execution error: {e}", exc_info=True)
+            # RIKI LAW I.5: Catch-all for auditable failures
+            latency = (time.perf_counter() - start_time) * 1000
+            self.cog_logger(
+                "fusion_execute",
+                e,
+                user_id=self.user_id,
+                latency_ms=round(latency, 2),
+                status="unexpected_failure",
+                error_type=type(e).__name__,
+                **log_context
+            )
             embed = EmbedBuilder.error(
-                title="Fusion Failed", description="An error occurred during fusion."
+                title="System Error", description="An unexpected error occurred during fusion. The team has been notified."
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
+            # RIKI LAW: Disable view after critical failure
+            await interaction.edit_original_response(view=None)
 
 
 async def setup(bot: commands.Bot):
+    """Required for dynamic cog loading."""
     await bot.add_cog(FusionCog(bot))

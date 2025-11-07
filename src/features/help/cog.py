@@ -1,4 +1,3 @@
-from src.core.bot.base_cog import BaseCog
 """
 Interactive help system with categorized commands.
 
@@ -14,6 +13,9 @@ import discord
 from discord.ext import commands
 from typing import Dict, Optional
 
+from src.core.bot.base_cog import BaseCog
+from src.core.config.config_manager import ConfigManager
+from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 
 
@@ -29,10 +31,15 @@ class HelpCog(BaseCog):
         super().__init__(bot, self.__class__.__name__)
         self.bot = bot
 
-    @commands.hybrid_command(
+    @commands.command(
         name="help",
-        aliases=["rhelp", "commands"],
+        aliases=["rh", "rhelp", "rikihelp"],
         description="View all available commands and how to use them",
+    )
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.help.main.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.help.main.period", 60),
+        command_name="help"
     )
     async def help(self, ctx: commands.Context, command: Optional[str] = None):
         """Display interactive help menu."""
@@ -72,7 +79,8 @@ class HelpCog(BaseCog):
         )
 
         view = HelpCategoryView()
-        await ctx.send(embed=embed, view=view, ephemeral=True)
+        message = await ctx.send(embed=embed, view=view, ephemeral=True)
+        view.message = message
 
     async def _show_command_help(self, ctx: commands.Context, command_name: str):
         """Show help for specific command."""
@@ -272,13 +280,16 @@ class HelpCategoryView(discord.ui.View):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def on_timeout(self):
+        """Disable all buttons visually when the view expires."""
         for item in self.children:
-            item.disabled = True
-        if self.message:
-            try:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+
+        try:
+            if self.message:
                 await self.message.edit(view=self)
-            except Exception:
-                pass
+        except discord.HTTPException:
+            pass
 
 
 async def setup(bot: commands.Bot):

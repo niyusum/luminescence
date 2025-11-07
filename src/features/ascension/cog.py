@@ -5,28 +5,32 @@ Consolidates tower climbing, combat, and token redemption into a single
 cohesive ascension feature cog.
 
 RIKI LAW Compliance:
-    - All business logic delegated to services (Article I.7)
-    - BaseCog pattern for standardized error handling
-    - Read-only operations use no locks (Article I.11)
-    - State modifications use pessimistic locking (Article I.1)
-    - Transaction logging via services (Article II)
-    - Specific exception handling (Article I.5)
-    - Redis locks for concurrent button prevention (Article I.3)
+    - Article I.7: All business logic delegated to services (Thin Cogs, Thick Services)
+    - Article VII: BaseCog pattern for standardized error handling
+    - Article I.11: Read-only operations use no locks
+    - Article I.1: State modifications use pessimistic locking (SELECT FOR UPDATE)
+    - Article II: Transaction logging and audit integrity enforced
+    - Article I.5: Specific exception handling in the UI layer
+    - Article I.3: Redis locks for concurrent button prevention
+    - Article I.9: Metrics for command latency and failures
 """
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 from typing import Optional, Dict, Any, List
+import time
 
+from core.config.config_manager import ConfigManager
 from src.core.bot.base_cog import BaseCog
 from src.core.infra.database_service import DatabaseService
+from src.core.logging.logger import get_logger, LogContext
 from src.features.player.service import PlayerService
 from src.features.ascension.service import AscensionService
 from src.features.ascension.token_logic import TokenService
 from src.features.ascension.constants import (
     TOKEN_TIERS,
-    get_all_token_types
+    get_all_token_types,
+    FLOOR_COLOR_TIERS
 )
 from src.features.combat.service import CombatService
 from src.features.maiden.constants import Element
@@ -36,36 +40,42 @@ from src.core.exceptions import InsufficientResourcesError, InvalidOperationErro
 from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 
+logger = get_logger(__name__)
+
 
 class AscensionCog(BaseCog):
     """
     Unified ascension tower system.
-
-    Handles strategic tower climbing combat, token inventory management,
-    and token redemption for maiden rewards.
-
-    Commands:
-        /ascension (ra, rascension, tower) - Climb the infinite tower
-        /tokens (token, tk) - View token inventory
-        /redeem (use_token) - Redeem tokens for maidens
     """
 
     def __init__(self, bot: commands.Bot):
         super().__init__(bot, "AscensionCog")
     
-    # ===============================================================
-    # ASCENSION TOWER COMMAND
-    # ===============================================================
+    # UTILITIES
 
-    @commands.hybrid_command(
+    def _get_floor_color(self, floor: int) -> int:
+        """Helper to determine embed color based on floor number."""
+        for _, (start, end, color) in FLOOR_COLOR_TIERS.items():
+            if start <= floor <= end:
+                return color
+        return 0x808080
+
+    # ASCENSION TOWER COMMAND
+
+    @commands.command(
         name="ascension",
-        aliases=["ra", "rascension", "tower"],
+        aliases=["rasc", "rascension", "rikiascension"],
         description="Climb the infinite tower (strategic combat)"
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="ascension")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.ascension.climb.uses", 20),
+        per_seconds=ConfigManager.get("rate_limits.ascension.climb.period", 60),
+        command_name="ascension"
+    )
     async def ascension(self, ctx: commands.Context):
         """Initiate ascension floor encounter."""
-        await self.safe_defer(ctx)
+        start_time = time.perf_counter()
+        await self.defer(ctx)
 
         try:
             async with self.get_session() as session:
@@ -73,10 +83,9 @@ class AscensionCog(BaseCog):
                 if not player:
                     return
                 
-                # Initiate floor
                 combat_data = await AscensionService.initiate_floor(session, player)
 
-                # Log floor initiation
+                # RIKI LAW Article II: Transaction Logging for floor initiation
                 await TransactionLogger.log_transaction(
                     session=session,
                     player_id=ctx.author.id,
@@ -91,22 +100,35 @@ class AscensionCog(BaseCog):
                     context=f"ascension:floor_{combat_data['floor']}"
                 )
 
-            # Build floor encounter embed
             embed = self._build_floor_embed(combat_data)
             
-            # Create combat view
             view = AscensionCombatView(
                 user_id=ctx.author.id,
-                combat_data=combat_data
+                combat_data=combat_data,
+                cog_error_logger=self.log_cog_error
             )
             
             message = await ctx.send(embed=embed, view=view)
             view.set_message(message)
 
-            self.log_command_use("ascension", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None)
+            # RIKI LAW Article I.9: Latency Metric Logging
+            latency = (time.perf_counter() - start_time) * 1000
+            self.log_command_use(
+                "ascension",
+                ctx.author.id,
+                guild_id=ctx.guild.id if ctx.guild else None,
+                latency_ms=round(latency, 2)
+            )
 
         except Exception as e:
-            self.log_cog_error("ascension", e, user_id=ctx.author.id)
+            # RIKI LAW Article II: Structured Error Logging
+            self.log_cog_error(
+                "ascension",
+                e,
+                user_id=ctx.author.id,
+                guild_id=ctx.guild.id if ctx.guild else None,
+                latency_ms=round((time.perf_counter() - start_time) * 1000, 2)
+            )
             if not await self.handle_standard_errors(ctx, e):
                 await self.send_error(
                     ctx,
@@ -115,6 +137,8 @@ class AscensionCog(BaseCog):
                     help_text="Please try again."
                 )
     
+    # EMBED BUILDERS
+
     def _build_floor_embed(self, combat_data: Dict[str, Any]) -> discord.Embed:
         """Build floor encounter embed."""
         floor = combat_data["floor"]
@@ -122,17 +146,7 @@ class AscensionCog(BaseCog):
         player_stats = combat_data["player_stats"]
         strategic = combat_data["strategic_power"]
         
-        # Determine color by floor
-        if floor <= 25:
-            color = 0x808080  # Gray
-        elif floor <= 50:
-            color = 0x00FF00  # Green
-        elif floor <= 100:
-            color = 0x0099FF  # Blue
-        elif floor <= 150:
-            color = 0x9932CC  # Purple
-        else:
-            color = 0xFF4500  # Orange Red
+        color = self._get_floor_color(floor)
         
         embed = discord.Embed(
             title=f"🗼 FLOOR {floor} APPROACH",
@@ -202,15 +216,22 @@ class AscensionCog(BaseCog):
         
         return embed
 
+# VIEW COMPONENTS
 
 class AscensionCombatView(discord.ui.View):
     """Interactive combat view with attack buttons."""
     
-    def __init__(self, user_id: int, combat_data: Dict[str, Any]):
+    def __init__(
+        self,
+        user_id: int,
+        combat_data: Dict[str, Any],
+        cog_error_logger: callable
+    ):
         super().__init__(timeout=300)
         self.user_id = user_id
         self.combat_data = combat_data
         self.message: Optional[discord.Message] = None
+        self.cog_error_logger = cog_error_logger
     
     def set_message(self, message: discord.Message):
         self.message = message
@@ -279,7 +300,7 @@ class AscensionCombatView(discord.ui.View):
         )
         
         await interaction.response.edit_message(embed=embed, view=None)
-    
+
     async def _execute_attack(
         self,
         interaction: discord.Interaction,
@@ -294,19 +315,20 @@ class AscensionCombatView(discord.ui.View):
             return
 
         await interaction.response.defer()
+        
+        guild_id = interaction.guild_id
+        floor = self.combat_data["floor"]
+        lock_key = f"ascension_combat:{self.user_id}:{floor}"
 
         try:
-            # Acquire Redis lock to prevent double-clicks
-            floor_id = self.combat_data["floor"]
-            lock_key = f"ascension_combat:{self.user_id}:{floor_id}"
-
+            # RIKI LAW Article I.3: Redis lock for concurrent button prevention
             async with RedisService.acquire_lock(lock_key, timeout=5):
                 async with DatabaseService.get_transaction() as session:
+                    # RIKI LAW Article I.1: Pessimistic locking for state mutation
                     player = await PlayerService.get_player_with_regen(
                         session, self.user_id, lock=True
                     )
 
-                    # Execute attack turn
                     result = await AscensionService.execute_attack_turn(
                         session=session,
                         player=player,
@@ -315,7 +337,7 @@ class AscensionCombatView(discord.ui.View):
                         combat_state=self.combat_data["combat_state"]
                     )
 
-                    # Log attack action
+                    # RIKI LAW Article II: Transaction Logging for attack action
                     await TransactionLogger.log_transaction(
                         session=session,
                         player_id=self.user_id,
@@ -334,7 +356,7 @@ class AscensionCombatView(discord.ui.View):
                         context=f"ascension:floor_{self.combat_data['floor']}"
                     )
 
-                # Update monster HP
+                # Update View State
                 self.combat_data["monster"]["hp"] = result["boss_hp"]
                 self.combat_data["combat_state"]["player_hp"] = result["player_hp"]
                 self.combat_data["combat_state"]["critical_gauge"] = result["critical_gauge"]
@@ -343,7 +365,6 @@ class AscensionCombatView(discord.ui.View):
 
                 # Check outcome
                 if result["victory"]:
-                    # Victory!
                     async with DatabaseService.get_transaction() as session:
                         player = await PlayerService.get_player_with_regen(
                             session, self.user_id, lock=True
@@ -355,7 +376,7 @@ class AscensionCombatView(discord.ui.View):
                             turns_taken=result["turns_taken"]
                         )
 
-                        # Log victory
+                        # RIKI LAW Article II: Transaction Logging for victory
                         await TransactionLogger.log_transaction(
                             session=session,
                             player_id=self.user_id,
@@ -377,9 +398,8 @@ class AscensionCombatView(discord.ui.View):
                     await interaction.edit_original_response(embed=embed, view=view)
 
                 elif result["defeat"]:
-                    # Defeated!
                     async with DatabaseService.get_transaction() as session:
-                        # Log defeat
+                        # RIKI LAW Article II: Transaction Logging for defeat
                         await TransactionLogger.log_transaction(
                             session=session,
                             player_id=self.user_id,
@@ -398,10 +418,10 @@ class AscensionCombatView(discord.ui.View):
                     await interaction.edit_original_response(embed=embed, view=None)
 
                 else:
-                    # Continue combat
                     embed = self._build_combat_turn_embed(result)
                     await interaction.edit_original_response(embed=embed, view=self)
         
+        # RIKI LAW Article I.5 & Article VII: Specific Exception Handling
         except InsufficientResourcesError as e:
             embed = EmbedBuilder.error(
                 title="Insufficient Resources",
@@ -410,15 +430,25 @@ class AscensionCombatView(discord.ui.View):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
         
+        # RIKI LAW Article II: Structured Error Logging for audit
         except Exception as e:
-            logger.error(f"Attack execution error: {e}", exc_info=True)
+            self.cog_error_logger(
+                "ascension_combat_view",
+                e,
+                user_id=self.user_id,
+                guild_id=guild_id,
+                floor_number=floor,
+                lock_key=lock_key
+            )
             embed = EmbedBuilder.error(
                 title="Combat Error",
                 description="Failed to execute attack.",
-                help_text="Please try again."
+                help_text="Please try again. Your action has been logged for audit."
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
     
+    # EMBED BUILDERS (VIEW)
+
     def _build_combat_turn_embed(self, result: Dict[str, Any]) -> discord.Embed:
         """Build combat turn result embed."""
         monster = self.combat_data["monster"]
@@ -582,16 +612,17 @@ class AscensionCombatView(discord.ui.View):
         return embed
     
     async def on_timeout(self):
-        """Disable buttons on timeout."""
+        """Disable all buttons visually when the view expires."""
         for item in self.children:
             if isinstance(item, discord.ui.Button):
                 item.disabled = True
-        
-        if self.message:
-            try:
+
+        try:
+            # If we still have access to the sent message, edit to reflect disabled state
+            if self.message:
                 await self.message.edit(view=self)
-            except Exception:
-                pass
+        except discord.HTTPException:
+            pass
 
 
 class AscensionVictoryView(discord.ui.View):
@@ -648,24 +679,22 @@ class AscensionVictoryView(discord.ui.View):
             ephemeral=True
         )
 
+    # TOKEN INVENTORY COMMAND
 
-
-    # ===============================================================
-    # TOKEN INVENTORY & REDEMPTION COMMANDS
-    # ===============================================================
-
-    # ===============================================================
-    # Token Inventory Command
-    # ===============================================================
-    @commands.hybrid_command(
+    @commands.command(
         name="tokens",
-        aliases=["token", "tk"],
+        aliases=["rtk", "rtokens", "rikitokens"],
         description="View your token inventory"
     )
-    @ratelimit(uses=10, per_seconds=60, command_name="tokens")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.ascension.rewards.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.ascension.rewards.period", 60),
+        command_name="tokens"
+    )
     async def tokens(self, ctx: commands.Context):
         """Display token inventory with redemption info."""
-        await self.safe_defer(ctx)
+        start_time = time.perf_counter()
+        await self.defer(ctx)
 
         try:
             async with self.get_session() as session:
@@ -673,7 +702,7 @@ class AscensionVictoryView(discord.ui.View):
                 if not player:
                     return
                 
-                # Get token inventory
+                # RIKI LAW Article I.11: Read-only operation uses no lock
                 inventory = await TokenService.get_player_tokens(
                     session, player.discord_id
                 )
@@ -691,7 +720,6 @@ class AscensionVictoryView(discord.ui.View):
             total_tokens = sum(inventory.values())
             has_tokens = False
             
-            # Display each token type
             for token_type in get_all_token_types():
                 token_data = TOKEN_TIERS[token_type]
                 quantity = inventory.get(token_type, 0)
@@ -700,7 +728,6 @@ class AscensionVictoryView(discord.ui.View):
                 if quantity > 0:
                     has_tokens = True
                 
-                # Use checkmark or X based on quantity
                 status = "✅" if quantity > 0 else "❌"
                 
                 embed.add_field(
@@ -713,14 +740,12 @@ class AscensionVictoryView(discord.ui.View):
                     inline=True
                 )
             
-            # Total tokens summary
             embed.add_field(
                 name="📊 Summary",
                 value=f"**Total Tokens:** {total_tokens}",
                 inline=False
             )
             
-            # Help text based on whether user has tokens
             if has_tokens:
                 embed.add_field(
                     name="💡 How to Redeem",
@@ -748,10 +773,24 @@ class AscensionVictoryView(discord.ui.View):
             
             await ctx.send(embed=embed)
 
-            self.log_command_use("tokens", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None)
+            # RIKI LAW Article I.9: Latency Metric Logging
+            latency = (time.perf_counter() - start_time) * 1000
+            self.log_command_use(
+                "tokens",
+                ctx.author.id,
+                guild_id=ctx.guild.id if ctx.guild else None,
+                latency_ms=round(latency, 2)
+            )
 
         except Exception as e:
-            self.log_cog_error("tokens", e, user_id=ctx.author.id)
+            # RIKI LAW Article II: Structured Error Logging
+            self.log_cog_error(
+                "tokens",
+                e,
+                user_id=ctx.author.id,
+                guild_id=ctx.guild.id if ctx.guild else None,
+                latency_ms=round((time.perf_counter() - start_time) * 1000, 2)
+            )
             if not await self.handle_standard_errors(ctx, e):
                 await self.send_error(
                     ctx,
@@ -760,27 +799,29 @@ class AscensionVictoryView(discord.ui.View):
                     help_text="Please try again."
                 )
     
-    # ===============================================================
-    # Token Redemption Command
-    # ===============================================================
-    @commands.hybrid_command(
+    # TOKEN REDEMPTION COMMAND
+
+    @commands.command(
         name="redeem",
-        aliases=["use_token"],
+        aliases=["rrd", "rredeem", "rikiredeem"],
         description="Redeem a token for a random maiden"
     )
-    @app_commands.describe(token_type="Type of token to redeem (bronze, silver, gold, platinum, diamond)")
-    @ratelimit(uses=10, per_seconds=60, command_name="redeem")
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.ascension.rewards.uses", 10),
+        per_seconds=ConfigManager.get("rate_limits.ascension.rewards.period", 60),
+        command_name="redeem"
+    )
     async def redeem(
         self,
         ctx: commands.Context,
         token_type: str
     ):
         """Redeem token for random maiden in tier range."""
-        await self.safe_defer(ctx)
+        start_time = time.perf_counter()
+        await self.defer(ctx)
 
         token_type = token_type.lower()
 
-        # Validate token type
         if token_type not in TOKEN_TIERS:
             valid_types = ", ".join(get_all_token_types())
             await self.send_error(
@@ -793,18 +834,18 @@ class AscensionVictoryView(discord.ui.View):
 
         try:
             async with self.get_session() as session:
+                # RIKI LAW Article I.1: Pessimistic locking for state mutation
                 player = await self.require_player(ctx, session, ctx.author.id, lock=True)
                 if not player:
                     return
                 
-                # Redeem token
                 result = await TokenService.redeem_token(
                     session=session,
                     player=player,
                     token_type=token_type
                 )
                 
-                await session.commit()
+                # Manual commit removed, handled by context manager (RIKI LAW Article I.6)
             
             # Build success embed
             token_info = TOKEN_TIERS[token_type]
@@ -812,7 +853,6 @@ class AscensionVictoryView(discord.ui.View):
             tier = result["tier"]
             tokens_remaining = result["tokens_remaining"]
             
-            # Get element emoji
             element_obj = Element.from_string(maiden_base.element)
             element_emoji = element_obj.emoji if element_obj else "❓"
             element_name = element_obj.display_name if element_obj else maiden_base.element
@@ -858,8 +898,17 @@ class AscensionVictoryView(discord.ui.View):
             
             await ctx.send(embed=embed)
 
-            self.log_command_use("redeem", ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None, token_type=token_type)
+            # RIKI LAW Article I.9: Latency Metric Logging
+            latency = (time.perf_counter() - start_time) * 1000
+            self.log_command_use(
+                "redeem",
+                ctx.author.id,
+                guild_id=ctx.guild.id if ctx.guild else None,
+                token_type=token_type,
+                latency_ms=round(latency, 2)
+            )
 
+        # RIKI LAW Article I.5 & Article VII: Specific Exception Handling
         except InsufficientResourcesError as e:
             token_info = TOKEN_TIERS[token_type]
             await self.send_error(
@@ -881,7 +930,14 @@ class AscensionVictoryView(discord.ui.View):
             )
 
         except Exception as e:
-            self.log_cog_error("redeem", e, user_id=ctx.author.id)
+            # RIKI LAW Article II: Structured Error Logging
+            self.log_cog_error(
+                "redeem",
+                e,
+                user_id=ctx.author.id,
+                guild_id=ctx.guild.id if ctx.guild else None,
+                latency_ms=round((time.perf_counter() - start_time) * 1000, 2)
+            )
             if not await self.handle_standard_errors(ctx, e):
                 await self.send_error(
                     ctx,
@@ -889,39 +945,6 @@ class AscensionVictoryView(discord.ui.View):
                     "An unexpected error occurred while redeeming your token.",
                     help_text="Please try again or contact support if this persists."
                 )
-    
-    # ===============================================================
-    # Autocomplete for Redeem Command
-    # ===============================================================
-    @redeem.autocomplete("token_type")
-    async def redeem_token_autocomplete(
-        self,
-        interaction: discord.Interaction,
-        current: str
-    ) -> List[app_commands.Choice[str]]:
-        """Autocomplete token types for redeem command."""
-        token_types = get_all_token_types()
-        
-        # Filter based on current input
-        if current:
-            token_types = [
-                t for t in token_types
-                if current.lower() in t.lower()
-            ]
-        
-        # Return as choices with emoji and name
-        choices = []
-        for token_type in token_types[:25]:  # Discord limit
-            token_data = TOKEN_TIERS[token_type]
-            choices.append(
-                app_commands.Choice(
-                    name=f"{token_data['emoji']} {token_data['name']}",
-                    value=token_type
-                )
-            )
-        
-        return choices
-
 
 
 async def setup(bot: commands.Bot):

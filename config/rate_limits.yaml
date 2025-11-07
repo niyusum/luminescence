@@ -1,0 +1,181 @@
+# Rate Limits Configuration
+# All rate limits for commands across the bot
+# Format: uses (number of times) per period (seconds)
+# Hot-reloadable via ConfigManager
+
+# Guild Commands
+guild:
+  menu:
+    uses: 5
+    period: 30
+  group:
+    uses: 10
+    period: 60
+  create:
+    uses: 3
+    period: 300
+  invite:
+    uses: 10
+    period: 60
+  revoke:
+    uses: 10
+    period: 60
+  accept:
+    uses: 5
+    period: 60
+  donate:
+    uses: 20
+    period: 60
+  upgrade:
+    uses: 5
+    period: 60
+  promote:
+    uses: 10
+    period: 60
+  demote:
+    uses: 10
+    period: 60
+  kick:
+    uses: 10
+    period: 60
+  transfer:
+    uses: 2
+    period: 300
+  leave:
+    uses: 5
+    period: 60
+  info:
+    uses: 30
+    period: 60
+  set_description:
+    uses: 5
+    period: 300
+  set_emblem:
+    uses: 5
+    period: 300
+
+# Fusion Commands
+fusion:
+  main:
+    uses: 15
+    period: 60
+
+# Exploration Commands
+exploration:
+  explore:
+    uses: 30
+    period: 60
+  zones:
+    uses: 10
+    period: 60
+
+# Daily Commands
+daily:
+  claim:
+    uses: 5
+    period: 60
+  view:
+    uses: 10
+    period: 60
+
+# Ascension Commands
+ascension:
+  climb:
+    uses: 20
+    period: 60
+  status:
+    uses: 10
+    period: 60
+  rewards:
+    uses: 10
+    period: 60
+
+# Player Commands
+player:
+  register:
+    uses: 3
+    period: 300
+  profile:
+    uses: 15
+    period: 60
+  allocate:
+    uses: 10
+    period: 60
+  reset:
+    uses: 2
+    period: 600
+
+# Leaderboard Commands
+leaderboard:
+  view:
+    uses: 10
+    period: 60
+
+# Help Commands
+help:
+  main:
+    uses: 10
+    period: 60
+  command:
+    uses: 20
+    period: 60
+
+# Maiden Commands
+maiden:
+  view:
+    uses: 15
+    period: 60
+  favorite:
+    uses: 10
+    period: 60
+  release:
+    uses: 10
+    period: 60
+  upgrade:
+    uses: 15
+    period: 60
+
+# Shrine Commands
+shrines:
+  offer:
+    uses: 20
+    period: 60
+  status:
+    uses: 10
+    period: 60
+  claim:
+    uses: 10
+    period: 60
+
+# Tutorial Commands
+tutorial:
+  start:
+    uses: 3
+    period: 300
+  skip:
+    uses: 3
+    period: 300
+  progress:
+    uses: 10
+    period: 60
+
+# Prayer Commands
+prayer:
+  pray:
+    uses: 20
+    period: 60
+  status:
+    uses: 10
+    period: 60
+
+# Summon Commands
+summon:
+  single:
+    uses: 20
+    period: 60
+  multi:
+    uses: 10
+    period: 60
+  rates:
+    uses: 10
+    period: 60

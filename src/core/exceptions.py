@@ -115,12 +115,37 @@ class InsufficientResourcesError(RIKIException):
         )
 
 
-class MaidenNotFoundError(RIKIException):
-    """Raised when a maiden cannot be found in player's collection."""
-    
+class NotFoundError(RIKIException):
+    """Raised when a requested resource cannot be found."""
+
     DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected user error
     DEFAULT_RETRYABLE = False
-    
+
+    def __init__(self, resource_type: str, identifier: Optional[Any] = None):
+        self.resource_type = resource_type
+        self.identifier = identifier
+
+        if identifier:
+            message = f"{resource_type} not found: {identifier}"
+        else:
+            message = f"{resource_type} not found"
+
+        super().__init__(
+            message,
+            details={
+                "resource_type": resource_type,
+                "identifier": identifier
+            },
+            error_code=f"{resource_type.upper()}_NOT_FOUND"
+        )
+
+
+class MaidenNotFoundError(RIKIException):
+    """Raised when a maiden cannot be found in player's collection."""
+
+    DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected user error
+    DEFAULT_RETRYABLE = False
+
     def __init__(self, maiden_id: Optional[int] = None, maiden_name: Optional[str] = None):
         self.maiden_id = maiden_id
         self.maiden_name = maiden_name

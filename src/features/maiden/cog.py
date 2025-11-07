@@ -7,7 +7,9 @@ from src.core.bot.base_cog import BaseCog
 from src.features.maiden.service import MaidenService
 from src.features.maiden.leader_service import LeaderService
 from src.features.combat.service import CombatService
+from src.core.config.config_manager import ConfigManager
 from src.core.event.event_bus import EventBus
+from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 
 
@@ -31,10 +33,15 @@ class MaidenCog(BaseCog):
     def __init__(self, bot: commands.Bot):
         super().__init__(bot, "MaidenCog")
 
-    @commands.hybrid_command(
+    @commands.command(
         name="maidens",
-        aliases=["rm", "rmaidens", "collection"],
+        aliases=["rm", "rmaidens", "rikimaidens"],
         description="View your maiden collection and manage your leader",
+    )
+    @ratelimit(
+        uses=ConfigManager.get("rate_limits.maiden.view.uses", 15),
+        per_seconds=ConfigManager.get("rate_limits.maiden.view.period", 60),
+        command_name="maidens"
     )
     async def maidens(self, ctx: commands.Context):
         """Show maiden overview with interactive menu."""
@@ -128,7 +135,8 @@ class MaidenCog(BaseCog):
 
                 # Send with interactive menu
                 view = MaidenMenuView(ctx.author.id, self.bot, ctx)
-                await ctx.send(embed=embed, view=view)
+                message = await ctx.send(embed=embed, view=view)
+                view.message = message
 
                 # Publish event for tutorial
                 try:
@@ -285,15 +293,16 @@ class MaidenMenuView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
     async def on_timeout(self):
-        """Disable buttons on timeout."""
+        """Disable all buttons visually when the view expires."""
         for item in self.children:
             if isinstance(item, discord.ui.Button):
                 item.disabled = True
-        if self.message:
-            try:
+
+        try:
+            if self.message:
                 await self.message.edit(view=self)
-            except Exception:
-                pass
+        except discord.HTTPException:
+            pass
 
 
 class MaidenCollectionPaginationView(discord.ui.View):
@@ -352,14 +361,16 @@ class MaidenCollectionPaginationView(discord.ui.View):
         )
 
     async def on_timeout(self):
+        """Disable all buttons visually when the view expires."""
         for item in self.children:
             if isinstance(item, discord.ui.Button):
                 item.disabled = True
-        if self.message:
-            try:
+
+        try:
+            if self.message:
                 await self.message.edit(view=self)
-            except Exception:
-                pass
+        except discord.HTTPException:
+            pass
 
 
 class LeaderSelectionView(discord.ui.View):
@@ -522,9 +533,15 @@ class LeaderSelectionView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
     async def on_timeout(self):
-        """Disable all items on timeout."""
+        """Disable all buttons visually when the view expires."""
         for item in self.children:
             item.disabled = True
+
+        try:
+            if self.message:
+                await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
 
 async def setup(bot: commands.Bot):

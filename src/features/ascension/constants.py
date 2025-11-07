@@ -65,6 +65,13 @@ TOKEN_TIERS: Dict[str, Dict] = {
     }
 }
 
+FLOOR_COLOR_TIERS = {
+    "GRAY": (1, 25, 0x808080),
+    "GREEN": (26, 50, 0x00FF00),
+    "BLUE": (51, 100, 0x0099FF),
+    "PURPLE": (101, 150, 0x9932CC),
+    "ORANGE_RED": (151, 9999, 0xFF4500),
+}
 
 # ============================================================================
 # TOKEN HELPER FUNCTIONS
