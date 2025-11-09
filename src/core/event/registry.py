@@ -19,7 +19,7 @@ Usage:
 """
 
 from src.core.logging.logger import get_logger
-from src.features.tutorial.listener import register_tutorial_listeners
+from src.modules.tutorial.listener import register_tutorial_listeners
 
 logger = get_logger(__name__)
 

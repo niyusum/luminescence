@@ -92,6 +92,7 @@ class Maiden(SQLModel, table=True):
 
     acquired_from: str = Field(default="summon", max_length=50)
     times_fused: int = Field(default=0, ge=0)
+    is_locked: bool = Field(default=False)
 
     # ────────────────────────────────────────────────────────────────
     # Tier Display Helpers
@@ -99,7 +100,7 @@ class Maiden(SQLModel, table=True):
 
     def get_tier_display(self) -> str:
         """Full display (e.g., 'Tier VII – Legendary')."""
-        from src.features.maiden.constants import Tier
+        from src.modules.maiden.constants import Tier
 
         if tier_data := Tier.get(self.tier):
             return tier_data.display_name
@@ -107,7 +108,7 @@ class Maiden(SQLModel, table=True):
 
     def get_tier_short_display(self) -> str:
         """Short display (e.g., 'T7 Legendary')."""
-        from src.features.maiden.constants import Tier
+        from src.modules.maiden.constants import Tier
 
         if tier_data := Tier.get(self.tier):
             return tier_data.short_display
@@ -115,7 +116,7 @@ class Maiden(SQLModel, table=True):
 
     def get_tier_name(self) -> str:
         """Tier name only (e.g., 'Legendary')."""
-        from src.features.maiden.constants import Tier
+        from src.modules.maiden.constants import Tier
 
         if tier_data := Tier.get(self.tier):
             return tier_data.name
@@ -123,7 +124,7 @@ class Maiden(SQLModel, table=True):
 
     def get_tier_color(self) -> int:
         """Discord embed color for this tier."""
-        from src.features.maiden.constants import Tier
+        from src.modules.maiden.constants import Tier
 
         if tier_data := Tier.get(self.tier):
             return tier_data.color
@@ -135,7 +136,7 @@ class Maiden(SQLModel, table=True):
 
     def get_element_emoji(self) -> str:
         """Emoji representing this maiden's element."""
-        from src.features.maiden.constants import Element
+        from src.modules.maiden.constants import Element
 
         if element := Element.from_string(self.element):
             return element.emoji
@@ -143,7 +144,7 @@ class Maiden(SQLModel, table=True):
 
     def get_element_color(self) -> int:
         """Discord embed color for this element."""
-        from src.features.maiden.constants import Element
+        from src.modules.maiden.constants import Element
 
         if element := Element.from_string(self.element):
             return element.color

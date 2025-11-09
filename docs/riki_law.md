@@ -363,7 +363,7 @@ async def fuse(self, ctx: commands.Context):
 **Structure:**
 ```
 src/
-├── features/
+├── modules/
 │   ├── fusion/
 │   │   ├── cog.py          # Discord UI layer
 │   │   ├── service.py      # Business logic

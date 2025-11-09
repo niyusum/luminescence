@@ -24,6 +24,8 @@ import time
 
 from src.database.models.economy.transaction_log import TransactionLog
 from src.core.logging.logger import get_logger
+from src.core.validation import TransactionValidator
+from src.core.exceptions import ValidationError
 
 logger = get_logger(__name__)
 
@@ -59,47 +61,77 @@ class TransactionLogger:
         player_id: int,
         transaction_type: str,
         details: Dict[str, Any],
-        context: Optional[str] = None
+        context: Optional[str] = None,
+        validate: bool = True
     ) -> None:
         """
-        Log a transaction to the database.
-        
+        Log a transaction to the database with validation.
+
         Args:
             session: Database session (must be part of active transaction)
             player_id: Discord ID of the player
             transaction_type: Type of transaction (fusion_attempt, resource_change, etc.)
             details: Structured data about the transaction
             context: Where the transaction originated (command name, event, etc.)
+            validate: If True, validate transaction before logging (default True)
+
+        Raises:
+            ValidationError: If validation fails (only if validate=True)
         """
         start_time = time.perf_counter()
-        
+
         try:
+            # SEC-07: Validate transaction data before logging
+            if validate:
+                sanitized_details = TransactionValidator.validate_transaction(
+                    transaction_type=transaction_type,
+                    details=details,
+                    allow_unknown_types=True  # Allow schema evolution
+                )
+                validated_context = TransactionValidator.validate_context(context)
+            else:
+                sanitized_details = details
+                validated_context = context or "unknown"
+
             log_entry = TransactionLog(
                 player_id=player_id,
                 transaction_type=transaction_type,
-                details=details,
-                context=context or "unknown",
+                details=sanitized_details,
+                context=validated_context,
                 timestamp=datetime.utcnow()
             )
-            
+
             session.add(log_entry)
-            
+
             TransactionLogger._metrics["transactions_logged"] += 1
-            
+
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             TransactionLogger._metrics["total_log_time_ms"] += elapsed_ms
-            
+
             logger.info(
                 f"TRANSACTION: player={player_id} type={transaction_type}",
                 extra={
                     "player_id": player_id,
                     "transaction_type": transaction_type,
-                    "details": details,
-                    "context": context,
+                    "details": sanitized_details,
+                    "context": validated_context,
                     "log_time_ms": round(elapsed_ms, 2)
                 }
             )
-            
+
+        except ValidationError as e:
+            # Validation failed - re-raise to caller
+            TransactionLogger._metrics["log_errors"] += 1
+            logger.error(
+                f"Transaction validation failed: player={player_id} type={transaction_type} error={e}",
+                extra={
+                    "player_id": player_id,
+                    "transaction_type": transaction_type,
+                    "validation_error": str(e)
+                }
+            )
+            raise
+
         except Exception as e:
             TransactionLogger._metrics["log_errors"] += 1
             logger.error(
@@ -227,14 +259,15 @@ class TransactionLogger:
     @staticmethod
     async def batch_log(
         session: AsyncSession,
-        transactions: List[Dict[str, Any]]
+        transactions: List[Dict[str, Any]],
+        validate: bool = True
     ) -> int:
         """
-        Log multiple transactions efficiently in a batch.
-        
+        Log multiple transactions efficiently in a batch with validation.
+
         More efficient than individual log_transaction calls when logging
         many transactions at once.
-        
+
         Args:
             session: Database session
             transactions: List of transaction dicts with keys:
@@ -242,10 +275,11 @@ class TransactionLogger:
                 - transaction_type: Type of transaction
                 - details: Transaction details dict
                 - context: Optional context string
-        
+            validate: If True, validate each transaction before logging (default True)
+
         Returns:
             Number of transactions successfully logged
-        
+
         Example:
             >>> await TransactionLogger.batch_log(session, [
             ...     {
@@ -263,15 +297,37 @@ class TransactionLogger:
             ... ])
         """
         start_time = time.perf_counter()
-        
+
         try:
             log_entries = []
             for txn in transactions:
+                # SEC-07: Validate each transaction in batch
+                if validate:
+                    try:
+                        sanitized_details = TransactionValidator.validate_transaction(
+                            transaction_type=txn["transaction_type"],
+                            details=txn["details"],
+                            allow_unknown_types=True
+                        )
+                        validated_context = TransactionValidator.validate_context(
+                            txn.get("context")
+                        )
+                    except ValidationError as e:
+                        # Log validation error but continue with other transactions
+                        logger.warning(
+                            f"Skipping invalid transaction in batch: "
+                            f"player={txn.get('player_id')} type={txn.get('transaction_type')} error={e}"
+                        )
+                        continue
+                else:
+                    sanitized_details = txn["details"]
+                    validated_context = txn.get("context", "unknown")
+
                 log_entry = TransactionLog(
                     player_id=txn["player_id"],
                     transaction_type=txn["transaction_type"],
-                    details=txn["details"],
-                    context=txn.get("context", "unknown"),
+                    details=sanitized_details,
+                    context=validated_context,
                     timestamp=datetime.utcnow()
                 )
                 log_entries.append(log_entry)

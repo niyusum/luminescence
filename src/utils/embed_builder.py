@@ -19,7 +19,7 @@ import discord
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-from src.features.maiden.constants import EmbedColor, UIConstants
+from src.modules.maiden.constants import EmbedColor, UIConstants
 
 
 class EmbedBuilder:

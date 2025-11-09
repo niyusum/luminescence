@@ -434,11 +434,11 @@ class RedisService:
     async def expire(cls, key: str, ttl: int) -> bool:
         """Set TTL on existing key."""
         cls._metrics["operations"]["expire"] += 1
-        
+
         if cls._client is None or not cls._circuit_breaker.can_attempt():
             cls._metrics["failures"] += 1
             return False
-        
+
         try:
             await cls._client.expire(key, ttl)
             cls._circuit_breaker.call_succeeded()
@@ -453,6 +453,35 @@ class RedisService:
                 exc_info=True
             )
             return False
+
+    @classmethod
+    async def ttl(cls, key: str) -> int:
+        """
+        Get remaining time-to-live for a key.
+
+        Args:
+            key: Cache key
+
+        Returns:
+            TTL in seconds, -1 if key exists with no TTL, -2 if key doesn't exist
+        """
+        if cls._client is None or not cls._circuit_breaker.can_attempt():
+            return -1
+
+        try:
+            result = await cls._client.ttl(key)
+            cls._circuit_breaker.call_succeeded()
+            cls._metrics["successes"] += 1
+            return result
+        except Exception as e:
+            cls._circuit_breaker.call_failed()
+            cls._metrics["failures"] += 1
+            logger.error(
+                f"Redis TTL error: key={key} error={e}",
+                extra={"operation": "ttl", "key": key},
+                exc_info=True
+            )
+            return -1
     
     # =========================================================================
     # BATCH OPERATIONS

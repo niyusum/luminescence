@@ -87,28 +87,28 @@ class MaidenBase(SQLModel, table=True):
 
     def get_tier_display(self) -> str:
         """Full tier display (e.g., 'Tier VII – Legendary')."""
-        from src.features.maiden.constants import Tier
+        from src.modules.maiden.constants import Tier
         if tier_data := Tier.get(self.base_tier):
             return tier_data.display_name
         return f"Tier {self.base_tier}"
 
     def get_tier_short_display(self) -> str:
         """Short tier display (e.g., 'T7 Legendary')."""
-        from src.features.maiden.constants import Tier
+        from src.modules.maiden.constants import Tier
         if tier_data := Tier.get(self.base_tier):
             return tier_data.short_display
         return f"T{self.base_tier}"
 
     def get_tier_color(self) -> int:
         """Discord embed color for this tier."""
-        from src.features.maiden.constants import Tier
+        from src.modules.maiden.constants import Tier
         if tier_data := Tier.get(self.base_tier):
             return tier_data.color
         return 0x2C2D31
 
     def get_rarity_tier_name(self) -> str:
         """Human-readable rarity name (e.g., 'Legendary', 'Ethereal')."""
-        from src.features.maiden.constants import Tier
+        from src.modules.maiden.constants import Tier
         if tier_data := Tier.get(self.base_tier):
             return tier_data.name
         return "Unknown"
@@ -119,14 +119,14 @@ class MaidenBase(SQLModel, table=True):
 
     def get_element_emoji(self) -> str:
         """Emoji representing this element."""
-        from src.features.maiden.constants import Element
+        from src.modules.maiden.constants import Element
         if element_obj := Element.from_string(self.element):
             return element_obj.emoji
         return "❓"
 
     def get_element_color(self) -> int:
         """Discord embed color for this element."""
-        from src.features.maiden.constants import Element
+        from src.modules.maiden.constants import Element
         if element_obj := Element.from_string(self.element):
             return element_obj.color
         return 0x2C2D31
@@ -137,14 +137,14 @@ class MaidenBase(SQLModel, table=True):
 
     def get_stat_range(self) -> Tuple[int, int]:
         """Expected (min, max) stat range for this tier."""
-        from src.features.maiden.constants import Tier
+        from src.modules.maiden.constants import Tier
         if tier_data := Tier.get(self.base_tier):
             return tier_data.stat_range
         return (0, 0)
 
     def is_stats_valid_for_tier(self) -> bool:
         """Validate if total stats fall within tier-defined range."""
-        from src.features.maiden.constants import Tier
+        from src.modules.maiden.constants import Tier
         if not (tier_data := Tier.get(self.base_tier)):
             return False
 

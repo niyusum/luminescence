@@ -97,8 +97,8 @@ class Config:
     
     # Database Configuration
     DATABASE_URL: str = ""
-    DATABASE_POOL_SIZE: int = 50
-    DATABASE_MAX_OVERFLOW: int = 50
+    DATABASE_POOL_SIZE: int = 20  # Reduced from 50 to prevent connection exhaustion
+    DATABASE_MAX_OVERFLOW: int = 10  # Reduced from 50 (max 30 connections per instance)
     DATABASE_ECHO: bool = False
     DATABASE_POOL_RECYCLE: int = 3600
     
@@ -311,8 +311,8 @@ class Config:
             "postgresql+psycopg://user:password@localhost:5432/riki_rpg",
             required=True
         )
-        cls.DATABASE_POOL_SIZE = cls._safe_int("DATABASE_POOL_SIZE", 50, min_val=1, max_val=200)
-        cls.DATABASE_MAX_OVERFLOW = cls._safe_int("DATABASE_MAX_OVERFLOW", 50, min_val=0, max_val=200)
+        cls.DATABASE_POOL_SIZE = cls._safe_int("DATABASE_POOL_SIZE", 20, min_val=1, max_val=200)
+        cls.DATABASE_MAX_OVERFLOW = cls._safe_int("DATABASE_MAX_OVERFLOW", 10, min_val=0, max_val=200)
         cls.DATABASE_ECHO = cls._safe_bool("DATABASE_ECHO", False)
         cls.DATABASE_POOL_RECYCLE = cls._safe_int("DATABASE_POOL_RECYCLE", 3600, min_val=60)
         

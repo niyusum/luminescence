@@ -452,9 +452,35 @@ class Player(SQLModel, table=True):
         )
     
     # ========================================================================
+    # RESOURCE CAP ENFORCEMENT
+    # ========================================================================
+
+    def set_grace_safe(self, amount: int) -> int:
+        """
+        Safely set grace with cap enforcement.
+
+        IMPORTANT: All grace modifications should go through ResourceService.
+        This method is a fallback for cases where direct assignment is unavoidable.
+
+        Args:
+            amount: Grace amount to set
+
+        Returns:
+            Actual grace value after cap enforcement
+
+        Example:
+            >>> actual_grace = player.set_grace_safe(1000000)
+            >>> # actual_grace will be 999999 if that's the cap
+        """
+        from src.core.config.config_manager import ConfigManager
+        grace_cap = ConfigManager.get("resource_system.grace_max_cap", 999999)
+        self.grace = min(max(0, amount), grace_cap)
+        return self.grace
+
+    # ========================================================================
     # REPR
     # ========================================================================
-    
+
     def __repr__(self) -> str:
         return (
             f"<Player(discord_id={self.discord_id}, "

@@ -40,7 +40,7 @@ from src.core.exceptions import (
 from src.core.bot.loader import load_all_features
 from src.core.logging.logger import LogContext, get_logger, set_log_context
 from src.core.infra.redis_service import RedisService
-from src.features.tutorial.listener import register_tutorial_listeners
+from src.modules.tutorial.listener import register_tutorial_listeners
 from src.utils.embed_builder import EmbedBuilder
 
 logger = get_logger(__name__)

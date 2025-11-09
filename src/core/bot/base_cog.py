@@ -22,9 +22,10 @@ from src.core.exceptions import (
     InsufficientResourcesError,
     InvalidOperationError,
     CooldownError,
-    NotFoundError
+    NotFoundError,
+    RateLimitError
 )
-from utils.embed_builder import EmbedBuilder
+from src.utils.embed_builder import EmbedBuilder
 
 
 class BaseCog(commands.Cog):
@@ -135,6 +136,11 @@ class BaseCog(commands.Cog):
                                   "Please wait before retrying.")
             return True
 
+        if isinstance(error, RateLimitError):
+            await self.send_error(ctx, "Rate Limit Exceeded", str(error),
+                                  "You're using this command too frequently. Please slow down.")
+            return True
+
         if isinstance(error, NotFoundError):
             await self.send_error(ctx, "Not Found", str(error))
             return True
@@ -149,7 +155,7 @@ class BaseCog(commands.Cog):
         """
         Retrieve a player or inform them to register if missing.
         """
-        from src.features.player.service import PlayerService
+        from src.modules.player.service import PlayerService
 
         player = await PlayerService.get_player_with_regen(session, player_id, lock=lock)
         if not player:
@@ -206,3 +212,139 @@ class BaseCog(commands.Cog):
             exc_info=error,
             extra={"context": context}
         )
+
+    # ========================================================================
+    # DISCORD VIEW UTILITIES
+    # ========================================================================
+
+    def create_user_validation_check(self, user_id: int):
+        """
+        Create a reusable user validation function for Discord Views.
+
+        Returns an async function that validates interaction user and sends
+        an ephemeral error message if the user is not authorized.
+
+        Args:
+            user_id: Discord user ID who is authorized to use the view
+
+        Returns:
+            Async function that returns True if user is valid, False otherwise
+
+        Usage in View:
+            class MyView(discord.ui.View):
+                def __init__(self, user_id: int, cog: BaseCog):
+                    super().__init__(timeout=120)
+                    self.user_id = user_id
+                    self.validate_user = cog.create_user_validation_check(user_id)
+
+                @discord.ui.button(label="Click")
+                async def button(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    if not await self.validate_user(interaction):
+                        return  # User validation failed, error sent
+
+                    # Continue with button logic...
+        """
+        async def check(interaction: discord.Interaction) -> bool:
+            if interaction.user.id != user_id:
+                await interaction.response.send_message(
+                    "This button is not for you!",
+                    ephemeral=True
+                )
+                return False
+            return True
+
+        return check
+
+    async def handle_view_error(
+        self,
+        interaction: discord.Interaction,
+        error: Exception,
+        operation_name: str,
+        **context
+    ):
+        """
+        Standardized error handling for Discord View interactions.
+
+        Converts domain exceptions to user-friendly embeds and logs errors
+        with full context. Handles both response and followup scenarios.
+
+        Args:
+            interaction: Discord interaction from button/modal/select callback
+            operation_name: Name of the operation for logging (e.g., "fusion_execute")
+            error: Exception that occurred
+            **context: Additional context for logging (e.g., guild_id, floor, etc.)
+
+        Usage in View:
+            try:
+                # Execute view logic...
+                await SomeService.do_something(...)
+            except Exception as e:
+                await self.cog.handle_view_error(
+                    interaction, e, "view_action",
+                    guild_id=interaction.guild_id
+                )
+                # Optionally disable view
+                await interaction.edit_original_response(view=None)
+
+        RIKI LAW Compliance:
+            - Converts domain exceptions to Discord embeds (Article I.5)
+            - Logs with full context (Article II)
+            - Provides user-friendly error messages
+        """
+        # Log the error with context
+        self.log_cog_error(
+            operation_name,
+            error,
+            user_id=interaction.user.id,
+            guild_id=interaction.guild.id if interaction.guild else None,
+            **context
+        )
+
+        # Build appropriate error embed based on exception type
+        if isinstance(error, InsufficientResourcesError):
+            embed = EmbedBuilder.error(
+                title="Insufficient Resources",
+                description=str(error),
+                help_text="Check your inventory and try again."
+            )
+        elif isinstance(error, InvalidOperationError):
+            embed = EmbedBuilder.error(
+                title="Invalid Operation",
+                description=str(error)
+            )
+        elif isinstance(error, CooldownError):
+            embed = EmbedBuilder.warning(
+                title="Cooldown Active",
+                description=str(error)
+            )
+        elif isinstance(error, RateLimitError):
+            embed = EmbedBuilder.warning(
+                title="Rate Limit Exceeded",
+                description=str(error),
+                help_text="You're using this command too frequently. Please slow down."
+            )
+        elif isinstance(error, NotFoundError):
+            embed = EmbedBuilder.error(
+                title="Not Found",
+                description=str(error)
+            )
+        else:
+            # Generic error for unexpected exceptions
+            embed = EmbedBuilder.error(
+                title="Something Went Wrong",
+                description="An unexpected error occurred.",
+                help_text="The issue has been logged."
+            )
+
+        # Send error embed (ephemeral)
+        try:
+            # Try followup first (if response was already deferred)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except discord.InteractionResponded:
+            # If already responded, try editing
+            try:
+                await interaction.edit_original_response(embed=embed)
+            except Exception as edit_error:
+                self.logger.warning(f"Failed to edit interaction response: {edit_error}")
+        except Exception as send_error:
+            self.logger.warning(f"Failed to send error message to user: {send_error}")
