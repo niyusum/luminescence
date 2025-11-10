@@ -19,7 +19,7 @@ from src.database.models.social.guild import (
     GuildAudit,
     GuildRole,
 )
-from src.database.models import Player  # adjust to your aggregator if needed
+from modules import Player  # adjust to your aggregator if needed
 from src.modules.resource.service import ResourceService
 
 logger = get_logger(__name__)
@@ -95,7 +95,8 @@ class GuildService:
         if already_in:
             raise InvalidOperationError("You must leave your current guild first.")
 
-        max_members_default = int(ConfigManager.get("guilds.base_max_members", 10))
+        # RIKI LAW I.6 - YAML is source of truth
+        max_members_default = int(ConfigManager.get("guilds.base_max_members"))
 
         g = Guild(
             name=name,
@@ -474,8 +475,9 @@ class GuildService:
 
         guild = await session.get(Guild, membership.guild_id, with_for_update=True)
         next_level = guild.level + 1
-        costs = ConfigManager.get("guilds.upgrade_costs", {})
-        cost = int(costs.get(f"level_{next_level}", ConfigManager.get("guilds.base_upgrade_cost", 25000)))
+        # RIKI LAW I.6 - YAML is source of truth
+        costs = ConfigManager.get("guilds.upgrade_costs")
+        cost = int(costs.get(f"level_{next_level}", ConfigManager.get("guilds.base_upgrade_cost")))
 
         if guild.treasury < cost:
             raise InvalidOperationError("Insufficient treasury.")
@@ -484,7 +486,8 @@ class GuildService:
         guild.level = next_level
 
         # Progression knobs
-        growth = int(ConfigManager.get("guilds.member_growth_per_level", 2))
+        # RIKI LAW I.6 - YAML is source of truth
+        growth = int(ConfigManager.get("guilds.member_growth_per_level"))
         guild.max_members += max(0, growth)
 
         # Example perk bump

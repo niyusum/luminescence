@@ -65,9 +65,10 @@ class FusionService:
             >>> FusionService.get_fusion_cost(10)
             10000000  # Capped at max
         """
-        base_cost = ConfigManager.get("fusion_costs.base", 1000)
-        multiplier = ConfigManager.get("fusion_costs.multiplier", 2.5)
-        max_cost = ConfigManager.get("fusion_costs.max_cost", Config.MAX_FUSION_COST)
+        # RIKI LAW I.6 - YAML is source of truth
+        base_cost = ConfigManager.get("fusion_costs.base")
+        multiplier = ConfigManager.get("fusion_costs.multiplier")
+        max_cost = ConfigManager.get("fusion_costs.max_cost")
         
         calculated_cost = int(base_cost * (multiplier ** (tier - 1)))
         return min(calculated_cost, max_cost)
@@ -146,7 +147,8 @@ class FusionService:
             >>> FusionService.calculate_element_result("infernal", "infernal")
             "infernal"
         """
-        element_combinations = ConfigManager.get("element_combinations", {})
+        # RIKI LAW I.6 - YAML is source of truth
+        element_combinations = ConfigManager.get("element_combinations")
         
         key1 = FusionService._parse_element_key(element1, element2)
         key2 = FusionService._parse_element_key(element2, element1)
@@ -297,7 +299,8 @@ class FusionService:
             InsufficientResourcesError: If using shards but player lacks enough
         """
         if use_shards:
-            shards_needed = ConfigManager.get("shard_system.shards_for_redemption", 100)
+            # RIKI LAW I.6 - YAML is source of truth
+            shards_needed = ConfigManager.get("shard_system.shards_for_redemption")
             if player.get_fusion_shards(tier) < shards_needed:
                 raise InsufficientResourcesError(
                     resource=f"tier_{tier}_shards",
@@ -309,7 +312,8 @@ class FusionService:
             player.stats["shards_spent"] = player.stats.get("shards_spent", 0) + shards_needed
             return True, shards_needed
         else:
-            event_bonus = ConfigManager.get("event_modifiers.fusion_rate_boost", 0.0)
+            # RIKI LAW I.6 - YAML is source of truth
+            event_bonus = ConfigManager.get("event_modifiers.fusion_rate_boost")
             success = FusionService.roll_fusion_success(tier, event_bonus)
             return success, 0
 
@@ -442,8 +446,9 @@ class FusionService:
         Returns:
             Number of shards granted
         """
-        shards_min = ConfigManager.get("shard_system.shards_per_failure_min", 1)
-        shards_max = ConfigManager.get("shard_system.shards_per_failure_max", 12)
+        # RIKI LAW I.6 - YAML is source of truth
+        shards_min = ConfigManager.get("shard_system.shards_per_failure_min")
+        shards_max = ConfigManager.get("shard_system.shards_per_failure_max")
         # Use cryptographically secure RNG for shard drops
         shards_gained = secrets.SystemRandom().randint(shards_min, shards_max)
 
@@ -573,8 +578,9 @@ class FusionService:
             >>> result = await FusionService.add_fusion_shard(player, 3)
             >>> print(f"Gained {result['shards_gained']} shards!")
         """
-        shards_min = ConfigManager.get("shard_system.shards_per_failure_min", 1)
-        shards_max = ConfigManager.get("shard_system.shards_per_failure_max", 12)
+        # RIKI LAW I.6 - YAML is source of truth
+        shards_min = ConfigManager.get("shard_system.shards_per_failure_min")
+        shards_max = ConfigManager.get("shard_system.shards_per_failure_max")
 
         # Use cryptographically secure RNG for shard drops
         actual_amount = secrets.SystemRandom().randint(shards_min, shards_max) * amount
@@ -584,7 +590,8 @@ class FusionService:
         player.fusion_shards[key] = current + actual_amount
         player.stats["shards_earned"] = player.stats.get("shards_earned", 0) + actual_amount
         
-        shards_for_redemption = ConfigManager.get("shard_system.shards_for_redemption", 100)
+        # RIKI LAW I.6 - YAML is source of truth
+        shards_for_redemption = ConfigManager.get("shard_system.shards_for_redemption")
         
         return {
             "shards_gained": actual_amount,

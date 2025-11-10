@@ -25,7 +25,6 @@ from src.modules.player.allocation_logic import AllocationService
 from src.modules.resource.service import ResourceService
 from src.modules.combat.service import CombatService
 from src.modules.ascension.token_logic import TokenService
-from src.modules.ascension.constants import get_token_emoji, get_token_display_name
 from src.modules.exploration.mastery_logic import MasteryService
 from src.modules.exploration.constants import RELIC_TYPES
 from src.modules.tutorial.service import TutorialService
@@ -805,8 +804,8 @@ class UnifiedProfileView(discord.ui.View):
                 for token_type in ["bronze", "silver", "gold", "platinum", "diamond"]:
                     qty = token_inventory.get(token_type, 0)
                     if qty > 0:
-                        emoji = get_token_emoji(token_type)
-                        name = get_token_display_name(token_type)
+                        emoji = TokenService.get_token_emoji(token_type)
+                        name = TokenService.get_token_display_name(token_type)
                         token_lines.append(f"{emoji} **{name}:** {qty}")
 
                 if token_lines:

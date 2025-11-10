@@ -158,7 +158,8 @@ class DailyService:
             raise InvalidOperationError(f"Invalid quest type: {quest_type}")
         
         progress_key, config_key, default_required = valid_quest_types[quest_type]
-        required_amount = ConfigManager.get(config_key, default_required)
+        # RIKI LAW I.6 - YAML is source of truth
+        required_amount = ConfigManager.get(config_key)
         
         daily_quest = await DailyService.get_or_create_daily_quest(session, player_id)
         
@@ -210,17 +211,18 @@ class DailyService:
             >>> rewards = DailyService.calculate_rewards(daily_quest)
             >>> print(f"Rewards: {rewards['rikis']:,} rikis, {rewards['xp']} XP")
         """
-        base_rikis = ConfigManager.get("daily_rewards.base_rikis", 500)
-        base_grace = ConfigManager.get("daily_rewards.base_grace", 3)
-        base_gems = ConfigManager.get("daily_rewards.base_gems", 1)
-        base_xp = ConfigManager.get("daily_rewards.base_xp", 100)
-        
-        completion_bonus_rikis = ConfigManager.get("daily_rewards.completion_bonus_rikis", 500)
-        completion_bonus_grace = ConfigManager.get("daily_rewards.completion_bonus_grace", 2)
-        completion_bonus_gems = ConfigManager.get("daily_rewards.completion_bonus_gems", 1)
-        completion_bonus_xp = ConfigManager.get("daily_rewards.completion_bonus_xp", 200)
-        
-        streak_multiplier = ConfigManager.get("daily_rewards.streak_multiplier", 0.1)
+        # RIKI LAW I.6 - YAML is source of truth
+        base_rikis = ConfigManager.get("daily_rewards.base_rikis")
+        base_grace = ConfigManager.get("daily_rewards.base_grace")
+        base_gems = ConfigManager.get("daily_rewards.base_gems")
+        base_xp = ConfigManager.get("daily_rewards.base_xp")
+
+        completion_bonus_rikis = ConfigManager.get("daily_rewards.completion_bonus_rikis")
+        completion_bonus_grace = ConfigManager.get("daily_rewards.completion_bonus_grace")
+        completion_bonus_gems = ConfigManager.get("daily_rewards.completion_bonus_gems")
+        completion_bonus_xp = ConfigManager.get("daily_rewards.completion_bonus_xp")
+
+        streak_multiplier = ConfigManager.get("daily_rewards.streak_multiplier")
         
         rewards = {
             "rikis": base_rikis,
@@ -381,12 +383,13 @@ class DailyService:
         if daily_quest.is_complete() and not daily_quest.rewards_claimed:
             projected_rewards = DailyService.calculate_rewards(daily_quest)
         
+        # RIKI LAW I.6 - YAML is source of truth
         requirements = {
-            "prayer_required": ConfigManager.get("daily_quests.prayer_required", 1),
-            "summon_required": ConfigManager.get("daily_quests.summon_required", 1),
-            "fusion_required": ConfigManager.get("daily_quests.fusion_required", 1),
-            "energy_required": ConfigManager.get("daily_quests.energy_required", 10),
-            "stamina_required": ConfigManager.get("daily_quests.stamina_required", 5)
+            "prayer_required": ConfigManager.get("daily_quests.prayer_required"),
+            "summon_required": ConfigManager.get("daily_quests.summon_required"),
+            "fusion_required": ConfigManager.get("daily_quests.fusion_required"),
+            "energy_required": ConfigManager.get("daily_quests.energy_required"),
+            "stamina_required": ConfigManager.get("daily_quests.stamina_required")
         }
         
         return {

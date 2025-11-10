@@ -1,0 +1,43 @@
+# Guild System Economy Configuration
+# RIKI LAW I.6: All tunable game parameters externalized
+#
+# Guild creation, upgrades, membership limits, and donation rules
+
+guilds:
+  # Base upgrade cost (first upgrade)
+  base_upgrade_cost: 25000
+
+  # Explicit costs for early levels (optional overrides)
+  upgrade_costs:
+    level_2: 25000
+    level_3: 50000
+    level_4: 100000
+    # Subsequent levels use cost_multiplier formula
+
+  # Cost multiplier for guild upgrades
+  # level_5 = level_4 * multiplier, level_6 = level_5 * multiplier, etc.
+  upgrade_cost_multiplier: 2.5
+
+  # Maximum guild level
+  max_level: 20
+
+  # Base maximum members at level 1
+  base_max_members: 10
+
+  # Member slots increase per level
+  # level_2 = base + growth, level_3 = base + 2*growth, etc.
+  member_growth_per_level: 2
+
+  # Minimum donation amount (rikis)
+  # Prevents spam donations for activity tracking
+  donation_minimum: 1000
+
+  # Guild creation cost (rikis)
+  # Not in original _defaults, but logical to add here
+  creation_cost: 50000
+
+  # Guild name change cost (rikis)
+  name_change_cost: 10000
+
+  # Emblem change cost (rikis)
+  emblem_change_cost: 5000

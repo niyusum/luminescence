@@ -73,7 +73,7 @@ FEATURE_MAP = {
     "ascension_service.py": "ascension",
     "exploration_service.py": "exploration",
     "resource_service.py": "resource",
-    "miniboss_service.py": "miniboss",
+    "matron_service.py": "matron",
     "system_tasks_cog.py": "system",
     "help_cog.py": "help",
 }

@@ -1,0 +1,71 @@
+# Ascension Core Configuration
+# Token tiers, attack costs, and visual settings
+# RIKI LAW I.6: All tunable game parameters externalized
+
+ASCENSION:
+  # Token tier definitions for maiden redemption
+  TOKEN_TIERS:
+    bronze:
+      name: "Bronze Token"
+      tier_range: [1, 3]
+      emoji: "🥉"
+      color: 0xCD7F32
+      description: "Redeems for Tier 1-3 Maiden"
+      order: 1
+
+    silver:
+      name: "Silver Token"
+      tier_range: [3, 5]
+      emoji: "🥈"
+      color: 0xC0C0C0
+      description: "Redeems for Tier 3-5 Maiden"
+      order: 2
+
+    gold:
+      name: "Gold Token"
+      tier_range: [5, 7]
+      emoji: "🥇"
+      color: 0xFFD700
+      description: "Redeems for Tier 5-7 Maiden"
+      order: 3
+
+    platinum:
+      name: "Platinum Token"
+      tier_range: [7, 9]
+      emoji: "💎"
+      color: 0xE5E4E2
+      description: "Redeems for Tier 7-9 Maiden"
+      order: 4
+
+    diamond:
+      name: "Diamond Token"
+      tier_range: [9, 11]
+      emoji: "💠"
+      color: 0xB9F2FF
+      description: "Redeems for Tier 9-11 Maiden"
+      order: 5
+
+  # Floor color tiers for visual feedback
+  FLOOR_COLOR_TIERS:
+    GRAY: [1, 25, 0x808080]
+    GREEN: [26, 50, 0x00FF00]
+    BLUE: [51, 100, 0x0099FF]
+    PURPLE: [101, 150, 0x9932CC]
+    ORANGE_RED: [151, 9999, 0xFF4500]
+
+  # Attack resource costs
+  ATTACK_COSTS:
+    x1:
+      stamina: 1
+      gems: 0
+    x3:
+      stamina: 3
+      gems: 0
+    x10:
+      stamina: 10
+      gems: 10
+
+# Monster configuration reference
+# Loaded from: config/ascension/monsters.yaml
+# Key: ascension_monsters.floor_ranges.*
+# Key: ascension_monsters.milestone_bosses.*

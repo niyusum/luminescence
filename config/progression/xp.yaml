@@ -1,0 +1,49 @@
+# Player Progression Configuration
+# RIKI LAW I.6: All tunable game parameters externalized
+#
+# Controls XP curves, level requirements, and milestone rewards
+
+xp_curve:
+  # Type of XP curve formula
+  # Options: "polynomial", "exponential", "linear"
+  type: "polynomial"
+
+  # Base XP required for level 2
+  base: 50
+
+  # Exponent for polynomial curve
+  # Formula: XP_required = base * (level ^ exponent)
+  exponent: 2.0
+
+level_milestones:
+  # How often minor milestones occur (every N levels)
+  minor_interval: 5
+
+  # How often major milestones occur (every N levels)
+  major_interval: 10
+
+  # Rewards for minor milestones (levels 5, 15, 25, etc.)
+  minor_rewards:
+    # Rikis reward = player_level * rikis_multiplier
+    rikis_multiplier: 100
+
+    # Flat grace reward
+    grace: 5
+
+    # Gems reward = player_level / gems_divisor
+    gems_divisor: 10
+
+  # Rewards for major milestones (levels 10, 20, 30, etc.)
+  major_rewards:
+    # Rikis reward = player_level * rikis_multiplier
+    rikis_multiplier: 500
+
+    # Flat grace reward
+    grace: 10
+
+    # Flat gems reward
+    gems: 5
+
+    # Permanent stat increases
+    max_energy_increase: 10
+    max_stamina_increase: 5

@@ -194,13 +194,13 @@ class CombatService:
                 total_power += maiden_power
                 total_defense += maiden_defense
         
-        # Apply element bonuses
+        # Apply element bonuses (RIKI LAW I.6 - YAML is source of truth)
         if "infernal" in generals:
-            multiplier = ConfigManager.get("combat_element_bonuses.infernal.multiplier", 1.10)
+            multiplier = ConfigManager.get("combat_element_bonuses.infernal.multiplier")
             total_power = int(total_power * multiplier)
 
         if "abyssal" in generals:
-            multiplier = ConfigManager.get("combat_element_bonuses.abyssal.multiplier", 1.10)
+            multiplier = ConfigManager.get("combat_element_bonuses.abyssal.multiplier")
             total_defense = int(total_defense * multiplier)
         
         # Apply leader bonus
@@ -336,18 +336,23 @@ class CombatService:
             DamageCalculation with full breakdown
         """
         import random
-        
+
         # Base damage
         base_damage = player_power * attack_count
-        
-        # Momentum bonus
+
+        # Momentum bonus (RIKI LAW I.6 - YAML is source of truth)
+        momentum_config = ConfigManager.get("combat_mechanics.momentum.thresholds")
         momentum_mult = 1.0
-        if momentum_level >= 80:
-            momentum_mult = 1.50
-        elif momentum_level >= 50:
-            momentum_mult = 1.30
-        elif momentum_level >= 30:
-            momentum_mult = 1.20
+
+        # Evaluate thresholds in descending order
+        if momentum_config:
+            threshold_levels = ["high", "medium", "low", "none"]
+            for level in threshold_levels:
+                level_config = momentum_config.get(level, {})
+                threshold = level_config.get("threshold", 0)
+                if momentum_level >= threshold:
+                    momentum_mult = level_config.get("multiplier", 1.0)
+                    break
         
         # Roll for critical hit using cryptographically secure RNG
         was_critical = secrets.SystemRandom().random() < crit_chance
@@ -409,10 +414,10 @@ class CombatService:
         Returns:
             Damage dealt to player (minimum 1)
         """
-        # Apply umbral reduction
+        # Apply umbral reduction (RIKI LAW I.6 - YAML is source of truth)
         effective_boss_atk = boss_atk
         if umbral_general_present:
-            multiplier = ConfigManager.get("combat_element_bonuses.umbral.multiplier", 0.95)
+            multiplier = ConfigManager.get("combat_element_bonuses.umbral.multiplier")
             effective_boss_atk = int(boss_atk * multiplier)
         
         # Calculate damage

@@ -595,7 +595,7 @@ class DatabaseService:
             RuntimeError: If DatabaseService not initialized
         """
         from sqlmodel import SQLModel
-        from src.database.models import (
+        from modules import (
             Player, Maiden, MaidenBase, GameConfig,
             DailyQuest, LeaderboardSnapshot, TransactionLog
         )

@@ -1,0 +1,51 @@
+# Resource Systems Configuration
+# RIKI LAW I.6: All tunable game parameters externalized
+#
+# Manages energy, stamina, and resource caps for player progression
+
+energy_system:
+  # Base maximum energy at level 1
+  base_max: 100
+
+  # Minutes between each energy regeneration tick
+  regen_minutes: 4
+
+  # Energy cap increase per player level
+  per_level_increase: 10
+
+  # Bonus regeneration when near max (overcap bonus)
+  overcap_bonus: 0.10  # 10% bonus
+
+  # Threshold for overcap bonus (90% of max)
+  overcap_threshold: 0.9
+
+stamina_system:
+  # Base maximum stamina at level 1
+  base_max: 50
+
+  # Minutes between each stamina regeneration tick
+  regen_minutes: 10
+
+  # Stamina cap increase per player level
+  per_level_increase: 5
+
+  # Bonus regeneration when near max
+  overcap_bonus: 0.10  # 10% bonus
+
+  # Threshold for overcap bonus (90% of max)
+  overcap_threshold: 0.9
+
+resource_system:
+  # Maximum caps for resources (null = unlimited)
+  grace_max_cap: 999999
+  rikis_max_cap: null  # Unlimited
+  riki_gems_max_cap: null  # Unlimited
+
+  # How modifiers stack (multiplicative vs additive)
+  modifier_stacking: "multiplicative"
+
+  # Passive income system toggle
+  passive_income_enabled: false
+
+  # How long to retain audit logs (days)
+  audit_retention_days: 90

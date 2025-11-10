@@ -135,7 +135,8 @@ class AscensionService:
             range_key = "101_plus"
         
         # Get monster pool for range
-        monster_pool = ConfigManager.get(f"ascension_monsters.floor_ranges.{range_key}.monsters", [])
+        # RIKI LAW I.6 - YAML is source of truth
+        monster_pool = ConfigManager.get(f"ascension_monsters.floor_ranges.{range_key}.monsters")
         if not monster_pool:
             # Fallback
             return AscensionService._generate_fallback_monster(floor)
@@ -153,7 +154,8 @@ class AscensionService:
                 break
         
         # Get scaling
-        scaling = ConfigManager.get(f"ascension_monsters.floor_ranges.{range_key}.scaling", {})
+        # RIKI LAW I.6 - YAML is source of truth
+        scaling = ConfigManager.get(f"ascension_monsters.floor_ranges.{range_key}.scaling")
         atk_per_floor = scaling.get("atk_per_floor", 1.08)
         def_per_floor = scaling.get("def_per_floor", 1.10)
         
@@ -561,11 +563,12 @@ class AscensionService:
         
         # Milestone bonuses
         if floor in [50, 100, 150, 200]:
+            # RIKI LAW I.6 - YAML is source of truth
             milestone_config = ConfigManager.get(
-                f"ascension_monsters.milestone_bosses.{floor}.bonus_rewards",
-                {}
+                f"ascension_monsters.milestone_bosses.{floor}.bonus_rewards"
             )
-            rewards["milestone_bonus"] = milestone_config
+            if milestone_config:
+                rewards["milestone_bonus"] = milestone_config
         
         return rewards
     
@@ -597,14 +600,11 @@ class AscensionService:
     @staticmethod
     def get_attack_cost(attack_type: str) -> Dict[str, int]:
         """
-        Get resource costs for attack type.
-        
+        Get resource costs for attack type (RIKI LAW I.6 - ConfigManager).
+
         Returns:
             {"stamina": int, "gems": int}
         """
-        costs = {
-            "x1": {"stamina": 1, "gems": 0},
-            "x3": {"stamina": 3, "gems": 0},
-            "x10": {"stamina": 10, "gems": 10}
-        }
-        return costs.get(attack_type, {"stamina": 1, "gems": 0})
+        # RIKI LAW I.6 - YAML is source of truth
+        ATTACK_COSTS = ConfigManager.get("ASCENSION.ATTACK_COSTS")
+        return ATTACK_COSTS.get(attack_type, {"stamina": 1, "gems": 0})

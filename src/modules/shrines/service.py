@@ -7,7 +7,7 @@ from math import pow
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models import Player  # your Player model (import path per your aggregator)
+from modules import Player  # your Player model (import path per your aggregator)
 from src.database.models.economy.shrine import PlayerShrine
 from src.core.config.config_manager import ConfigManager
 from src.core.infra.transaction_logger import TransactionLogger

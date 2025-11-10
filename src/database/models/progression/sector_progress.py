@@ -7,23 +7,23 @@ from datetime import datetime
 class SectorProgress(SQLModel, table=True):
     """
     Track player progression through exploration sectors and sublevels.
-    
+
     Each sector contains 9 sublevels (1-8 regular, 9 boss).
     Progress accumulates as percentage (0.0 - 100.0) per sublevel.
-    Minibosses must be defeated to unlock next sublevel/sector.
-    
+    Matrons must be defeated to unlock next sublevel/sector.
+
     Attributes:
         player_id: Discord ID of player
         sector_id: Sector number (1-7+)
         sublevel: Sublevel within sector (1-9)
         progress: Completion percentage (0.0 - 100.0)
-        miniboss_defeated: Whether sublevel miniboss has been beaten
+        miniboss_defeated: Whether sublevel matron has been beaten (legacy field name)
         times_explored: Total exploration attempts in this sublevel
         total_rikis_earned: Cumulative rikis from this sublevel
         total_xp_earned: Cumulative XP from this sublevel
         maidens_purified: Count of maidens purified in this sublevel
         last_explored: Timestamp of most recent exploration
-    
+
     Indexes:
         - (player_id, sector_id, sublevel) composite unique
         - player_id for player queries
@@ -58,7 +58,7 @@ class SectorProgress(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     
     def is_complete(self) -> bool:
-        """Check if sublevel is fully explored (100% + miniboss defeated)."""
+        """Check if sublevel is fully explored (100% + matron defeated)."""
         return self.progress >= 100.0 and self.miniboss_defeated
     
     def get_progress_display(self) -> str:
@@ -69,5 +69,5 @@ class SectorProgress(SQLModel, table=True):
         return (
             f"<SectorProgress(player={self.player_id}, "
             f"sector={self.sector_id}, sublevel={self.sublevel}, "
-            f"progress={self.progress:.1f}%, miniboss={self.miniboss_defeated})>"
+            f"progress={self.progress:.1f}%, matron_defeated={self.miniboss_defeated})>"
         )

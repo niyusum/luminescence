@@ -46,7 +46,8 @@ class GuildShrineService:
         if shrine:
             return shrine
 
-        conf = ConfigManager.get(f"shrines.{shrine_type}", {})
+        # RIKI LAW I.6 - YAML is source of truth
+        conf = ConfigManager.get(f"shrines.{shrine_type}")
         if not conf:
             raise InvalidOperationError(f"Invalid shrine type: {shrine_type}")
 
@@ -68,7 +69,8 @@ class GuildShrineService:
     @staticmethod
     async def upgrade_shrine(session: AsyncSession, guild_id: int, shrine_type: str) -> GuildShrine:
         shrine = await GuildShrineService.get_or_create_shrine(session, guild_id, shrine_type)
-        conf = ConfigManager.get(f"shrines.{shrine_type}", {})
+        # RIKI LAW I.6 - YAML is source of truth
+        conf = ConfigManager.get(f"shrines.{shrine_type}")
         max_level = int(conf.get("max_level", 12))
 
         if shrine.level >= max_level:
@@ -114,7 +116,8 @@ class GuildShrineService:
     @staticmethod
     async def collect_yield(session: AsyncSession, guild_id: int, shrine_type: str) -> Dict[str, Any]:
         shrine = await GuildShrineService.get_or_create_shrine(session, guild_id, shrine_type)
-        conf = ConfigManager.get(f"shrines.{shrine_type}", {})
+        # RIKI LAW I.6 - YAML is source of truth
+        conf = ConfigManager.get(f"shrines.{shrine_type}")
         cap_hours = int(conf.get("collection_cap_hours", 24))
         now = datetime.utcnow()
 

@@ -1,0 +1,44 @@
+# Fusion System Configuration
+# RIKI LAW I.6: All tunable game parameters externalized
+#
+# Fusion mechanics control the core loop of combining maidens
+# to create higher-tier maidens. These values are critical for
+# game economy and player progression balance.
+
+fusion_rates:
+  # Success rates by tier (percentage)
+  # Lower tiers are easier to fuse successfully
+  "1": 75
+  "2": 70
+  "3": 65
+  "4": 60
+  "5": 55
+  "6": 50
+  "7": 45
+  "8": 40
+  "9": 35
+  "10": 30
+  "11": 25
+
+fusion_costs:
+  # Base rikis cost for tier 1 fusion
+  base: 1000
+
+  # Cost multiplier per tier increase
+  # Cost formula: base * (multiplier ^ (tier - 1))
+  multiplier: 2.2
+
+  # Maximum fusion cost cap (prevents exponential growth)
+  max_cost: 100000000
+
+shard_system:
+  # Shards awarded on fusion failure
+  # Provides pity system for failed fusions
+  shards_per_failure_min: 3
+  shards_per_failure_max: 15
+
+  # Shards required to guarantee a fusion success
+  shards_for_redemption: 100
+
+  # Master toggle for shard system
+  enabled: true

@@ -1,0 +1,25 @@
+# Prayer System Configuration
+# RIKI LAW I.6: All tunable game parameters externalized
+#
+# Prayer system provides grace currency through charge-based mechanics
+# Charges regenerate over time (no accumulation/storage)
+
+prayer_system:
+  # Grace awarded per prayer
+  grace_per_prayer: 1
+
+  # Maximum charges (single charge system - no accumulation)
+  max_charges: 1
+
+  # Minutes per charge regeneration
+  regen_minutes: 5
+
+  # Explicit interval in seconds for clarity
+  regen_interval_seconds: 300  # 5 minutes
+
+  # Class-specific bonuses (multipliers)
+  # Currently all classes have same rate, but kept for future tuning
+  class_bonuses:
+    destroyer: 1.0
+    adapter: 1.0
+    invoker: 1.0  # Invoker class now affects shrine mechanics

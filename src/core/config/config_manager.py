@@ -71,303 +71,10 @@ class ConfigManager:
     # =========================================================================
     # DEFAULT CONFIGURATIONS
     # =========================================================================
-    _defaults: Dict[str, Any] = {
-        # Fusion System
-        "fusion_rates": {
-            "1": 75, "2": 70, "3": 65, "4": 60, "5": 55,
-            "6": 50, "7": 45, "8": 40, "9": 35, "10": 30, "11": 25
-        },
-        "fusion_costs": {"base": 1000, "multiplier": 2.2, "max_cost": 100_000_000},
-        "shard_system": {
-            "shards_per_failure_min": 3,
-            "shards_per_failure_max": 15,
-            "shards_for_redemption": 100,
-            "enabled": True
-        },
-        
-        # Resource Systems
-        "energy_system": {
-            "base_max": 100, "regen_minutes": 4,
-            "per_level_increase": 10, "overcap_bonus": 0.10, "overcap_threshold": 0.9
-        },
-        "stamina_system": {
-            "base_max": 50, "regen_minutes": 10,
-            "per_level_increase": 5, "overcap_bonus": 0.10, "overcap_threshold": 0.9
-        },
-        "resource_system": {
-            "grace_max_cap": 999999,
-            "rikis_max_cap": None,
-            "riki_gems_max_cap": None,
-            "modifier_stacking": "multiplicative",
-            "passive_income_enabled": False,
-            "audit_retention_days": 90
-        },
-        
-        # Progression
-        "xp_curve": {"type": "polynomial", "base": 50, "exponent": 2.0},
-        "level_milestones": {
-            "minor_interval": 5, "major_interval": 10,
-            "minor_rewards": {"rikis_multiplier": 100, "grace": 5, "gems_divisor": 10},
-            "major_rewards": {
-                "rikis_multiplier": 500, "grace": 10, "gems": 5,
-                "max_energy_increase": 10, "max_stamina_increase": 5
-            }
-        },
-        
-        # Prayer System (1 charge every 5 minutes - no accumulation)
-        "prayer_system": {
-            "grace_per_prayer": 1,
-            "max_charges": 1,  # Single charge system (no accumulation/storage)
-            "regen_minutes": 5,  # 300 seconds per charge
-            "regen_interval_seconds": 300,  # Explicit interval for clarity
-            "class_bonuses": {"destroyer": 1.0, "adapter": 1.0, "invoker": 1.0}  # Invoker now affects shrines
-        },
-        
-        # Gacha/Summon System
-        "gacha_rates": {
-            "tier_unlock_levels": {
-                "tier_1": 1, "tier_2": 1, "tier_3": 1,
-                "tier_4": 10, "tier_5": 20, "tier_6": 30,
-                "tier_7": 30, "tier_8": 40, "tier_9": 40,
-                "tier_10": 40, "tier_11": 45, "tier_12": 50
-            },
-            "rate_distribution": {"decay_factor": 0.75, "highest_tier_base": 22.0}
-        },
-        "pity_system": {
-            "summons_for_pity": 25,
-            "pity_type": "new_maiden_or_next_bracket"
-        },
-        "summon_costs": {
-            "grace_per_summon": 1,
-            "x5_multiplier": 5,
-            "x10_multiplier": 10,
-            "x10_premium_only": True
-        },
-        
-        # Events and Modifiers
-        "event_modifiers": {
-            "fusion_rate_boost": 0.0,
-            "xp_boost": 0.0,
-            "rikis_boost": 0.0,
-            "shard_boost": 0.0
-        },
-        "modifier_rules": {
-            "stack_method": "multiplicative",
-            "max_bonus_cap": 300,
-            "min_penalty_cap": 10
-        },
-        
-        # Daily/Weekly Systems
-        "daily_rewards": {
-            "base_rikis": 1250, "base_grace": 2, "base_gems": 2, "base_xp": 150,
-            "completion_bonus_rikis": 800, "completion_bonus_grace": 3,
-            "completion_bonus_gems": 2, "completion_bonus_xp": 350,
-            "streak_multiplier": 0.15, "grace_days": 1
-        },
-        "daily_quests": {
-            "prayer_required": 1, "summon_required": 1,
-            "fusion_required": 1, "energy_required": 10, "stamina_required": 5
-        },
-        "weekly_bonus": {
-            "enabled": True,
-            "rikis": 10000,
-            "grace": 25,
-            "gems": 10,
-            "requirements": {"daily_quests_completed": 6, "min_level": 10}
-        },
-        "comeback_bonus": {
-            "enabled": True,
-            "days_inactive": 7,
-            "rikis_per_day": 1000,
-            "grace_per_day": 5,
-            "max_days": 14
-        },
-        
-        # Exploration System
-        "exploration_system": {
-            "progress_rates": {
-                "sector_1": 7.0, "sector_2": 4.5, "sector_3": 3.5,
-                "sector_4": 2.5, "sector_5": 2.0, "sector_6": 1.5, "sector_7": 1.0
-            },
-            "miniboss_progress_multiplier": 0.5,
-            "energy_costs": {
-                "sector_1_base": 5, "sector_2_base": 8, "sector_3_base": 12,
-                "sector_4_base": 17, "sector_5_base": 23,
-                "sector_6_base": 30, "sector_7_base": 38,
-                "sublevel_increment": 1, "boss_multiplier": 1.5
-            },
-            "riki_rewards": {"sector_1_min": 50, "sector_1_max": 100, "sector_scaling": 1.5},
-            "xp_rewards": {"sector_1_min": 10, "sector_1_max": 30, "sector_scaling": 1.5},
-            "encounter_rates": {
-                "sector_1": 8.0, "sector_2": 10.0, "sector_3": 12.0,
-                "sector_4": 12.0, "sector_5": 15.0, "sector_6": 15.0, "sector_7": 18.0
-            },
-            "capture_rates": {
-                "common": 60.0, "uncommon": 45.0, "rare": 30.0,
-                "epic": 15.0, "legendary": 8.0, "mythic": 3.0
-            },
-            "capture_level_modifier": 2.0,
-            "guaranteed_purification_costs": {
-                "common": 50, "uncommon": 100, "rare": 200,
-                "epic": 500, "legendary": 1500, "mythic": 5000
-            },
-            "unlock_requirement": 100.0
-        },
-        
-        # Miniboss System
-        "miniboss_system": {
-            "hp_base": {
-                "uncommon": 2000, "rare": 5000, "epic": 15000,
-                "legendary": 50000, "mythic": 150000
-            },
-            "hp_sector_multiplier": 0.5, "hp_sublevel_multiplier": 0.1,
-            "sector_avg_rarity": {
-                "sector_1": "uncommon", "sector_2": "rare", "sector_3": "rare",
-                "sector_4": "epic", "sector_5": "epic",
-                "sector_6": "legendary", "sector_7": "legendary"
-            },
-            "rarity_tier_increase": [1, 2],
-            "reward_base_rikis": 500, "reward_base_xp": 100,
-            "reward_sector_multiplier": 1.0, "boss_sublevel_bonus": 2.0,
-            "boss_rewards": {"prayer_charges": 1, "fusion_catalyst": 1},
-            "egg_rarity_upgrade": True
-        },
-        
-        # Ascension System
-        "ascension_system": {
-            "base_stamina_cost": 5,
-            "stamina_increase_per_10_levels": 1,
-            "enemy_hp_base": 1000,
-            "enemy_hp_growth_rate": 1.10,
-            "attack_multipliers": {"x1": 1, "x5": 5, "x20": 20},
-            "x20_attack_crit_bonus": 0.2,
-            "x20_attack_gem_cost": 10,
-            "reward_base_rikis": 50,
-            "reward_base_xp": 20,
-            "reward_growth_rate": 1.12,
-            "bonus_intervals": {
-                "egg_every_n_floors": 5,
-                "prayer_charge_every_n_floors": 10,
-                "fusion_catalyst_every_n_floors": 25
-            },
-            "milestones": {
-                50: {"title": "Tower Climber", "rikis": 10000, "gems": 50},
-                100: {"title": "Sky Breaker", "rikis": 50000, "gems": 100, "mythic_egg": True},
-                150: {"title": "Heaven Piercer", "rikis": 100000, "gems": 200},
-                200: {"title": "Divine Ascendant", "rikis": 250000, "gems": 500}
-            },
-            "egg_rarity_floors": {
-                "common": [1, 10], "uncommon": [11, 25],
-                "rare": [26, 50], "epic": [51, 100],
-                "legendary": [101, 200], "mythic": [201, 999999]
-            }
-        },
-        
-        # Shrine System
-        "shrines": {
-            "lesser": {
-                "base_cost": 10000,
-                "cost_multiplier": 2.3,
-                "base_yield": 50,
-                "yield_multiplier": 2.3,
-                "max_level": 12,
-                "collection_cap_hours": 24,
-                "max_shrines": 3,
-                "unlock_level": 10
-            },
-            "radiant": {
-                "base_cost": 50000,
-                "cost_multiplier": 2.3,
-                "base_yield": 0.05,
-                "yield_multiplier": 2.3,
-                "max_level": 12,
-                "collection_cap_hours": 24,
-                "max_shrines": 3,
-                "unlock_level": 30
-            }
-        },
-        
-        # Guild System
-        "guilds": {
-            "base_upgrade_cost": 25000,
-            "upgrade_costs": {
-                "level_2": 25000,
-                "level_3": 50000,
-                "level_4": 100000,
-            },
-            "upgrade_cost_multiplier": 2.5,
-            "max_level": 20,
-            "base_max_members": 10,
-            "member_growth_per_level": 2,
-            "donation_minimum": 1000,
-        },
-        
-        # Combat System
-        "combat_element_bonuses": {
-            "infernal": {
-                "name": "Infernal General",
-                "emoji": "🔥",
-                "bonus_text": "+10% ATK",
-                "applies_to": "attack",
-                "multiplier": 1.10
-            },
-            "abyssal": {
-                "name": "Abyssal General",
-                "emoji": "🌊",
-                "bonus_text": "+10% DEF",
-                "applies_to": "defense",
-                "multiplier": 1.10
-            },
-            "tempest": {
-                "name": "Tempest General",
-                "emoji": "⚡",
-                "bonus_text": "+5% Critical Rate",
-                "applies_to": "crit_rate",
-                "value": 0.05
-            },
-            "earth": {
-                "name": "Earth General",
-                "emoji": "🌍",
-                "bonus_text": "+100 Max HP",
-                "applies_to": "hp",
-                "value": 100
-            },
-            "radiant": {
-                "name": "Radiant General",
-                "emoji": "✨",
-                "bonus_text": "+5% HP Regen/Turn",
-                "applies_to": "hp_regen",
-                "value": 0.05
-            },
-            "umbral": {
-                "name": "Umbral General",
-                "emoji": "🌑",
-                "bonus_text": "-5% Enemy ATK",
-                "applies_to": "enemy_atk_reduction",
-                "multiplier": 0.95
-            }
-        },
-
-        # Cache Configuration
-        "cache": {
-            "compression_threshold": 1024,
-            "tag_registry_ttl": 3600,
-            "ttl": {
-                "player_resources": 300,
-                "maiden_collection": 300,
-                "active_modifiers": 600,
-                "fusion_rates": 3600,
-                "leader_bonuses": 3600,
-                "daily_quest": 86400,
-                "prayer_charges": 300,
-                "leaderboards": 600
-            },
-            "health": {
-                "max_errors": 100,
-                "min_hit_rate": 70.0
-            }
-        }
-    }
+    # RIKI LAW I.6: All game parameters MUST be externalized to YAML files.
+    # This dict contains ONLY infrastructure defaults (fallback values).
+    # Game balance parameters are loaded from config/ directory YAML files.
+    _defaults: Dict[str, Any] = {}
 
     # =========================================================================
     # INITIALIZATION / REFRESH
@@ -376,9 +83,11 @@ class ConfigManager:
     @classmethod
     def _load_yaml_configs(cls) -> None:
         """
-        Load all YAML config files from config/ directory into cache.
+        Recursively load all YAML config files from config/ directory into cache.
 
+        RIKI LAW I.6: All game parameters externalized to YAML files.
         Files are merged into _defaults first, then copied to _cache.
+        Supports nested directory structure (e.g., config/fusion/rates.yaml).
         Gracefully handles missing yaml library or config files.
         """
         try:
@@ -387,7 +96,8 @@ class ConfigManager:
                 logger.warning("config/ directory not found, skipping YAML loading")
                 return
 
-            yaml_files = list(config_dir.glob("*.yaml")) + list(config_dir.glob("*.yml"))
+            # Recursively find all YAML files in config/ and subdirectories
+            yaml_files = list(config_dir.rglob("*.yaml")) + list(config_dir.rglob("*.yml"))
             if not yaml_files:
                 logger.info("No YAML config files found in config/")
                 return
@@ -401,10 +111,10 @@ class ConfigManager:
                             # Merge into defaults (preserves existing defaults)
                             cls._defaults.update(data)
                             loaded_count += 1
-                            logger.debug(f"Loaded YAML config: {yaml_file.name}")
+                            logger.debug(f"Loaded YAML config: {yaml_file.relative_to(config_dir)}")
                 except Exception as e:
                     logger.warning(
-                        f"Failed to load YAML config {yaml_file.name}: {e}",
+                        f"Failed to load YAML config {yaml_file.relative_to(config_dir)}: {e}",
                         extra={"file": str(yaml_file), "error": str(e)}
                     )
 

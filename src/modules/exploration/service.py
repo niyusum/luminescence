@@ -21,14 +21,14 @@ class ExplorationService:
     Sector exploration system with percentage-based progression.
     
     Manages sector/sublevel progression, maiden purification encounters,
-    miniboss battles, and exploration rewards. Integrates with ResourceService
+    matron battles, and exploration rewards. Integrates with ResourceService
     for energy consumption and reward distribution.
-    
+
     Features:
         - 7 sectors with 9 sublevels each
         - Dynamic progress rates (fast early, slow late)
         - Random maiden encounters with capture mechanics
-        - Miniboss gates at 100% progress
+        - Matron gates at 100% progress
         - Branching sector unlocks
     
     Usage:
@@ -129,9 +129,10 @@ class ExplorationService:
         Returns:
             Energy cost
         """
-        base_cost = ConfigManager.get(f"exploration_system.energy_costs.sector_{sector_id}_base", 5)
-        increment = ConfigManager.get("exploration_system.energy_costs.sublevel_increment", 1)
-        boss_mult = ConfigManager.get("exploration_system.energy_costs.boss_multiplier", 1.5)
+        # RIKI LAW I.6 - YAML is source of truth
+        base_cost = ConfigManager.get(f"exploration_system.energy_costs.sector_{sector_id}_base")
+        increment = ConfigManager.get("exploration_system.energy_costs.sublevel_increment")
+        boss_mult = ConfigManager.get("exploration_system.energy_costs.boss_multiplier")
         
         cost = base_cost + (increment * (sublevel - 1))
         
@@ -144,14 +145,15 @@ class ExplorationService:
     def calculate_progress_gain(sector_id: int, sublevel: int) -> float:
         """
         Calculate progress percentage gained per exploration.
-        
-        Early sectors progress faster. Miniboss sublevels progress slower.
+
+        Early sectors progress faster. Matron sublevels progress slower.
         
         Returns:
             Progress percentage (0.0 - 100.0)
         """
-        base_rate = ConfigManager.get(f"exploration_system.progress_rates.sector_{sector_id}", 3.0)
-        miniboss_mult = ConfigManager.get("exploration_system.miniboss_progress_multiplier", 0.5)
+        # RIKI LAW I.6 - YAML is source of truth
+        base_rate = ConfigManager.get(f"exploration_system.progress_rates.sector_{sector_id}")
+        miniboss_mult = ConfigManager.get("exploration_system.miniboss_progress_multiplier")
         
         if sublevel == 9:
             return base_rate * miniboss_mult
@@ -169,18 +171,20 @@ class ExplorationService:
             Dictionary with 'rikis' and 'xp' keys
         """
         # Riki rewards
-        riki_min = ConfigManager.get("exploration_system.riki_rewards.sector_1_min", 50)
-        riki_max = ConfigManager.get("exploration_system.riki_rewards.sector_1_max", 100)
-        riki_scaling = ConfigManager.get("exploration_system.riki_rewards.sector_scaling", 1.5)
+        # RIKI LAW I.6 - YAML is source of truth
+        riki_min = ConfigManager.get("exploration_system.riki_rewards.sector_1_min")
+        riki_max = ConfigManager.get("exploration_system.riki_rewards.sector_1_max")
+        riki_scaling = ConfigManager.get("exploration_system.riki_rewards.sector_scaling")
         
         scaled_riki_min = int(riki_min * (riki_scaling ** (sector_id - 1)))
         scaled_riki_max = int(riki_max * (riki_scaling ** (sector_id - 1)))
         rikis = secrets.SystemRandom().randint(scaled_riki_min, scaled_riki_max)
         
         # XP rewards
-        xp_min = ConfigManager.get("exploration_system.xp_rewards.sector_1_min", 10)
-        xp_max = ConfigManager.get("exploration_system.xp_rewards.sector_1_max", 30)
-        xp_scaling = ConfigManager.get("exploration_system.xp_rewards.sector_scaling", 1.5)
+        # RIKI LAW I.6 - YAML is source of truth
+        xp_min = ConfigManager.get("exploration_system.xp_rewards.sector_1_min")
+        xp_max = ConfigManager.get("exploration_system.xp_rewards.sector_1_max")
+        xp_scaling = ConfigManager.get("exploration_system.xp_rewards.sector_scaling")
         
         scaled_xp_min = int(xp_min * (xp_scaling ** (sector_id - 1)))
         scaled_xp_max = int(xp_max * (xp_scaling ** (sector_id - 1)))
@@ -198,7 +202,8 @@ class ExplorationService:
         Returns:
             True if maiden encountered
         """
-        encounter_rate = ConfigManager.get(f"exploration_system.encounter_rates.sector_{sector_id}", 10.0)
+        # RIKI LAW I.6 - YAML is source of truth
+        encounter_rate = ConfigManager.get(f"exploration_system.encounter_rates.sector_{sector_id}")
         roll = secrets.SystemRandom().random() * 100
         return roll < encounter_rate
     
@@ -234,25 +239,14 @@ class ExplorationService:
             - Article IV: Tier ranges from ConfigManager
             - Article VII: Reuses gacha weight system
         """
-        # Determine tier range based on sector and player level
-        # Sector 1-3: Early game (T1-T4)
-        # Sector 4-5: Mid game (T4-T7)
-        # Sector 6-7: Late game (T7-T11)
-        tier_ranges = {
-            1: (1, 3),
-            2: (2, 4),
-            3: (3, 5),
-            4: (4, 7),
-            5: (5, 8),
-            6: (7, 10),
-            7: (8, 11),
-        }
-
-        min_tier, max_tier = tier_ranges.get(sector_id, (1, 3))
+        # RIKI LAW I.6 - YAML is source of truth
+        # Get tier range from config (T1-T12 from maiden/constants.py)
+        tier_range = ConfigManager.get(f"exploration_system.sector_tier_ranges.sector_{sector_id}")
+        min_tier, max_tier = tier_range[0], tier_range[1]
 
         # Adjust tier based on player level (higher level = can encounter higher tiers)
         level_bonus = player_level // 10
-        max_tier = min(max_tier + level_bonus, 11)
+        max_tier = min(max_tier + level_bonus, 12)  # Updated to T12
 
         # Query MaidenBase for appropriate tier range
         stmt = select(MaidenBase).where(
@@ -277,21 +271,25 @@ class ExplorationService:
         weights = [mb.rarity_weight for mb in maiden_bases]
         selected_maiden_base = secrets.SystemRandom().choices(maiden_bases, weights=weights, k=1)[0]
 
-        # Determine rarity category based on tier (for UI display)
-        rarity_map = {
-            (1, 2): "common",
-            (3, 4): "uncommon",
-            (5, 6): "rare",
-            (7, 8): "epic",
-            (9, 10): "legendary",
-            (11, 12): "mythic",
+        # Map tier to rarity name (from maiden/constants.py Tier names)
+        # T1=Common, T2=Uncommon, T3=Rare, T4=Epic, T5=Mythic, T6=Divine,
+        # T7=Legendary, T8=Ethereal, T9=Genesis, T10=Empyrean, T11=Void, T12=Singularity
+        tier_to_rarity = {
+            1: "common",
+            2: "uncommon",
+            3: "rare",
+            4: "epic",
+            5: "mythic",
+            6: "divine",
+            7: "legendary",
+            8: "ethereal",
+            9: "genesis",
+            10: "empyrean",
+            11: "void",
+            12: "singularity",
         }
 
-        rarity = "common"
-        for tier_range, rarity_name in rarity_map.items():
-            if tier_range[0] <= selected_maiden_base.base_tier <= tier_range[1]:
-                rarity = rarity_name
-                break
+        rarity = tier_to_rarity.get(selected_maiden_base.base_tier, "common")
 
         logger.debug(
             f"Generated encounter maiden: {selected_maiden_base.name} "
@@ -311,21 +309,26 @@ class ExplorationService:
     def calculate_capture_rate(maiden_rarity: str, player_level: int, sector_id: int) -> float:
         """
         Calculate purification success rate.
-        
-        Base rate by rarity, modified by player level vs sector difficulty.
-        
+
+        Formula: base_rate - sector_penalty + level_bonus
+        - Higher sectors = harder to capture (penalty)
+        - Higher player level = easier to capture (bonus)
+
         Returns:
             Capture rate percentage (0.0 - 100.0)
         """
-        base_rate = ConfigManager.get(f"exploration_system.capture_rates.{maiden_rarity}", 30.0)
-        level_modifier_per_level = ConfigManager.get("exploration_system.capture_level_modifier", 2.0)
-        
-        # Player level advantage
+        # RIKI LAW I.6 - YAML is source of truth
+        base_rate = ConfigManager.get(f"exploration_system.capture_rates.{maiden_rarity}")
+        sector_penalty = ConfigManager.get(f"exploration_system.sector_capture_penalty.sector_{sector_id}")
+        level_modifier_per_level = ConfigManager.get("exploration_system.capture_level_modifier")
+
+        # Player level advantage (based on sector recommended level)
         sector_recommended_level = sector_id * 10  # Rough estimate
         level_diff = player_level - sector_recommended_level
         level_bonus = level_diff * level_modifier_per_level
-        
-        final_rate = base_rate + level_bonus
+
+        # Final calculation: base - sector_penalty + level_bonus
+        final_rate = base_rate - sector_penalty + level_bonus
         return max(5.0, min(95.0, final_rate))  # Clamp 5-95%
     
     @staticmethod
@@ -336,7 +339,8 @@ class ExplorationService:
         Returns:
             Gem cost
         """
-        return ConfigManager.get(f"exploration_system.guaranteed_purification_costs.{maiden_rarity}", 100)
+        # RIKI LAW I.6 - YAML is source of truth
+        return ConfigManager.get(f"exploration_system.guaranteed_purification_costs.{maiden_rarity}")
     
     @staticmethod
     async def explore_sublevel(

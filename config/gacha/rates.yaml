@@ -1,0 +1,50 @@
+# Gacha/Summon System Configuration
+# RIKI LAW I.6: All tunable game parameters externalized
+#
+# CRITICAL: Gacha rates are legally sensitive and must be auditable
+# All rate changes must be version-controlled and transparent
+
+gacha_rates:
+  # Level requirements to unlock each tier
+  # Players must reach specific levels to summon higher-tier maidens
+  tier_unlock_levels:
+    tier_1: 1
+    tier_2: 1
+    tier_3: 1
+    tier_4: 10
+    tier_5: 20
+    tier_6: 30
+    tier_7: 30
+    tier_8: 40
+    tier_9: 40
+    tier_10: 40
+    tier_11: 45
+    tier_12: 50
+
+  # Rate distribution algorithm parameters
+  rate_distribution:
+    # Decay factor for lower tiers (each tier gets decay_factor * previous tier rate)
+    decay_factor: 0.75
+
+    # Base rate for highest unlocked tier (percentage)
+    highest_tier_base: 22.0
+
+pity_system:
+  # Number of summons before pity activates
+  # LEGAL COMPLIANCE: Must be clearly disclosed to players
+  summons_for_pity: 25
+
+  # Type of pity guarantee
+  # Options: "new_maiden_or_next_bracket", "highest_tier", "player_choice"
+  pity_type: "new_maiden_or_next_bracket"
+
+summon_costs:
+  # Grace cost per single summon
+  grace_per_summon: 1
+
+  # Cost multipliers for bulk summons
+  x5_multiplier: 5   # 5 summons = 5x grace
+  x10_multiplier: 10  # 10 summons = 10x grace
+
+  # Whether 10x summons require premium currency
+  x10_premium_only: true

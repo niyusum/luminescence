@@ -1,0 +1,79 @@
+# Matron System Configuration
+# RIKI LAW I.6: All tunable game parameters externalized
+#
+# Matron encounters during exploration (boss battles at 100% progress)
+# Boss difficulty and rewards scale with sector and sublevel
+
+matron_system:
+  # Base HP by rarity tier
+  hp_base:
+    uncommon: 2000
+    rare: 5000
+    epic: 15000
+    legendary: 50000
+    mythic: 150000
+
+  # HP multiplier per sector
+  # Formula: base_hp * (1 + sector_multiplier * sector_num)
+  hp_sector_multiplier: 0.5
+
+  # HP multiplier per sublevel within sector
+  # Formula: hp * (1 + sublevel_multiplier * sublevel)
+  hp_sublevel_multiplier: 0.1
+
+  # Average rarity by sector
+  # Determines the typical matron rarity encountered
+  sector_avg_rarity:
+    sector_1: "uncommon"
+    sector_2: "rare"
+    sector_3: "rare"
+    sector_4: "epic"
+    sector_5: "epic"
+    sector_6: "legendary"
+    sector_7: "legendary"
+
+  # Rarity tier variation (random offset from average)
+  # [min_offset, max_offset] tiers above/below average
+  rarity_tier_increase: [1, 2]
+
+  # Base rewards (before sector scaling)
+  reward_base_rikis: 500
+  reward_base_xp: 100
+
+  # Reward multiplier per sector
+  # sector_2 = base * (1 + multiplier), sector_3 = base * (1 + 2*multiplier), etc.
+  reward_sector_multiplier: 1.0
+
+  # Bonus multiplier for boss sublevels (floor bosses)
+  boss_sublevel_bonus: 2.0
+
+  # Special rewards for defeating bosses
+  boss_rewards:
+    prayer_charges: 1
+    fusion_catalyst: 1
+
+# Matron-specific sector rewards (legacy keys from matron/rewards.yaml)
+# These are used by exploration/matron_logic.py for sector-based rewards
+sector_1_rikis: 5000
+sector_1_xp: 200
+sector_1_hp_base: 100000
+
+sector_2_rikis: 10000
+sector_2_xp: 400
+sector_2_hp_base: 250000
+
+sector_3_rikis: 20000
+sector_3_xp: 800
+sector_3_hp_base: 500000
+
+sector_4_rikis: 40000
+sector_4_xp: 1600
+sector_4_hp_base: 1000000
+
+sector_5_rikis: 80000
+sector_5_xp: 3200
+sector_5_hp_base: 2500000
+
+sector_6_rikis: 160000
+sector_6_xp: 6400
+sector_6_hp_base: 5000000

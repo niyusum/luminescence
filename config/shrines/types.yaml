@@ -1,0 +1,65 @@
+# Shrine System Configuration
+# RIKI LAW I.6: All tunable game parameters externalized
+#
+# Passive income shrines that generate rikis or grace over time
+# Players build, upgrade, and collect from shrines
+
+shrines:
+  # Lesser Shrines (Rikis generation)
+  lesser:
+    # Base cost for level 1 shrine (rikis)
+    base_cost: 10000
+
+    # Cost multiplier per level
+    # level_2 = base * multiplier, level_3 = level_2 * multiplier, etc.
+    cost_multiplier: 2.3
+
+    # Base yield per hour at level 1 (rikis/hour)
+    base_yield: 50
+
+    # Yield multiplier per level
+    yield_multiplier: 2.3
+
+    # Maximum shrine level
+    max_level: 12
+
+    # Collection cap in hours
+    # Prevents infinite accumulation if player doesn't collect
+    collection_cap_hours: 24
+
+    # Maximum number of lesser shrines per player
+    max_shrines: 3
+
+    # Player level required to unlock lesser shrines
+    unlock_level: 10
+
+  # Radiant Shrines (Grace generation - premium currency)
+  radiant:
+    # Base cost for level 1 shrine (rikis)
+    base_cost: 50000
+
+    # Cost multiplier per level
+    cost_multiplier: 2.3
+
+    # Base yield per hour at level 1 (grace/hour, decimal)
+    # 0.05 = 1 grace per 20 hours
+    base_yield: 0.05
+
+    # Yield multiplier per level
+    yield_multiplier: 2.3
+
+    # Maximum shrine level
+    max_level: 12
+
+    # Collection cap in hours
+    collection_cap_hours: 24
+
+    # Maximum number of radiant shrines per player
+    max_shrines: 3
+
+    # Player level required to unlock radiant shrines
+    unlock_level: 30
+
+  # Shrine sell refund rate
+  # When selling a shrine, player gets X% of total investment back
+  sell_refund_rate: 0.5  # 50% refund

@@ -1,0 +1,35 @@
+# Event Modifiers Configuration
+# RIKI LAW I.6: All tunable game parameters externalized
+#
+# Global event modifiers for live events and balance adjustments
+# Can be hot-reloaded via database for instant activation
+
+event_modifiers:
+  # Fusion rate boost (percentage increase)
+  # Example: 0.25 = +25% fusion success rate
+  fusion_rate_boost: 0.0
+
+  # XP gain boost (percentage increase)
+  # Example: 0.5 = +50% XP from all sources
+  xp_boost: 0.0
+
+  # Rikis currency boost (percentage increase)
+  # Example: 1.0 = +100% (double) rikis from all sources
+  rikis_boost: 0.0
+
+  # Shard drop boost (percentage increase)
+  # Example: 0.3 = +30% shards on fusion failure
+  shard_boost: 0.0
+
+modifier_rules:
+  # How multiple modifiers combine
+  # Options: "multiplicative" (1.5 * 1.3 = 1.95) or "additive" (1.5 + 1.3 = 2.8)
+  stack_method: "multiplicative"
+
+  # Maximum total bonus cap (percentage)
+  # Prevents runaway stacking
+  max_bonus_cap: 300  # 300% max
+
+  # Minimum penalty cap (percentage)
+  # Prevents modifiers from reducing values below this threshold
+  min_penalty_cap: 10  # Can't reduce below 10% of original

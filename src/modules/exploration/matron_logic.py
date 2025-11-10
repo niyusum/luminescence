@@ -142,8 +142,9 @@ class MatronService:
                 "optimal_turns": 5
             }
         """
-        # Get base HP from config
-        base_hp = ConfigManager.get(f"matron_system.sector_{sector_id}_hp_base", 100000)
+        # Get base HP from config (RIKI LAW I.6 - YAML is source of truth)
+        # Config stored in exploration/matron.yaml as "sector_N_hp_base"
+        base_hp = ConfigManager.get(f"sector_{sector_id}_hp_base")
         
         # Scale by sublevel
         sublevel_mult = 1 + (sublevel * 0.15)
@@ -339,7 +340,7 @@ class MatronService:
                     source=f"sector_{matron['sector_id']}_boss"
                 )
 
-            # Mark miniboss as defeated in sector progress
+            # Mark matron as defeated in sector progress
             from src.database.models.progression.sector_progress import SectorProgress
             from sqlalchemy import select
             stmt = select(SectorProgress).where(
@@ -352,7 +353,7 @@ class MatronService:
             if sector_progress:
                 sector_progress.miniboss_defeated = True
                 logger.info(
-                    f"Marked miniboss as defeated for player {player.discord_id} "
+                    f"Marked matron as defeated for player {player.discord_id} "
                     f"sector {matron['sector_id']} sublevel {matron['sublevel']}"
                 )
 

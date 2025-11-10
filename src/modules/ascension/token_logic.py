@@ -10,7 +10,7 @@ RIKI LAW Compliance:
 - Article I.1: Pessimistic locking for token transactions
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import secrets
@@ -18,11 +18,7 @@ import secrets
 from src.database.models.core.player import Player
 from src.database.models.economy.token import Token
 from src.database.models.core.maiden_base import MaidenBase
-from src.modules.ascension.constants import (
-    TOKEN_TIERS,
-    validate_token_type,
-    get_token_tier_range
-)
+from src.core.config.config_manager import ConfigManager
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.exceptions import InsufficientResourcesError, InvalidOperationError
 from src.core.logging.logger import get_logger
@@ -65,7 +61,7 @@ class TokenService:
         Raises:
             InvalidOperationError: Invalid token type
         """
-        if not validate_token_type(token_type):
+        if not TokenService.validate_token_type(token_type):
             raise InvalidOperationError(f"Invalid token type: {token_type}")
         
         token_type = token_type.lower()
@@ -144,7 +140,7 @@ class TokenService:
             InsufficientResourcesError: Not enough tokens
             InvalidOperationError: Invalid token type or no maidens available
         """
-        if not validate_token_type(token_type):
+        if not TokenService.validate_token_type(token_type):
             raise InvalidOperationError(f"Invalid token type: {token_type}")
         
         token_type = token_type.lower()
@@ -169,7 +165,7 @@ class TokenService:
         token.quantity -= 1
         
         # Get tier range and roll random tier
-        tier_range = get_token_tier_range(token_type)
+        tier_range = TokenService.get_token_tier_range(token_type)
         min_tier, max_tier = tier_range
         tier = secrets.SystemRandom().randint(min_tier, max_tier)
         
@@ -259,8 +255,10 @@ class TokenService:
             select(Token).where(Token.player_id == player_id)
         )
         tokens = result.scalars().all()
-        
+
         # Initialize all token types to 0
+        # RIKI LAW I.6 - YAML is source of truth
+        TOKEN_TIERS = ConfigManager.get("ASCENSION.TOKEN_TIERS")
         inventory = {token_type: 0 for token_type in TOKEN_TIERS.keys()}
         
         # Fill in actual quantities
@@ -289,7 +287,7 @@ class TokenService:
         Raises:
             InvalidOperationError: Invalid token type
         """
-        if not validate_token_type(token_type):
+        if not TokenService.validate_token_type(token_type):
             raise InvalidOperationError(f"Invalid token type: {token_type}")
         
         token_type = token_type.lower()
@@ -301,5 +299,65 @@ class TokenService:
             )
         )
         token = result.scalar_one_or_none()
-        
+
         return token.quantity if token else 0
+
+    # ========================================================================
+    # HELPER METHODS (RIKI LAW I.6 - ConfigManager Integration)
+    # ========================================================================
+
+    @staticmethod
+    def get_token_tier(token_type: str) -> Optional[Dict]:
+        """
+        Get token tier data by type from ConfigManager.
+
+        Args:
+            token_type: Token type key (bronze, silver, etc.)
+
+        Returns:
+            Token tier data dict or None if invalid
+        """
+        # RIKI LAW I.6 - YAML is source of truth
+        TOKEN_TIERS = ConfigManager.get("ASCENSION.TOKEN_TIERS")
+        return TOKEN_TIERS.get(token_type.lower())
+
+    @staticmethod
+    def get_all_token_types() -> List[str]:
+        """Get list of all valid token types in display order."""
+        # RIKI LAW I.6 - YAML is source of truth
+        TOKEN_TIERS = ConfigManager.get("ASCENSION.TOKEN_TIERS")
+        return sorted(TOKEN_TIERS.keys(), key=lambda k: TOKEN_TIERS[k].get("order", 999))
+
+    @staticmethod
+    def validate_token_type(token_type: str) -> bool:
+        """Check if token type is valid."""
+        # RIKI LAW I.6 - YAML is source of truth
+        TOKEN_TIERS = ConfigManager.get("ASCENSION.TOKEN_TIERS")
+        return token_type.lower() in TOKEN_TIERS
+
+    @staticmethod
+    def get_token_display_name(token_type: str) -> str:
+        """Get display name for token type."""
+        tier_data = TokenService.get_token_tier(token_type)
+        return tier_data.get("name", "Unknown Token") if tier_data else "Unknown Token"
+
+    @staticmethod
+    def get_token_emoji(token_type: str) -> str:
+        """Get emoji for token type."""
+        tier_data = TokenService.get_token_tier(token_type)
+        return tier_data.get("emoji", "🎫") if tier_data else "🎫"
+
+    @staticmethod
+    def get_token_tier_range(token_type: str) -> Optional[Tuple[int, int]]:
+        """Get maiden tier range for token type."""
+        tier_data = TokenService.get_token_tier(token_type)
+        if tier_data and "tier_range" in tier_data:
+            tier_range = tier_data["tier_range"]
+            return (tier_range[0], tier_range[1])
+        return None
+
+    @staticmethod
+    def get_token_color(token_type: str) -> int:
+        """Get Discord embed color for token type."""
+        tier_data = TokenService.get_token_tier(token_type)
+        return tier_data.get("color", 0x2C2D31) if tier_data else 0x2C2D31

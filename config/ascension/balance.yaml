@@ -1,0 +1,83 @@
+# Ascension Tower Balance Configuration
+# RIKI LAW I.6: All tunable game parameters externalized
+#
+# Tower climbing mechanics, costs, rewards, and milestones
+# Complements monsters.yaml (enemy stats) and core.yaml (tokens)
+
+ascension_balance:
+  # Stamina costs
+  base_stamina_cost: 5
+
+  # Stamina increase every 10 levels
+  # Level 1-10: 5 stamina, 11-20: 6 stamina, 21-30: 7 stamina, etc.
+  stamina_increase_per_10_levels: 1
+
+  # Enemy HP scaling
+  enemy_hp_base: 1000
+
+  # HP growth rate per floor
+  # Formula: base_hp * (growth_rate ^ floor_number)
+  enemy_hp_growth_rate: 1.10
+
+  # Attack multipliers
+  attack_multipliers:
+    x1: 1    # Single attack
+    x5: 5    # 5x attack
+    x20: 20  # 20x mega attack
+
+  # Critical hit bonus for 20x attack
+  x20_attack_crit_bonus: 0.2  # +20% crit chance
+
+  # Gem cost for 20x attack
+  x20_attack_gem_cost: 10
+
+  # Base rewards (scale with floor)
+  reward_base_rikis: 50
+  reward_base_xp: 20
+
+  # Reward growth rate per floor
+  # Formula: base_reward * (growth_rate ^ floor_number)
+  reward_growth_rate: 1.12
+
+  # Bonus reward intervals
+  bonus_intervals:
+    # Award token every N floors
+    token_every_n_floors: 5
+
+    # Award prayer charge every N floors
+    prayer_charge_every_n_floors: 10
+
+    # Award fusion catalyst every N floors
+    fusion_catalyst_every_n_floors: 25
+
+  # Major milestone rewards
+  milestones:
+    50:
+      title: "Tower Climber"
+      rikis: 10000
+      gems: 50
+
+    100:
+      title: "Sky Breaker"
+      rikis: 50000
+      gems: 100
+      mythic_token: true
+
+    150:
+      title: "Heaven Piercer"
+      rikis: 100000
+      gems: 200
+
+    200:
+      title: "Divine Ascendant"
+      rikis: 250000
+      gems: 500
+
+  # Token rarity by floor range
+  token_rarity_floors:
+    common: [1, 10]
+    uncommon: [11, 25]
+    rare: [26, 50]
+    epic: [51, 100]
+    legendary: [101, 200]
+    mythic: [201, 999999]

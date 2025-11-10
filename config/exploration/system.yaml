@@ -1,0 +1,136 @@
+# Exploration System Configuration
+# RIKI LAW I.6: All tunable game parameters externalized
+#
+# Controls exploration mechanics, energy costs, rewards, and encounter rates
+# This is a large, complex config - changes affect core gameplay loop
+
+exploration_system:
+  # Progress rates per sector (percentage per energy spent)
+  # Higher values = faster progress through the sector
+  progress_rates:
+    sector_1: 7.0
+    sector_2: 4.5
+    sector_3: 3.5
+    sector_4: 2.5
+    sector_5: 2.0
+    sector_6: 1.5
+    sector_7: 1.0
+
+  # Matron progress multiplier
+  # Matron battles slow down progress (0.5 = half speed)
+  matron_progress_multiplier: 0.5
+
+  # Energy costs per sector
+  energy_costs:
+    # Base energy cost per sector
+    sector_1_base: 5
+    sector_2_base: 8
+    sector_3_base: 12
+    sector_4_base: 17
+    sector_5_base: 23
+    sector_6_base: 30
+    sector_7_base: 38
+
+    # Additional energy per sublevel
+    sublevel_increment: 1
+
+    # Boss battles cost multiplier
+    boss_multiplier: 1.5
+
+  # Rikis reward ranges
+  riki_rewards:
+    sector_1_min: 50
+    sector_1_max: 100
+
+    # Scaling multiplier per sector
+    # sector_2 = sector_1 * scaling^1, sector_3 = sector_1 * scaling^2, etc.
+    sector_scaling: 1.5
+
+  # XP reward ranges
+  xp_rewards:
+    sector_1_min: 10
+    sector_1_max: 30
+
+    # Scaling multiplier per sector
+    sector_scaling: 1.5
+
+  # Encounter rates (percentage chance per energy spent)
+  # Higher values = more frequent encounters
+  encounter_rates:
+    sector_1: 8.0
+    sector_2: 10.0
+    sector_3: 12.0
+    sector_4: 12.0
+    sector_5: 15.0
+    sector_6: 15.0
+    sector_7: 18.0
+
+  # Sector tier ranges (maiden tiers that can be encountered per sector)
+  # Higher sectors = higher tier maidens (T1-T12 from maiden/constants.py)
+  sector_tier_ranges:
+    sector_1: [1, 3]    # Common, Uncommon, Rare
+    sector_2: [2, 4]    # Uncommon, Rare, Epic
+    sector_3: [3, 5]    # Rare, Epic, Mythic
+    sector_4: [4, 7]    # Epic, Mythic, Divine, Legendary
+    sector_5: [5, 8]    # Mythic, Divine, Legendary, Ethereal
+    sector_6: [7, 10]   # Legendary, Ethereal, Genesis, Empyrean
+    sector_7: [9, 12]   # Genesis, Empyrean, Void, Singularity
+
+  # Base capture rates by tier (percentage)
+  # Uses actual tier names from maiden/constants.py
+  # Formula: base_rate - sector_penalty + level_bonus
+  capture_rates:
+    # Tier 1-4: Early game
+    common: 60.0       # T1
+    uncommon: 50.0     # T2
+    rare: 40.0         # T3
+    epic: 30.0         # T4
+
+    # Tier 5-8: Mid game
+    mythic: 20.0       # T5
+    divine: 15.0       # T6
+    legendary: 12.0    # T7
+    ethereal: 10.0     # T8
+
+    # Tier 9-12: End game
+    genesis: 8.0       # T9
+    empyrean: 6.0      # T10
+    void: 4.0          # T11
+    singularity: 2.0   # T12
+
+  # Sector-based capture penalty (percentage)
+  # Higher sectors = harder to capture (penalty subtracted from base rate)
+  # Encourages progression through difficulty, not just farming high sectors
+  sector_capture_penalty:
+    sector_1: 0      # No penalty
+    sector_2: 3      # -3%
+    sector_3: 6      # -6%
+    sector_4: 10     # -10%
+    sector_5: 15     # -15%
+    sector_6: 20     # -20%
+    sector_7: 25     # -25%
+
+  # Capture rate bonus per player level above sector recommended level
+  # Formula: base_rate - sector_penalty + (level_diff * modifier)
+  capture_level_modifier: 2.0
+
+  # Guaranteed purification costs (grace currency)
+  # Alternative to RNG capture - pay grace to guarantee
+  # Updated to use tier names
+  guaranteed_purification_costs:
+    common: 50         # T1
+    uncommon: 100      # T2
+    rare: 200          # T3
+    epic: 500          # T4
+    mythic: 1500       # T5
+    divine: 3000       # T6
+    legendary: 6000    # T7
+    ethereal: 12000    # T8
+    genesis: 25000     # T9
+    empyrean: 50000    # T10
+    void: 100000       # T11
+    singularity: 250000 # T12
+
+  # Progress required to unlock exploration system
+  # Usually tied to tutorial completion or level
+  unlock_requirement: 100.0
