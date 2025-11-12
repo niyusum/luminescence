@@ -4,7 +4,9 @@
       "Bash(python -c:*)",
       "Bash(.venv/Scripts/python.exe:*)",
       "Bash(dir:*)",
-      "Bash(nul)"
+      "Bash(nul)",
+      "Bash(tree:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
