@@ -10,7 +10,7 @@ Features:
 - ConfigManager-driven TTLs
 - Versioned keys for schema evolution
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Complete audit trails for cache operations (Article II)
 - ConfigManager integration for tunables (Article V)
 - Graceful degradation when Redis unavailable (Article IX)
@@ -51,7 +51,7 @@ class CacheService:
         - fusion_rates:{tier}
         - leader_bonuses:{maiden_base_id}:{tier}
         - daily_quest:{player_id}:{date}
-        - prayer_charges:{player_id}
+        - DROP_CHARGES:{player_id}
         - active_modifiers:{player_id}
         - leaderboards:{type}:{period}
     
@@ -64,7 +64,7 @@ class CacheService:
         - daily - All daily quest caches
         - global - All global caches
     
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - Article II: Logs all cache operations for audit trails
         - Article V: ConfigManager for all TTLs and thresholds
         - Article IX: Graceful degradation on Redis failure
@@ -89,17 +89,17 @@ class CacheService:
     
     # Key templates for consistency (versioned for schema evolution)
     KEY_TEMPLATES = {
-        "player_resources": "riki:v1:player:{player_id}:resources",
-        "maiden_collection": "riki:v1:player:{player_id}:maidens",
-        "fusion_rates": "riki:v1:fusion:rates:{tier}",
-        "leader_bonuses": "riki:v1:leader:{maiden_base_id}:{tier}",
-        "daily_quest": "riki:v1:daily:{player_id}:{date}",
-        "prayer_charges": "riki:v1:prayer:{player_id}",
-        "active_modifiers": "riki:v1:modifiers:{player_id}",
-        "leaderboards": "riki:v1:leaderboard:{type}:{period}"
+        "player_resources": "lumen:v1:player:{player_id}:resources",
+        "maiden_collection": "lumen:v1:player:{player_id}:maidens",
+        "fusion_rates": "lumen:v1:fusion:rates:{tier}",
+        "leader_bonuses": "lumen:v1:leader:{maiden_base_id}:{tier}",
+        "daily_quest": "lumen:v1:daily:{player_id}:{date}",
+        "DROP_CHARGES": "lumen:v1:drop:{player_id}",
+        "active_modifiers": "lumen:v1:modifiers:{player_id}",
+        "leaderboards": "lumen:v1:leaderboard:{type}:{period}"
     }
-    
-    TAG_REGISTRY_KEY = "riki:v1:cache:tags"
+
+    TAG_REGISTRY_KEY = "lumen:v1:cache:tags"
     
     # =========================================================================
     # CONFIGURATION HELPERS (Article V Compliance)
@@ -128,7 +128,7 @@ class CacheService:
             "fusion_rates": 3600,         # 1 hour (rarely changes)
             "leader_bonuses": 3600,       # 1 hour (rarely changes)
             "daily_quest": 86400,         # 24 hours
-            "prayer_charges": 300,        # 5 minutes
+            "DROP_CHARGES": 300,        # 5 minutes
             "leaderboards": 600,          # 10 minutes
         }
         
@@ -296,8 +296,8 @@ class CacheService:
             >>> await CacheService.cache_player_resources(
             ...     player_id=123456789,
             ...     resource_data={
-            ...         "rikis": 1000,
-            ...         "grace": 500,
+            ...         "lumees": 1000,
+            ...         "auric_coin": 500,
             ...         "energy": 50,
             ...         "stamina": 75
             ...     }
@@ -588,7 +588,7 @@ class CacheService:
             ...     {
             ...         "template": "player_resources",
             ...         "template_args": {"player_id": 123},
-            ...         "data": {"rikis": 1000},
+            ...         "data": {"lumees": 1000},
             ...         "tags": ["player:123", "resources"]
             ...     },
             ...     {
@@ -731,7 +731,7 @@ class CacheService:
     # =========================================================================
     
     @classmethod
-    async def cleanup_expired(cls, pattern: str = "riki:*") -> int:
+    async def cleanup_expired(cls, pattern: str = "lumen:*") -> int:
         """
         Clean up expired cache entries.
         
@@ -739,7 +739,7 @@ class CacheService:
         is primarily for interface consistency and monitoring.
         
         Args:
-            pattern: Key pattern to check (default all riki keys)
+            pattern: Key pattern to check (default all lumen keys)
         
         Returns:
             Number of keys checked (actual cleanup by Redis)

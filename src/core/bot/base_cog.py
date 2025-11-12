@@ -1,10 +1,10 @@
 """
-Base Discord Cog for RIKI LAW–compliant prefix-only command modules.
+Base Discord Cog for LUMEN LAW–compliant prefix-only command modules.
 
 Enforces architectural patterns for all feature cogs
-in the RIKI RPG Bot (post-slash-removal architecture).
+in the Lumen RPG Bot (post-slash-removal architecture).
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article VI: Cogs handle Discord layer only (UI and context)
 - Article VII: Standardized error handling and user feedback
 - Article II: Enforces transaction logging and audit integrity
@@ -33,7 +33,7 @@ class BaseCog(commands.Cog):
     Base class for all feature cogs (prefix-only).
     
     Provides common utilities for error handling, database access,
-    and consistent feedback while enforcing RIKI LAW.
+    and consistent feedback while enforcing LUMEN LAW.
     """
 
     def __init__(self, bot: commands.Bot, cog_name: str):
@@ -117,7 +117,7 @@ class BaseCog(commands.Cog):
 
     async def handle_standard_errors(self, ctx: commands.Context, error: Exception) -> bool:
         """
-        Handle known RIKI LAW exceptions with user-friendly responses.
+        Handle known LUMEN LAW exceptions with user-friendly responses.
 
         Returns:
             bool: True if handled, False otherwise.
@@ -286,7 +286,7 @@ class BaseCog(commands.Cog):
                 # Optionally disable view
                 await interaction.edit_original_response(view=None)
 
-        RIKI LAW Compliance:
+        LUMEN LAW Compliance:
             - Converts domain exceptions to Discord embeds (Article I.5)
             - Logs with full context (Article II)
             - Provides user-friendly error messages

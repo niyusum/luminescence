@@ -1,8 +1,8 @@
 # src/database/models/__init__.py
 """
-Unified model aggregator for all RIKI RPG domains.
+Unified model aggregator for all Lumen RPG domains.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
     - Centralized model registry for consistency and schema visibility
     - Domain-subfolder segregation for clarity and import hygiene
 """

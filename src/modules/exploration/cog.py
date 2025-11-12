@@ -1,7 +1,7 @@
 """
 Exploration and Matron combat interface.
 
-The Discord UI layer for the Exploration feature. Enforces RIKI LAW by delegating 
+The Discord UI layer for the Exploration feature. Enforces LUMEN LAW by delegating 
 all core logic and state mutation to the service layer and ensuring full observability 
 through structured logging and command latency metrics.
 """
@@ -55,7 +55,7 @@ class ExplorationCog(BaseCog):
         """Build matron encounter embed."""
         element_emoji = CombatService.get_element_emoji(matron["element"])
         
-        # RIKI LAW POSITIONAL MARKER: CONFIG MANAGER USE
+        # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
         primary_color = ConfigManager.get("embed_colors.primary", default=0x2c2d31)
         
         embed = discord.Embed(
@@ -83,7 +83,7 @@ class ExplorationCog(BaseCog):
             matron["hp"], matron["max_hp"], width=10
         )
         
-        # RIKI LAW POSITIONAL MARKER: CONFIG MANAGER USE
+        # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
         optimal_percent = ConfigManager.get("exploration.rewards.perfect_bonus_percent", 100)
         fast_percent = ConfigManager.get("exploration.rewards.fast_bonus_percent", 50)
 
@@ -122,8 +122,8 @@ class ExplorationCog(BaseCog):
 
     @commands.command(
         name="explore",
-        aliases=["re", "rexplore", "rikiexplore"],
-        description="Explore a sector sublevel to gain progress and rewards"
+        aliases=["e"],
+        description="Explore sectors to gain progress and rewards, or view mastery"
     )
     @ratelimit(
         uses=ConfigManager.get("rate_limits.exploration.explore.uses", 30),
@@ -133,34 +133,115 @@ class ExplorationCog(BaseCog):
     async def explore(
         self,
         ctx: commands.Context,
-        sector: int,
-        sublevel: int
+        sector: Optional[int] = None,
+        sublevel: Optional[int] = None
     ):
-        """Explore sector sublevel to gain progress, rewards, and encounter maidens."""
+        """Show exploration menu or directly explore if sector/sublevel provided."""
         start_time = time.perf_counter()
+
+        # If both parameters provided, execute exploration directly
+        if sector is not None and sublevel is not None:
+            await self._execute_exploration(ctx, sector, sublevel, start_time)
+            return
+
+        # Otherwise show exploration menu
+        await self._show_exploration_menu(ctx, start_time)
+
+    async def _show_exploration_menu(self, ctx: commands.Context, start_time: float):
+        """Show the exploration interface with Venture and Mastery buttons."""
         await ctx.defer()
 
-        # RIKI LAW POSITIONAL MARKER: CONFIG MANAGER USE
+        try:
+            primary_color = ConfigManager.get("embed_colors.primary", default=0x2c2d31)
+            embed = discord.Embed(
+                title="🗺️ Exploration",
+                description=(
+                    "**Venture** into sectors to gain progress, rewards, and encounter maidens!\n\n"
+                    "**Mastery** system rewards permanent bonuses for completing sectors.\n\n"
+                    "Use the buttons below to begin your journey!"
+                ),
+                color=primary_color
+            )
+
+            embed.add_field(
+                name="🪙 Energy System",
+                value="Each exploration costs energy. Energy regenerates over time.",
+                inline=False
+            )
+
+            embed.add_field(
+                name="🎯 Progress & Matrons",
+                value="Complete sublevels to spawn Matron bosses. Defeat them for greater rewards!",
+                inline=False
+            )
+
+            embed.add_field(
+                name="💡 Quick Tip",
+                value="You can also use `;explore <sector> <sublevel>` to venture directly!",
+                inline=False
+            )
+
+            view = ExplorationMenuView(ctx.author.id, self)
+            message = await ctx.send(embed=embed, view=view)
+            view.message = message
+
+            # Log successful menu display
+            latency = (time.perf_counter() - start_time) * 1000
+            self.log_command_use(
+                "explore_menu",
+                ctx.author.id,
+                guild_id=ctx.guild.id if ctx.guild else None,
+                latency_ms=round(latency, 2)
+            )
+
+        except Exception as e:
+            latency = (time.perf_counter() - start_time) * 1000
+            self.log_cog_error(
+                "explore_menu", e, user_id=ctx.author.id,
+                guild_id=ctx.guild.id if ctx.guild else None,
+                latency_ms=round(latency, 2)
+            )
+            await self.send_error(
+                ctx,
+                "Exploration Menu Error",
+                "Failed to load exploration interface.",
+                help_text="Please try again."
+            )
+
+    async def _execute_exploration(
+        self,
+        ctx: commands.Context,
+        sector: int,
+        sublevel: int,
+        start_time: float = None
+    ):
+        """Execute exploration for a specific sector and sublevel."""
+        if start_time is None:
+            start_time = time.perf_counter()
+
+        await ctx.defer()
+
+        # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
         explore_max_sector = ConfigManager.get("exploration.explore_max_sector", default=7)
         explore_max_sublevel = ConfigManager.get("exploration.explore_max_sublevel", default=9)
 
         if sector < 1 or sector > explore_max_sector or sublevel < 1 or sublevel > explore_max_sublevel:
             await self.send_error(
-                ctx, 
-                "Invalid Target", 
-                f"Sector must be 1-{explore_max_sector} and Sublevel 1-{explore_max_sublevel}.", 
-                help_text="Example: rexplore 1 1"
+                ctx,
+                "Invalid Target",
+                f"Sector must be 1-{explore_max_sector} and Sublevel 1-{explore_max_sublevel}.",
+                help_text="Example: ;explore 1 1"
             )
             return
 
         try:
             async with DatabaseService.get_transaction() as session:
-                # RIKI LAW POSITIONAL MARKER: PESSIMISTIC LOCK
+                # LUMEN LAW POSITIONAL MARKER: PESSIMISTIC LOCK
                 player = await self.require_player(session, ctx, ctx.author.id, lock=True)
                 if not player:
                     return
 
-                # RIKI LAW POSITIONAL MARKER: SERVICE CALL ONLY
+                # LUMEN LAW POSITIONAL MARKER: SERVICE CALL ONLY
                 result = await ExplorationService.explore_sublevel(
                     session, player, sector, sublevel
                 )
@@ -172,7 +253,7 @@ class ExplorationCog(BaseCog):
                         session, player.discord_id, include_leader_bonus=True
                     )
 
-                    # Log matron encounter start (RIKI LAW I.2)
+                    # Log matron encounter start (LUMEN LAW I.2)
                     await TransactionLogger.log_transaction(
                         session=session,
                         player_id=player.discord_id,
@@ -195,8 +276,8 @@ class ExplorationCog(BaseCog):
                         color=success_color
                     )
 
-                    embed.add_field(name="⚡ Energy", value=f"-{result['energy_cost']}", inline=True)
-                    embed.add_field(name="💰 Rewards", value=f"+{result['rikis_gained']:,} Rikis\n+{result['xp_gained']} XP", inline=True)
+                    embed.add_field(name="🪙 Energy", value=f"-{result['energy_cost']}", inline=True)
+                    embed.add_field(name="💰 Rewards", value=f"+{result['lumees_gained']:,} Lumees\n+{result['xp_gained']} XP", inline=True)
 
                     progress_bar = self._render_progress_bar(result['current_progress'], width=10)
                     embed.add_field(
@@ -236,8 +317,8 @@ class ExplorationCog(BaseCog):
                         color=primary_color
                     )
 
-                    embed.add_field(name="⚡ Energy", value=f"-{result['energy_cost']}", inline=True)
-                    embed.add_field(name="💰 Rewards", value=f"+{result['rikis_gained']:,} Rikis\n+{result['xp_gained']} XP", inline=True)
+                    embed.add_field(name="🪙 Energy", value=f"-{result['energy_cost']}", inline=True)
+                    embed.add_field(name="💰 Rewards", value=f"+{result['lumees_gained']:,} Lumees\n+{result['xp_gained']} XP", inline=True)
 
                     progress_bar = self._render_progress_bar(result['current_progress'], width=10)
                     embed.add_field(
@@ -256,7 +337,7 @@ class ExplorationCog(BaseCog):
 
                     await ctx.send(embed=embed)
 
-            # RIKI LAW POSITIONAL MARKER: LOG COMMAND USE
+            # LUMEN LAW POSITIONAL MARKER: LOG COMMAND USE
             latency = (time.perf_counter() - start_time) * 1000
             self.log_command_use(
                 "explore",
@@ -267,7 +348,7 @@ class ExplorationCog(BaseCog):
                 sublevel=sublevel
             )
 
-        # RIKI LAW POSITIONAL MARKER: SPECIFIC EXCEPTION HANDLING
+        # LUMEN LAW POSITIONAL MARKER: SPECIFIC EXCEPTION HANDLING
         except (InsufficientResourcesError, InvalidOperationError, NotFoundError, CooldownError) as e:
             latency = (time.perf_counter() - start_time) * 1000
             self.log_cog_error(
@@ -277,7 +358,7 @@ class ExplorationCog(BaseCog):
             await self.handle_standard_errors(ctx, e)
 
         except Exception as e:
-            # RIKI LAW POSITIONAL MARKER: STRUCTURED ERROR LOGGING
+            # LUMEN LAW POSITIONAL MARKER: STRUCTURED ERROR LOGGING
             latency = (time.perf_counter() - start_time) * 1000
             self.log_cog_error(
                 "explore", e, user_id=ctx.author.id, guild_id=ctx.guild.id if ctx.guild else None,
@@ -299,7 +380,7 @@ class ExplorationCog(BaseCog):
 
     @commands.command(
         name="mastery",
-        aliases=["rms", "rmastery", "rikimastery"],
+        aliases=[],
         description="View exploration mastery ranks and relic bonuses"
     )
     @ratelimit(
@@ -310,7 +391,7 @@ class ExplorationCog(BaseCog):
     async def mastery(self, ctx: commands.Context, sector_id: Optional[int] = None):
         """View mastery overview or detailed sector mastery."""
         start_time = time.perf_counter()
-        # RIKI LAW POSITIONAL MARKER: DEFER RESPONSE
+        # LUMEN LAW POSITIONAL MARKER: DEFER RESPONSE
         await self.safe_defer(ctx)
 
         if sector_id is not None:
@@ -323,7 +404,7 @@ class ExplorationCog(BaseCog):
         """Show mastery overview with all active relics."""
 
         try:
-            # RIKI LAW POSITIONAL MARKER: GET SESSION
+            # LUMEN LAW POSITIONAL MARKER: GET SESSION
             async with self.get_session() as session:
                 player = await self.require_player(session, ctx, ctx.author.id, lock=False)
                 if not player:
@@ -332,7 +413,7 @@ class ExplorationCog(BaseCog):
                 relics = await MasteryService.get_player_relics(session, player.discord_id)
                 bonuses = await MasteryService.get_active_bonuses(session, player.discord_id)
 
-                # RIKI LAW POSITIONAL MARKER: CONFIG MANAGER USE
+                # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
                 mastery_color = ConfigManager.get("embed_colors.mastery", default=0x9B59B6)
 
                 embed = discord.Embed(
@@ -361,7 +442,7 @@ class ExplorationCog(BaseCog):
                     embed.add_field(name="✨ Active Bonuses", value="No active relics yet. Complete sectors to earn bonuses!", inline=False)
 
                 sector_status = []
-                # RIKI LAW POSITIONAL MARKER: CONFIG MANAGER USE
+                # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
                 max_mastery_sector = ConfigManager.get("exploration.max_mastery_sector", default=6) 
                 for sector_id in range(1, max_mastery_sector + 1):
                     status = await MasteryService.get_sector_mastery_status(session, player.discord_id, sector_id)
@@ -370,11 +451,11 @@ class ExplorationCog(BaseCog):
                     sector_status.append(f"Sector {sector_id}: {stars}")
 
                 embed.add_field(name="🗺️ Sector Progress", value="\n".join(sector_status), inline=False)
-                embed.set_footer(text="Use rmastery <sector_id> to view detailed sector mastery")
+                embed.set_footer(text="Use ;mastery <sector_id> to view detailed sector mastery")
 
                 await ctx.send(embed=embed)
 
-                # RIKI LAW POSITIONAL MARKER: LOG COMMAND USE
+                # LUMEN LAW POSITIONAL MARKER: LOG COMMAND USE
                 latency = (time.perf_counter() - start_time) * 1000
                 self.log_command_use(
                     "mastery", 
@@ -384,7 +465,7 @@ class ExplorationCog(BaseCog):
                 )
 
         except Exception as e:
-            # RIKI LAW POSITIONAL MARKER: STRUCTURED ERROR LOGGING
+            # LUMEN LAW POSITIONAL MARKER: STRUCTURED ERROR LOGGING
             latency = (time.perf_counter() - start_time) * 1000
             self.log_cog_error("mastery", e, user_id=ctx.author.id, latency_ms=round(latency, 2))
             if not await self.handle_standard_errors(ctx, e):
@@ -393,10 +474,10 @@ class ExplorationCog(BaseCog):
     async def _show_sector_mastery(self, ctx: commands.Context, sector_id: int, start_time: float):
         """Show detailed mastery information for specific sector."""
 
-        # RIKI LAW POSITIONAL MARKER: CONFIG MANAGER USE
+        # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
         max_mastery_sector = ConfigManager.get("exploration.max_mastery_sector", default=6)
         if sector_id < 1 or sector_id > max_mastery_sector:
-            await self.send_error(ctx, "Invalid Sector", f"Sector must be between 1 and {max_mastery_sector}.", help_text="Example: rmastery 1")
+            await self.send_error(ctx, "Invalid Sector", f"Sector must be between 1 and {max_mastery_sector}.", help_text="Example: ;mastery 1")
             return
 
         try:
@@ -407,7 +488,7 @@ class ExplorationCog(BaseCog):
 
                 status = await MasteryService.get_sector_mastery_status(session, player.discord_id, sector_id)
                 
-                # RIKI LAW POSITIONAL MARKER: CONFIG MANAGER USE
+                # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
                 sublevels_per_sector = ConfigManager.get('exploration.sublevels_per_sector', default=9)
                 mastery_color = ConfigManager.get("embed_colors.mastery", default=0x9B59B6)
 
@@ -451,7 +532,7 @@ class ExplorationCog(BaseCog):
 
                 await ctx.send(embed=embed)
 
-                # RIKI LAW POSITIONAL MARKER: LOG COMMAND USE
+                # LUMEN LAW POSITIONAL MARKER: LOG COMMAND USE
                 latency = (time.perf_counter() - start_time) * 1000
                 self.log_command_use(
                     "mastery_sector", 
@@ -462,7 +543,7 @@ class ExplorationCog(BaseCog):
                 )
 
         except Exception as e:
-            # RIKI LAW POSITIONAL MARKER: STRUCTURED ERROR LOGGING
+            # LUMEN LAW POSITIONAL MARKER: STRUCTURED ERROR LOGGING
             latency = (time.perf_counter() - start_time) * 1000
             self.log_cog_error("mastery_sector", e, user_id=ctx.author.id, latency_ms=round(latency, 2), sector=sector_id)
             if not await self.handle_standard_errors(ctx, e):
@@ -483,7 +564,7 @@ class MatronCombatView(discord.ui.View):
         cog_logger: 'Callable'
     ):
         """Initialize the combat view."""
-        # RIKI LAW POSITIONAL MARKER: VIEW TIMEOUT SET
+        # LUMEN LAW POSITIONAL MARKER: VIEW TIMEOUT SET
         super().__init__(timeout=60.0) 
         self.user_id = user_id
         self.matron = matron
@@ -498,7 +579,7 @@ class MatronCombatView(discord.ui.View):
     
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Ensure only the command user can interact."""
-        # RIKI LAW POSITIONAL MARKER: USER VALIDATION
+        # LUMEN LAW POSITIONAL MARKER: USER VALIDATION
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This battle is not yours!", ephemeral=True)
             return False
@@ -549,22 +630,22 @@ class MatronCombatView(discord.ui.View):
         attack_type: str
     ):
         """Execute attack on matron."""
-        # RIKI LAW POSITIONAL MARKER: DEFER RESPONSE
+        # LUMEN LAW POSITIONAL MARKER: DEFER RESPONSE
         await interaction.response.defer()
 
         try:
-            # RIKI LAW POSITIONAL MARKER: REDIS LOCK
+            # LUMEN LAW POSITIONAL MARKER: REDIS LOCK
             async with RedisService.acquire_lock(f"exploration_combat:{self.user_id}", timeout=5):
                 self.turn_count += 1
 
-                # RIKI LAW POSITIONAL MARKER: DATABASE TRANSACTION
+                # LUMEN LAW POSITIONAL MARKER: DATABASE TRANSACTION
                 async with DatabaseService.get_transaction() as session:
-                    # RIKI LAW POSITIONAL MARKER: PESSIMISTIC LOCK
+                    # LUMEN LAW POSITIONAL MARKER: PESSIMISTIC LOCK
                     player = await PlayerService.get_player_with_regen(
                         session, self.user_id, lock=True
                     )
                     
-                    # RIKI LAW POSITIONAL MARKER: SERVICE CALL ONLY
+                    # LUMEN LAW POSITIONAL MARKER: SERVICE CALL ONLY
                     result = await MatronService.attack_matron(
                         session=session,
                         player=player,
@@ -575,7 +656,7 @@ class MatronCombatView(discord.ui.View):
 
                     self.matron["hp"] = result["matron_hp"]
 
-                    # RIKI LAW POSITIONAL MARKER: TRANSACTION LOGGING
+                    # LUMEN LAW POSITIONAL MARKER: TRANSACTION LOGGING
                     await TransactionLogger.log_transaction(
                         session=session,
                         player_id=self.user_id,
@@ -592,12 +673,12 @@ class MatronCombatView(discord.ui.View):
                 # Check outcome
                 if result["victory"]:
                     embed = self._build_victory_embed(result)
-                    # RIKI LAW POSITIONAL MARKER: DISABLE BUTTONS AFTER USE
+                    # LUMEN LAW POSITIONAL MARKER: DISABLE BUTTONS AFTER USE
                     await interaction.edit_original_response(embed=embed, view=None)
                     self.stop()
                 elif result["dismissed"]:
                     embed = self._build_dismissal_embed(result)
-                    # RIKI LAW POSITIONAL MARKER: DISABLE BUTTONS AFTER USE
+                    # LUMEN LAW POSITIONAL MARKER: DISABLE BUTTONS AFTER USE
                     await interaction.edit_original_response(embed=embed, view=None)
                     self.stop()
                 else:
@@ -607,14 +688,14 @@ class MatronCombatView(discord.ui.View):
                     if self.turn_count >= self.matron["turn_limit"] - 2:
                         for item in self.children:
                             if isinstance(item, discord.ui.Button):
-                                # RIKI LAW POSITIONAL MARKER: CONFIG MANAGER USE
+                                # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
                                 danger_color = ConfigManager.get("embed_colors.danger", default=0xFF0000)
                                 if item.style != discord.ButtonStyle.danger:
                                     item.style = discord.ButtonStyle.danger
                                     
                     await interaction.edit_original_response(embed=embed, view=self)
         
-        # RIKI LAW POSITIONAL MARKER: SPECIFIC EXCEPTION HANDLING
+        # LUMEN LAW POSITIONAL MARKER: SPECIFIC EXCEPTION HANDLING
         except InsufficientResourcesError as e:
             await interaction.followup.send(
                 embed=EmbedBuilder.error("Insufficient Resources", str(e), help_text="You don't have enough resources for this attack."),
@@ -623,7 +704,7 @@ class MatronCombatView(discord.ui.View):
             self.cog_logger("matron_attack", e, user_id=self.user_id, status="domain_error", error_type=type(e).__name__)
         
         except Exception as e:
-            # RIKI LAW POSITIONAL MARKER: STRUCTURED ERROR LOGGING
+            # LUMEN LAW POSITIONAL MARKER: STRUCTURED ERROR LOGGING
             self.cog_logger(
                 "matron_attack",
                 e,
@@ -636,13 +717,13 @@ class MatronCombatView(discord.ui.View):
                 embed=EmbedBuilder.error("System Failure", "An unexpected error occurred. Combat aborted."),
                 ephemeral=True
             )
-            # RIKI LAW POSITIONAL MARKER: DISABLE BUTTONS AFTER USE
+            # LUMEN LAW POSITIONAL MARKER: DISABLE BUTTONS AFTER USE
             await interaction.edit_original_response(view=None)
             self.stop()
     
     def _build_turn_embed(self, result: Dict[str, Any]) -> discord.Embed:
         """Build turn result embed."""
-        # RIKI LAW POSITIONAL MARKER: CONFIG MANAGER USE
+        # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
         turn_update_color = ConfigManager.get("embed_colors.turn_update", default=0x0099FF)
 
         embed = discord.Embed(
@@ -683,7 +764,7 @@ class MatronCombatView(discord.ui.View):
         rewards = result["rewards"]
         turn_bonus = rewards["turn_bonus"]
         
-        # RIKI LAW POSITIONAL MARKER: CONFIG MANAGER USE
+        # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
         success_color = ConfigManager.get("embed_colors.success", default=0x00FF00)
         perfect_percent = ConfigManager.get("exploration.rewards.perfect_bonus_percent", 100)
         fast_percent = ConfigManager.get("exploration.rewards.fast_bonus_percent", 50)
@@ -701,11 +782,11 @@ class MatronCombatView(discord.ui.View):
         
         embed.add_field(name=f"{bonus_emoji[turn_bonus]} {bonus_text[turn_bonus]}", value=f"**Turns Used:** {result['turns_taken']}", inline=False)
         
-        reward_text = f"**+{rewards['rikis']:,}** Rikis\n**+{rewards['xp']}** XP"
+        reward_text = f"**+{rewards['lumees']:,}** Lumees\n**+{rewards['xp']}** XP"
         if rewards.get("sector_clear_bonus"):
             bonus = rewards["sector_clear_bonus"]
             reward_text += f"\n\n**🏆 Sector Boss Bonus:**"
-            reward_text += f"\n+{bonus['rikis']:,} Rikis"
+            reward_text += f"\n+{bonus['lumees']:,} Lumees"
             reward_text += f"\n🥈 Silver Token x1"
         
         embed.add_field(name="💰 Rewards", value=reward_text, inline=False)
@@ -715,7 +796,7 @@ class MatronCombatView(discord.ui.View):
     
     def _build_dismissal_embed(self, result: Dict[str, Any]) -> discord.Embed:
         """Build dismissal embed."""
-        # RIKI LAW POSITIONAL MARKER: CONFIG MANAGER USE
+        # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
         dismiss_color = ConfigManager.get("embed_colors.dismiss", default=0x808080)
 
         embed = discord.Embed(title="💨 DISMISSED", description=result["dismissal_text"], color=dismiss_color)
@@ -750,7 +831,7 @@ class MatronCombatView(discord.ui.View):
         """Disable all buttons visually when the view expires."""
         for item in self.children:
             if isinstance(item, discord.ui.Button):
-                # RIKI LAW POSITIONAL MARKER: DISABLE BUTTONS AFTER USE
+                # LUMEN LAW POSITIONAL MARKER: DISABLE BUTTONS AFTER USE
                 item.disabled = True
 
         try:
@@ -761,6 +842,253 @@ class MatronCombatView(discord.ui.View):
             pass
 
         self.stop()
+
+
+class ExplorationMenuView(discord.ui.View):
+    """
+    Main exploration menu with Venture and Mastery buttons.
+    """
+
+    def __init__(self, user_id: int, cog: ExplorationCog):
+        super().__init__(timeout=300)
+        self.user_id = user_id
+        self.cog = cog
+        self.message: Optional[discord.Message] = None
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Ensure only the command user can interact."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "This exploration menu is not for you!",
+                ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(
+        label="⚔️ Venture",
+        style=discord.ButtonStyle.primary,
+        custom_id="exploration_venture"
+    )
+    async def venture_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        """Show sector selection for venturing."""
+        await interaction.response.defer(ephemeral=True)
+
+        # Create sector selection view
+        sector_view = SectorSelectView(self.user_id, self.cog)
+
+        embed = discord.Embed(
+            title="🗺️ Select Sector",
+            description="Choose which sector you'd like to explore:",
+            color=0x5865F2
+        )
+
+        await interaction.followup.send(embed=embed, view=sector_view, ephemeral=True)
+
+    @discord.ui.button(
+        label="🏆 Mastery",
+        style=discord.ButtonStyle.secondary,
+        custom_id="exploration_mastery"
+    )
+    async def mastery_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        """Show mastery overview."""
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            # Create a temporary context-like object
+            class TempCtx:
+                def __init__(self, interaction):
+                    self.author = interaction.user
+                    self.guild = interaction.guild
+                    self.send = interaction.followup.send
+
+            temp_ctx = TempCtx(interaction)
+            start_time = time.perf_counter()
+
+            # Call the mastery overview
+            await self.cog._show_mastery_overview(temp_ctx, start_time)
+
+        except Exception as e:
+            await interaction.followup.send(
+                embed=EmbedBuilder.error(
+                    "Mastery Error",
+                    "Failed to load mastery data.",
+                    help_text="Please try again."
+                ),
+                ephemeral=True
+            )
+
+    async def on_timeout(self):
+        """Disable all buttons when view expires."""
+        for item in self.children:
+            item.disabled = True
+
+        try:
+            if self.message:
+                await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
+
+
+class SectorSelectView(discord.ui.View):
+    """
+    Sector selection dropdown for exploration.
+    """
+
+    def __init__(self, user_id: int, cog: ExplorationCog):
+        super().__init__(timeout=120)
+        self.user_id = user_id
+        self.cog = cog
+
+        # Add sector dropdown
+        max_sector = ConfigManager.get("exploration.explore_max_sector", default=7)
+        options = [
+            discord.SelectOption(
+                label=f"Sector {i}",
+                value=str(i),
+                description=f"Explore Sector {i}",
+                emoji="🗺️"
+            )
+            for i in range(1, max_sector + 1)
+        ]
+
+        self.add_item(SectorSelectDropdown(user_id, cog, options))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Ensure only the command user can interact."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "This selection menu is not for you!",
+                ephemeral=True
+            )
+            return False
+        return True
+
+
+class SectorSelectDropdown(discord.ui.Select):
+    """Dropdown for selecting sector."""
+
+    def __init__(self, user_id: int, cog: ExplorationCog, options: list):
+        self.user_id = user_id
+        self.cog = cog
+
+        super().__init__(
+            placeholder="🗺️ Select a sector...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="sector_select"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        """Handle sector selection and show sublevel selection."""
+        selected_sector = int(self.values[0])
+
+        await interaction.response.defer(ephemeral=True)
+
+        # Create sublevel selection view
+        sublevel_view = SublevelSelectView(self.user_id, self.cog, selected_sector)
+
+        embed = discord.Embed(
+            title=f"🗺️ Sector {selected_sector} - Select Sublevel",
+            description="Choose which sublevel you'd like to explore:",
+            color=0x5865F2
+        )
+
+        await interaction.followup.send(embed=embed, view=sublevel_view, ephemeral=True)
+
+
+class SublevelSelectView(discord.ui.View):
+    """
+    Sublevel selection dropdown for exploration.
+    """
+
+    def __init__(self, user_id: int, cog: ExplorationCog, sector: int):
+        super().__init__(timeout=120)
+        self.user_id = user_id
+        self.cog = cog
+        self.sector = sector
+
+        # Add sublevel dropdown
+        max_sublevel = ConfigManager.get("exploration.explore_max_sublevel", default=9)
+        options = [
+            discord.SelectOption(
+                label=f"Sublevel {i}",
+                value=str(i),
+                description=f"Explore Sector {sector} - Sublevel {i}",
+                emoji="⚔️"
+            )
+            for i in range(1, max_sublevel + 1)
+        ]
+
+        self.add_item(SublevelSelectDropdown(user_id, cog, sector, options))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Ensure only the command user can interact."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "This selection menu is not for you!",
+                ephemeral=True
+            )
+            return False
+        return True
+
+
+class SublevelSelectDropdown(discord.ui.Select):
+    """Dropdown for selecting sublevel."""
+
+    def __init__(self, user_id: int, cog: ExplorationCog, sector: int, options: list):
+        self.user_id = user_id
+        self.cog = cog
+        self.sector = sector
+
+        super().__init__(
+            placeholder="⚔️ Select a sublevel...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="sublevel_select"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        """Handle sublevel selection and execute exploration."""
+        selected_sublevel = int(self.values[0])
+
+        # Create a context wrapper for the exploration
+        class ExplorationContext:
+            def __init__(self, interaction):
+                self.author = interaction.user
+                self.guild = interaction.guild
+                self.bot = interaction.client
+                self._interaction = interaction
+                self._responded = False
+
+            async def defer(self):
+                """Defer the response."""
+                if not self._responded:
+                    await self._interaction.response.defer()
+                    self._responded = True
+
+            async def send(self, *args, **kwargs):
+                """Send a response."""
+                if self._responded:
+                    return await self._interaction.followup.send(*args, **kwargs)
+                else:
+                    await self._interaction.response.send_message(*args, **kwargs)
+                    self._responded = True
+
+        ctx = ExplorationContext(interaction)
+
+        # Execute exploration
+        await self.cog._execute_exploration(ctx, self.sector, selected_sublevel)
 
 
 async def setup(bot: commands.Bot):

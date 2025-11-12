@@ -9,7 +9,7 @@ Features:
 - Audit trail for all config changes
 - Performance metrics tracking
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Live config changes without redeploy (Article IV)
 - Audit trails for all modifications (Article II)
 - Graceful degradation to defaults (Article IX)
@@ -46,7 +46,7 @@ class ConfigManager:
 
     Provides hierarchical config access using dot notation (e.g., 'fusion_costs.base').
     Cached in memory with TTL and periodically refreshed.
-    Allows live balance changes without redeploy (RIKI LAW Article IV).
+    Allows live balance changes without redeploy (LUMEN LAW Article IV).
     """
 
     _cache: Dict[str, Any] = {}
@@ -71,7 +71,7 @@ class ConfigManager:
     # =========================================================================
     # DEFAULT CONFIGURATIONS
     # =========================================================================
-    # RIKI LAW I.6: All game parameters MUST be externalized to YAML files.
+    # LUMEN LAW I.6: All game parameters MUST be externalized to YAML files.
     # This dict contains ONLY infrastructure defaults (fallback values).
     # Game balance parameters are loaded from config/ directory YAML files.
     _defaults: Dict[str, Any] = {}
@@ -85,7 +85,7 @@ class ConfigManager:
         """
         Recursively load all YAML config files from config/ directory into cache.
 
-        RIKI LAW I.6: All game parameters externalized to YAML files.
+        LUMEN LAW I.6: All game parameters externalized to YAML files.
         Files are merged into _defaults first, then copied to _cache.
         Supports nested directory structure (e.g., config/fusion/rates.yaml).
         Gracefully handles missing yaml library or config files.

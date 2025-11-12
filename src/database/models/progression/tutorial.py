@@ -14,7 +14,7 @@ class TutorialProgress(SQLModel, table=True):
     
     Tutorial Steps:
         - register_account: Complete registration
-        - first_prayer: Use /prayer command
+        - first_drop: Use /drop command
         - first_summon: Use /summon command
         - first_fusion: Attempt fusion
         - view_collection: Check /maidens
@@ -22,7 +22,7 @@ class TutorialProgress(SQLModel, table=True):
         - complete_daily_quest: Finish all daily objectives
     
     Rewards per step (core.configurable):
-        - Grace, Rikis, or XP rewards
+        - AuricCoin, Lumees, or XP rewards
         - Unlocking features
         - Guidance popups
     
@@ -45,7 +45,7 @@ class TutorialProgress(SQLModel, table=True):
     steps_completed: Dict[str, bool] = Field(
         default_factory=lambda: {
             "register_account": False,
-            "first_prayer": False,
+            "first_drop": False,
             "first_summon": False,
             "first_fusion": False,
             "view_collection": False,
@@ -58,7 +58,7 @@ class TutorialProgress(SQLModel, table=True):
     rewards_claimed: Dict[str, bool] = Field(
         default_factory=lambda: {
             "register_account": False,
-            "first_prayer": False,
+            "first_drop": False,
             "first_summon": False,
             "first_fusion": False,
             "view_collection": False,
@@ -82,8 +82,8 @@ class TutorialProgress(SQLModel, table=True):
             True if step completed, False otherwise
         
         Example:
-            >>> if tutorial.is_step_complete("first_prayer"):
-            ...     print("Prayer step done!")
+            >>> if tutorial.is_step_complete("first_drop"):
+            ...     print("DROP step done!")
         """
         return self.steps_completed.get(step, False)
     
@@ -221,7 +221,7 @@ class TutorialProgress(SQLModel, table=True):
         
         Returns steps in order:
         1. register_account
-        2. first_prayer
+        2. first_drop
         3. first_summon
         4. first_fusion
         5. view_collection
@@ -238,7 +238,7 @@ class TutorialProgress(SQLModel, table=True):
         """
         step_order = [
             "register_account",
-            "first_prayer",
+            "first_drop",
             "first_summon",
             "first_fusion",
             "view_collection",

@@ -3,7 +3,7 @@
 migrate_to_modules.py
 ----------------------
 
-Refactors RIKI RPG from flat cogs/services to feature-based architecture.
+Refactors Lumen RPG from flat cogs/services to feature-based architecture.
 
 USAGE:
   python migrate_to_modules.py plan    # Preview changes (safe)
@@ -337,7 +337,7 @@ def cmd_revert():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="RIKI RPG Migration Tool")
+    parser = argparse.ArgumentParser(description="Lumen RPG Migration Tool")
     parser.add_argument("command", choices=["plan", "apply", "revert"])
     args = parser.parse_args()
     if not SRC.exists():

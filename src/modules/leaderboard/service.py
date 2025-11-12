@@ -4,7 +4,7 @@ Leaderboard ranking system with cached snapshots.
 Provides real-time ranking queries and periodic snapshot updates for performance.
 Supports multiple ranking categories: power, level, ascension, fusion count, etc.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
     - Article III: Pure business logic service (no Discord dependencies)
     - Article IV: Ranking categories configurable
     - Article VII: Stateless @staticmethod pattern
@@ -57,9 +57,9 @@ class LeaderboardService:
             "icon": "🔥",
             "format": "{:,}"
         },
-        "rikis": {
-            "name": "Wealth (Rikis)",
-            "field": "rikis",
+        "lumees": {
+            "name": "Wealth (Lumees)",
+            "field": "lumees",
             "icon": "💰",
             "format": "{:,}"
         }

@@ -1,7 +1,7 @@
 """
 Centralized resource transaction and modifier application system.
 
-Handles ALL resource modifications (rikis, grace, gems, energy, stamina, prayer_charges)
+Handles ALL resource modifications (lumees, auric coin, gems, energy, stamina, DROP_CHARGES)
 with validation, global modifier application, transaction logging, and cap enforcement.
 
 Features:
@@ -9,11 +9,11 @@ Features:
 - Resource consumption with validation
 - Resource checking without modification
 - Modifier calculation from multiple sources
-- Grace cap enforcement (configurable)
+- AuricCoin cap enforcement (configurable)
 - Comprehensive audit trails
 - Performance metrics and monitoring
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Session-first parameter pattern (Article I.6)
 - ConfigManager for all tunables (Article IV)
 - Transaction logging for audit trails (Article II)
@@ -33,7 +33,7 @@ from src.core.infra.transaction_logger import TransactionLogger
 from src.modules.maiden.leader_service import LeaderService
 from src.core.exceptions import InsufficientResourcesError
 from src.core.logging.logger import get_logger
-from src.core.constants import PRAYER_CHARGES_MAX
+from src.core.constants import drop_CHARGES_MAX
 
 logger = get_logger(__name__)
 
@@ -44,7 +44,7 @@ class ResourceService:
     
     Modifier System:
         - Multiplicative stacking: final = base * leader_mult * class_mult
-        - Applies to: rikis, grace, gems, XP gains
+        - Applies to: lumees, auric coin, lumenite, XP gains
         - Sources: Leader effects (income_boost, xp_boost), class bonuses
     """
     
@@ -53,12 +53,12 @@ class ResourceService:
         "grants": 0,
         "consumes": 0,
         "checks": 0,
-        "total_rikis_granted": 0,
-        "total_grace_granted": 0,
-        "total_gems_granted": 0,
-        "total_rikis_consumed": 0,
-        "total_grace_consumed": 0,
-        "grace_caps_hit": 0,
+        "total_lumees_granted": 0,
+        "total_auric_coin_granted": 0,
+        "total_lumenite_granted": 0,
+        "total_lumees_consumed": 0,
+        "total_auric_coin_consumed": 0,
+        "auric_coin_caps_hit": 0,
         "insufficient_resource_errors": 0,
         "errors": 0,
         "total_grant_time_ms": 0.0,
@@ -78,17 +78,17 @@ class ResourceService:
         Grant resources to player with optional modifier application.
         
         Applies leader bonuses and class bonuses multiplicatively:
-        - income_boost applies to: rikis, grace, riki_gems
+        - income_boost applies to: lumees, auric coin, lumenite
         - xp_boost applies to: experience
         
-        Enforces grace cap (configurable). No cap for rikis/gems.
+        Enforces auric coin cap (configurable). No cap for lumees/lumenite.
         Logs all changes via TransactionLogger.
         
         Args:
             session: Database session (transaction managed by caller)
             player: Player object (must be locked with SELECT FOR UPDATE)
-            resources: Dict of resource amounts {"rikis": 1000, "grace": 5, "experience": 100}
-            source: Reason for grant ("daily_reward", "fusion_refund", "prayer_completion")
+            resources: Dict of resource amounts {"lumees": 1000, "auric_coin": 5, "experience": 100}
+            source: Reason for grant ("daily_reward", "fusion_refund", "drop_completion")
             apply_modifiers: Whether to apply leader/class bonuses (False for tutorial)
             context: Additional context for transaction log
         
@@ -113,7 +113,7 @@ class ResourceService:
             # Calculate modifiers if requested
             if apply_modifiers:
                 resource_types = list(resources.keys())
-                modifiers = ResourceService.calculate_modifiers(player, resource_types)
+                modifiers = await ResourceService.calculate_modifiers(player, resource_types)
                 modifiers_applied = modifiers
             else:
                 modifiers_applied = {}
@@ -128,7 +128,7 @@ class ResourceService:
                 # Apply modifiers
                 final_amount = base_amount
                 if apply_modifiers:
-                    if resource in ["rikis", "grace", "riki_gems"]:
+                    if resource in ["lumees", "auric_coin", "lumenite"]:
                         income_mult = modifiers_applied.get("income_boost", 1.0)
                         final_amount = int(base_amount * income_mult)
                     elif resource == "experience":
@@ -136,23 +136,23 @@ class ResourceService:
                         final_amount = int(base_amount * xp_mult)
                 
                 # Apply with caps
-                if resource == "grace":
-                    grace_cap = ConfigManager.get("resource_system.grace_max_cap", 999999)
+                if resource == "auric_coin":
+                    auric_coin_cap = ConfigManager.get("resource_system.auric_coin_max_cap", 999999)
                     new_value = old_values[resource] + final_amount
-                    if new_value > grace_cap:
-                        final_amount = grace_cap - old_values[resource]
-                        caps_hit.append("grace")
-                        new_value = grace_cap
-                        ResourceService._metrics["grace_caps_hit"] += 1
-                    player.grace = new_value
-                    ResourceService._metrics["total_grace_granted"] += final_amount
+                    if new_value > auric_coin_cap:
+                        final_amount = auric_coin_cap - old_values[resource]
+                        caps_hit.append("auric_coin")
+                        new_value = auric_coin_cap
+                        ResourceService._metrics["auric_coin_caps_hit"] += 1
+                    player.auric_coin = new_value
+                    ResourceService._metrics["total_auric_coin_granted"] += final_amount
                     
-                elif resource == "rikis":
-                    player.rikis += final_amount
-                    ResourceService._metrics["total_rikis_granted"] += final_amount
+                elif resource == "lumees":
+                    player.lumees += final_amount
+                    ResourceService._metrics["total_lumees_granted"] += final_amount
                     
-                elif resource == "riki_gems":
-                    player.riki_gems += final_amount
+                elif resource == "lumenite":
+                    player.lumenite += final_amount
                     ResourceService._metrics["total_gems_granted"] += final_amount
                     
                 elif resource == "experience":
@@ -168,11 +168,11 @@ class ResourceService:
                     final_amount = new_val - player.stamina
                     player.stamina = new_val
                     
-                elif resource == "prayer_charges":
-                    # Single charge system: cap at PRAYER_CHARGES_MAX
-                    new_val = min(player.prayer_charges + final_amount, PRAYER_CHARGES_MAX)
-                    final_amount = new_val - player.prayer_charges
-                    player.prayer_charges = new_val
+                elif resource == "DROP_CHARGES":
+                    # Single charge system: cap at drop_CHARGES_MAX
+                    new_val = min(player.DROP_CHARGES + final_amount, drop_CHARGES_MAX)
+                    final_amount = new_val - player.DROP_CHARGES
+                    player.DROP_CHARGES = new_val
                     
                 else:
                     logger.warning(
@@ -250,7 +250,7 @@ class ResourceService:
         Args:
             session: Database session (transaction managed by caller)
             player: Player object (must be locked with SELECT FOR UPDATE)
-            resources: Dict of resource amounts to consume {"rikis": 5000, "grace": 5}
+            resources: Dict of resource amounts to consume {"lumees": 5000, "auric_coin": 5}
             source: Reason for consumption ("fusion_cost", "summon_cost", "upgrade_cost")
             context: Additional context for transaction log
         
@@ -292,20 +292,20 @@ class ResourceService:
                 if amount <= 0:
                     continue
                 
-                if resource == "grace":
-                    player.grace -= amount
-                    ResourceService._metrics["total_grace_consumed"] += amount
-                elif resource == "rikis":
-                    player.rikis -= amount
-                    ResourceService._metrics["total_rikis_consumed"] += amount
-                elif resource == "riki_gems":
-                    player.riki_gems -= amount
+                if resource == "auric_coin":
+                    player.auric_coin -= amount
+                    ResourceService._metrics["total_auric_coin_consumed"] += amount
+                elif resource == "lumees":
+                    player.lumees -= amount
+                    ResourceService._metrics["total_lumees_consumed"] += amount
+                elif resource == "lumenite":
+                    player.lumenite -= amount
                 elif resource == "energy":
                     player.energy -= amount
                 elif resource == "stamina":
                     player.stamina -= amount
-                elif resource == "prayer_charges":
-                    player.prayer_charges -= amount
+                elif resource == "DROP_CHARGES":
+                    player.DROP_CHARGES -= amount
                 else:
                     logger.warning(
                         f"Unknown resource type for consumption: {resource}",
@@ -368,7 +368,7 @@ class ResourceService:
         
         Args:
             player: Player object
-            resources: Dict of resource requirements {"rikis": 5000, "grace": 5}
+            resources: Dict of resource requirements {"lumees": 5000, "auric_coin": 5}
         
         Returns:
             True if player has all required resources, False otherwise
@@ -386,7 +386,7 @@ class ResourceService:
         return True
     
     @staticmethod
-    def calculate_modifiers(player: Player, resource_types: List[str]) -> Dict[str, float]:
+    async def calculate_modifiers(player: Player, resource_types: List[str]) -> Dict[str, float]:
         """
         Calculate active modifiers from leader and class effects.
 
@@ -398,7 +398,7 @@ class ResourceService:
 
         Returns:
             Dictionary of multipliers:
-                - income_boost: Multiplier for rikis, grace, gems (1.0 = no bonus)
+                - income_boost: Multiplier for lumees, auric coin, gems (1.0 = no bonus)
                 - xp_boost: Multiplier for experience (1.0 = no bonus)
 
         Performance:
@@ -410,7 +410,7 @@ class ResourceService:
             "xp_boost": 1.0
         }
 
-        needs_income = any(r in resource_types for r in ["rikis", "grace", "riki_gems"])
+        needs_income = any(r in resource_types for r in ["lumees", "auric_coin", "lumenite"])
         needs_xp = "experience" in resource_types
 
         # Early exit if no modifiers needed
@@ -421,7 +421,7 @@ class ResourceService:
             return modifiers  # Early exit if no leader set
 
         try:
-            leader_modifiers = LeaderService.get_active_modifiers(player)
+            leader_modifiers = await LeaderService.get_active_modifiers(player)
             if needs_income and "income_boost" in leader_modifiers:
                 modifiers["income_boost"] *= leader_modifiers["income_boost"]
             if needs_xp and "xp_boost" in leader_modifiers:
@@ -444,7 +444,7 @@ class ResourceService:
         
         Args:
             player: Player object
-            regen_amounts: Dict of regen amounts {"energy": 10, "stamina": 5, "prayer_charges": 1}
+            regen_amounts: Dict of regen amounts {"energy": 10, "stamina": 5, "DROP_CHARGES": 1}
         
         Returns:
             Dictionary of actual amounts regenerated (after caps)
@@ -461,41 +461,41 @@ class ResourceService:
             player.stamina = min(player.stamina + regen_amounts["stamina"], player.max_stamina)
             actual_regen["stamina"] = player.stamina - old_stamina
         
-        if "prayer_charges" in regen_amounts and regen_amounts["prayer_charges"] > 0:
-            old_charges = player.prayer_charges
-            # Single charge system: cap at PRAYER_CHARGES_MAX
-            player.prayer_charges = min(
-                player.prayer_charges + regen_amounts["prayer_charges"],
-                PRAYER_CHARGES_MAX
+        if "DROP_CHARGES" in regen_amounts and regen_amounts["DROP_CHARGES"] > 0:
+            old_charges = player.DROP_CHARGES
+            # Single charge system: cap at drop_CHARGES_MAX
+            player.DROP_CHARGES = min(
+                player.DROP_CHARGES + regen_amounts["DROP_CHARGES"],
+                drop_CHARGES_MAX
             )
-            actual_regen["prayer_charges"] = player.prayer_charges - old_charges
+            actual_regen["DROP_CHARGES"] = player.DROP_CHARGES - old_charges
         
         return actual_regen
     
     @staticmethod
-    def get_resource_summary(player: Player) -> Dict[str, Any]:
+    async def get_resource_summary(player: Player) -> Dict[str, Any]:
         """
         Get formatted resource display for player profile.
-        
+
         Args:
             player: Player object
-        
+
         Returns:
             Dictionary with formatted resource information:
-                - currencies: rikis, grace, gems
-                - consumables: energy, stamina, prayer_charges with max values
+                - currencies: lumees, auric coin, gems
+                - consumables: energy, stamina, DROP_CHARGES with max values
                 - modifiers: active bonuses from leader/class
         """
-        modifiers = ResourceService.calculate_modifiers(
+        modifiers = await ResourceService.calculate_modifiers(
             player,
-            ["rikis", "grace", "riki_gems", "experience"]
+            ["lumees", "auric_coin", "lumenite", "experience"]
         )
         
         return {
             "currencies": {
-                "rikis": player.rikis,
-                "grace": player.grace,
-                "riki_gems": player.riki_gems
+                "lumees": player.lumees,
+                "auric_coin": player.auric_coin,
+                "lumenite": player.lumenite
             },
             "consumables": {
                 "energy": {
@@ -508,11 +508,11 @@ class ResourceService:
                     "max": player.max_stamina,
                     "percentage": int((player.stamina / player.max_stamina) * 100) if player.max_stamina > 0 else 0
                 },
-                "prayer_charges": {
-                    "current": player.prayer_charges,
-                    "max": PRAYER_CHARGES_MAX,  # Single charge system
-                    "has_charge": player.prayer_charges >= PRAYER_CHARGES_MAX,
-                    "next_regen": player.get_prayer_regen_display() if hasattr(player, 'get_prayer_regen_display') else "N/A"
+                "DROP_CHARGES": {
+                    "current": player.DROP_CHARGES,
+                    "max": drop_CHARGES_MAX,  # Single charge system
+                    "has_charge": player.DROP_CHARGES >= drop_CHARGES_MAX,
+                    "next_regen": player.get_drop_regen_display() if hasattr(player, 'get_drop_regen_display') else "N/A"
                 }
             },
             "modifiers": {
@@ -554,12 +554,12 @@ class ResourceService:
             "consumes": ResourceService._metrics["consumes"],
             "checks": ResourceService._metrics["checks"],
             "total_operations": total_ops,
-            "total_rikis_granted": ResourceService._metrics["total_rikis_granted"],
-            "total_grace_granted": ResourceService._metrics["total_grace_granted"],
+            "total_lumees_granted": ResourceService._metrics["total_lumees_granted"],
+            "total_auric_coin_granted": ResourceService._metrics["total_auric_coin_granted"],
             "total_gems_granted": ResourceService._metrics["total_gems_granted"],
-            "total_rikis_consumed": ResourceService._metrics["total_rikis_consumed"],
-            "total_grace_consumed": ResourceService._metrics["total_grace_consumed"],
-            "grace_caps_hit": ResourceService._metrics["grace_caps_hit"],
+            "total_lumees_consumed": ResourceService._metrics["total_lumees_consumed"],
+            "total_auric_coin_consumed": ResourceService._metrics["total_auric_coin_consumed"],
+            "auric_coin_caps_hit": ResourceService._metrics["auric_coin_caps_hit"],
             "insufficient_resource_errors": ResourceService._metrics["insufficient_resource_errors"],
             "errors": ResourceService._metrics["errors"],
             "avg_grant_time_ms": round(avg_grant_time, 2),
@@ -573,12 +573,12 @@ class ResourceService:
             "grants": 0,
             "consumes": 0,
             "checks": 0,
-            "total_rikis_granted": 0,
-            "total_grace_granted": 0,
+            "total_lumees_granted": 0,
+            "total_auric_coin_granted": 0,
             "total_gems_granted": 0,
-            "total_rikis_consumed": 0,
-            "total_grace_consumed": 0,
-            "grace_caps_hit": 0,
+            "total_lumees_consumed": 0,
+            "total_auric_coin_consumed": 0,
+            "auric_coin_caps_hit": 0,
             "insufficient_resource_errors": 0,
             "errors": 0,
             "total_grant_time_ms": 0.0,

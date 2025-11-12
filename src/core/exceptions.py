@@ -1,7 +1,7 @@
 """
-Domain exceptions for RIKI RPG Bot.
+Domain exceptions for Lumen RPG Bot.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Domain exceptions only (no Discord imports)
 - Structured error data for logging
 - Service layer raises these, cogs convert to embeds
@@ -27,9 +27,9 @@ class ErrorSeverity(Enum):
     CRITICAL = "critical" # System-level failures requiring immediate action
 
 
-class RIKIException(Exception):
+class LumenException(Exception):
     """
-    Base exception for all RIKI RPG errors.
+    Base exception for all Lumen RPG errors.
     
     Provides structured error information with details for logging and user display.
     All custom exceptions should inherit from this base class.
@@ -42,7 +42,7 @@ class RIKIException(Exception):
         error_code: Optional code for programmatic handling
     
     Example:
-        >>> raise RIKIException("Something went wrong", {"context": "fusion"})
+        >>> raise LumenException("Something went wrong", {"context": "fusion"})
     """
     
     # Default severity and retry behavior (subclasses can override)
@@ -92,7 +92,7 @@ class RIKIException(Exception):
         )
 
 
-class InsufficientResourcesError(RIKIException):
+class InsufficientResourcesError(LumenException):
     """Raised when player lacks required resources for an action."""
     
     DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected user error
@@ -115,7 +115,7 @@ class InsufficientResourcesError(RIKIException):
         )
 
 
-class NotFoundError(RIKIException):
+class NotFoundError(LumenException):
     """Raised when a requested resource cannot be found."""
 
     DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected user error
@@ -140,7 +140,7 @@ class NotFoundError(RIKIException):
         )
 
 
-class MaidenNotFoundError(RIKIException):
+class MaidenNotFoundError(LumenException):
     """Raised when a maiden cannot be found in player's collection."""
 
     DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected user error
@@ -160,7 +160,7 @@ class MaidenNotFoundError(RIKIException):
         )
 
 
-class PlayerNotFoundError(RIKIException):
+class PlayerNotFoundError(LumenException):
     """Raised when a player cannot be found in the database."""
     
     DEFAULT_SEVERITY = ErrorSeverity.WARNING  # Should exist, investigate
@@ -176,7 +176,7 @@ class PlayerNotFoundError(RIKIException):
         )
 
 
-class ValidationError(RIKIException):
+class ValidationError(LumenException):
     """Raised when user input fails validation."""
     
     DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected user error
@@ -196,7 +196,7 @@ class ValidationError(RIKIException):
         )
 
 
-class InvalidFusionError(RIKIException):
+class InvalidFusionError(LumenException):
     """Raised when fusion operation fails for business logic reasons."""
     
     DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected business rule
@@ -212,7 +212,7 @@ class InvalidFusionError(RIKIException):
         )
 
 
-class CooldownError(RIKIException):
+class CooldownError(LumenException):
     """Raised when action is on cooldown."""
     
     DEFAULT_SEVERITY = ErrorSeverity.DEBUG  # Expected rate limiting
@@ -234,7 +234,7 @@ class CooldownError(RIKIException):
         )
 
 
-class ConfigurationError(RIKIException):
+class ConfigurationError(LumenException):
     """
     Raised when a configuration key is invalid or missing.
     
@@ -259,7 +259,7 @@ class ConfigurationError(RIKIException):
         )
 
 
-class DatabaseError(RIKIException):
+class DatabaseError(LumenException):
     """Raised when database operations fail."""
     
     DEFAULT_SEVERITY = ErrorSeverity.ERROR  # Infrastructure failure
@@ -281,7 +281,7 @@ class DatabaseError(RIKIException):
         )
 
 
-class RateLimitError(RIKIException):
+class RateLimitError(LumenException):
     """Raised when command rate limit is exceeded."""
     
     DEFAULT_SEVERITY = ErrorSeverity.DEBUG  # Expected rate limiting
@@ -302,7 +302,7 @@ class RateLimitError(RIKIException):
         )
 
 
-class InvalidOperationError(RIKIException):
+class InvalidOperationError(LumenException):
     """
     Raised when a player attempts an action that is not allowed 
     or violates game rules.
@@ -344,7 +344,7 @@ def is_transient_error(exc: Exception) -> bool:
     Returns:
         True if error is retryable, False otherwise
     """
-    if isinstance(exc, RIKIException):
+    if isinstance(exc, LumenException):
         return exc.is_retryable
     return False
 
@@ -352,14 +352,14 @@ def is_transient_error(exc: Exception) -> bool:
 def get_error_severity(exc: Exception) -> ErrorSeverity:
     """
     Get the severity level of an exception for logging.
-    
+
     Args:
         exc: Exception to check
-        
+
     Returns:
         ErrorSeverity level
     """
-    if isinstance(exc, RIKIException):
+    if isinstance(exc, LumenException):
         return exc.severity
     return ErrorSeverity.ERROR  # Default for unknown exceptions
 

@@ -1,7 +1,7 @@
 """
-Async pub/sub event bus for RIKI RPG Bot.
+Async pub/sub event bus for Lumen RPG Bot.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Event-driven architecture for decoupling (Article VIII)
 - Error isolation - one failing listener doesn't affect others (Article IX)
 - Audit logging with event context (Article II)
@@ -103,7 +103,7 @@ class EventBus:
     """
     Simple async pub/sub event bus for in-game events.
     
-    ENHANCED: LogContext integration for audit trail compliance (RIKI LAW Article II)
+    ENHANCED: LogContext integration for audit trail compliance (LUMEN LAW Article II)
     
     Features:
     - Priority-based listener execution
@@ -264,7 +264,7 @@ class EventBus:
         """
         cls._ensure_initialized()
         
-        # Set event context for logging - RIKI LAW Article II
+        # Set event context for logging - LUMEN LAW Article II
         set_log_context(event_name=event_name, event_data_keys=list(data.keys()))
         
         if cls._metrics:

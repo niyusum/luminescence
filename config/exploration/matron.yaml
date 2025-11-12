@@ -1,5 +1,5 @@
 # Matron System Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
 # Matron encounters during exploration (boss battles at 100% progress)
 # Boss difficulty and rewards scale with sector and sublevel
@@ -37,7 +37,7 @@ matron_system:
   rarity_tier_increase: [1, 2]
 
   # Base rewards (before sector scaling)
-  reward_base_rikis: 500
+  reward_base_lumees: 500
   reward_base_xp: 100
 
   # Reward multiplier per sector
@@ -49,31 +49,31 @@ matron_system:
 
   # Special rewards for defeating bosses
   boss_rewards:
-    prayer_charges: 1
+    DROP_CHARGES: 1
     fusion_catalyst: 1
 
 # Matron-specific sector rewards (legacy keys from matron/rewards.yaml)
 # These are used by exploration/matron_logic.py for sector-based rewards
-sector_1_rikis: 5000
+sector_1_lumees: 5000
 sector_1_xp: 200
 sector_1_hp_base: 100000
 
-sector_2_rikis: 10000
+sector_2_lumees: 10000
 sector_2_xp: 400
 sector_2_hp_base: 250000
 
-sector_3_rikis: 20000
+sector_3_lumees: 20000
 sector_3_xp: 800
 sector_3_hp_base: 500000
 
-sector_4_rikis: 40000
+sector_4_lumees: 40000
 sector_4_xp: 1600
 sector_4_hp_base: 1000000
 
-sector_5_rikis: 80000
+sector_5_lumees: 80000
 sector_5_xp: 3200
 sector_5_hp_base: 2500000
 
-sector_6_rikis: 160000
+sector_6_lumees: 160000
 sector_6_xp: 6400
 sector_6_hp_base: 5000000

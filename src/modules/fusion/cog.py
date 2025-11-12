@@ -36,7 +36,7 @@ class FusionCog(BaseCog):
 
     @commands.command(
         name="fusion",
-        aliases=["rf", "rfusion", "rikifusion"],
+        aliases=[],
         description="Fuse two maidens to create a higher tier maiden",
     )
     @ratelimit(
@@ -152,7 +152,7 @@ class FusionSelectionView(discord.ui.View):
         cog_logger: 'Callable'
     ):
         """Initialize the fusion selection view."""
-        # RIKI LAW POSITIONAL MARKER: VIEW TIMEOUT SET
+        # LUMEN LAW POSITIONAL MARKER: VIEW TIMEOUT SET
         super().__init__(timeout=300)
         self.user_id = user_id
         self.fusable_maidens = fusable_maidens
@@ -169,14 +169,14 @@ class FusionSelectionView(discord.ui.View):
         self, interaction: discord.Interaction, _: discord.ui.Button
     ):
         """Show the current fusion success rates."""
-        # RIKI LAW POSITIONAL MARKER: USER VALIDATION
+        # LUMEN LAW POSITIONAL MARKER: USER VALIDATION
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "This button is not for you!", ephemeral=True
             )
             return
         
-        # RIKI LAW POSITIONAL MARKER: CONFIGMANAGER USE
+        # LUMEN LAW POSITIONAL MARKER: CONFIGMANAGER USE
         fusion_rates = ConfigManager.get("fusion.base_rates", default={
             1: 0.95, 2: 0.90, 3: 0.85, 4: 0.75, 5: 0.65, 6: 0.55,
             7: 0.45, 8: 0.35, 9: 0.25, 10: 0.15, 11: 0.10
@@ -207,7 +207,7 @@ class FusionSelectionView(discord.ui.View):
 
     async def on_timeout(self):
         """Disable all buttons visually when the view expires."""
-        # RIKI LAW POSITIONAL MARKER: VIEW TIMEOUT HANDLER
+        # LUMEN LAW POSITIONAL MARKER: VIEW TIMEOUT HANDLER
         for item in self.children:
             item.disabled = True
 
@@ -255,7 +255,7 @@ class TierSelectDropdown(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         """Handle tier selection."""
-        # RIKI LAW POSITIONAL MARKER: USER VALIDATION
+        # LUMEN LAW POSITIONAL MARKER: USER VALIDATION
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "This selection is not for you!", ephemeral=True
@@ -296,7 +296,7 @@ class MaidenSelectView(discord.ui.View):
     )
     async def back_button(self, interaction: discord.Interaction, _: discord.ui.Button):
         """Go back to the initial tier selection view."""
-        # RIKI LAW POSITIONAL MARKER: USER VALIDATION
+        # LUMEN LAW POSITIONAL MARKER: USER VALIDATION
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "This button is not for you!", ephemeral=True
@@ -337,19 +337,19 @@ class MaidenSelectDropdown(discord.ui.Select):
         """Execute the fusion transaction."""
         start_time = time.perf_counter()
         
-        # RIKI LAW POSITIONAL MARKER: USER VALIDATION
+        # LUMEN LAW POSITIONAL MARKER: USER VALIDATION
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "This selection is not for you!", ephemeral=True
             )
             return
 
-        # RIKI LAW POSITIONAL MARKER: DEFER RESPONSE
+        # LUMEN LAW POSITIONAL MARKER: DEFER RESPONSE
         await interaction.response.defer()
 
         maiden_id = int(self.values[0])
 
-        # RIKI LAW POSITIONAL MARKER: LOG CONTEXT
+        # LUMEN LAW POSITIONAL MARKER: LOG CONTEXT
         log_context = {
             "maiden_id": maiden_id,
             "tier_selected": self.tier_maidens[0]["tier"] if self.tier_maidens else 0,
@@ -357,11 +357,11 @@ class MaidenSelectDropdown(discord.ui.Select):
         }
 
         try:
-            # RIKI LAW POSITIONAL MARKER: REDIS LOCK
+            # LUMEN LAW POSITIONAL MARKER: REDIS LOCK
             async with RedisService.acquire_lock(f"fusion:{self.user_id}", timeout=10):
-                # RIKI LAW POSITIONAL MARKER: DATABASE TRANSACTION
+                # LUMEN LAW POSITIONAL MARKER: DATABASE TRANSACTION
                 async with DatabaseService.get_transaction() as session:
-                    # RIKI LAW POSITIONAL MARKER: PESSIMISTIC LOCK (SELECT FOR UPDATE)
+                    # LUMEN LAW POSITIONAL MARKER: PESSIMISTIC LOCK (SELECT FOR UPDATE)
                     player = await PlayerService.get_player_with_regen(
                         session, self.user_id, lock=True
                     )
@@ -369,10 +369,10 @@ class MaidenSelectDropdown(discord.ui.Select):
                     if not player:
                         raise NotFoundError("Player profile not found after lock.")
 
-                    # RIKI LAW POSITIONAL MARKER: SERVICE CALL ONLY (NO BUSINESS LOGIC)
+                    # LUMEN LAW POSITIONAL MARKER: SERVICE CALL ONLY (NO BUSINESS LOGIC)
                     result = await FusionService.attempt_fusion(session, player, maiden_id)
 
-                    # RIKI LAW POSITIONAL MARKER: TRANSACTION LOGGING
+                    # LUMEN LAW POSITIONAL MARKER: TRANSACTION LOGGING
                     await TransactionLogger.log_transaction(
                         session=session,
                         player_id=self.user_id,
@@ -387,7 +387,7 @@ class MaidenSelectDropdown(discord.ui.Select):
                         context=f"fusion guild:{interaction.guild_id}",
                     )
 
-                # RIKI LAW POSITIONAL MARKER: EVENT PUBLISHING (SIDE EFFECT)
+                # LUMEN LAW POSITIONAL MARKER: EVENT PUBLISHING (SIDE EFFECT)
                 await EventBus.publish(
                     "fusion_completed",
                     {
@@ -424,7 +424,7 @@ class MaidenSelectDropdown(discord.ui.Select):
                         ),
                         footer="Better luck next time!",
                     )
-                    # RIKI LAW POSITIONAL MARKER: CONFIGMANAGER USE
+                    # LUMEN LAW POSITIONAL MARKER: CONFIGMANAGER USE
                     embed.add_field(
                         name="🔷 Consolation",
                         value=(
@@ -434,7 +434,7 @@ class MaidenSelectDropdown(discord.ui.Select):
                         inline=False,
                     )
 
-                # RIKI LAW POSITIONAL MARKER: DISABLE BUTTONS AFTER USE
+                # LUMEN LAW POSITIONAL MARKER: DISABLE BUTTONS AFTER USE
                 await interaction.edit_original_response(embed=embed, view=None)
 
             # Log latency (Success)
@@ -448,7 +448,7 @@ class MaidenSelectDropdown(discord.ui.Select):
                 **log_context
             )
 
-        # RIKI LAW POSITIONAL MARKER: SPECIFIC EXCEPTION HANDLING
+        # LUMEN LAW POSITIONAL MARKER: SPECIFIC EXCEPTION HANDLING
         except (InsufficientResourcesError, InvalidFusionError, NotFoundError) as e:
             # Log domain error
             latency = (time.perf_counter() - start_time) * 1000

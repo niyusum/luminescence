@@ -11,7 +11,7 @@ class GuildShrine(SQLModel, table=True):
     """
     Cooperative guild-wide shrine for collective yield generation.
 
-    RIKI LAW:
+    LUMEN LAW:
       - Immutable historical yield log (ring buffer, size 25)
       - Atomic upgrade and collection transactions (handled in service)
       - Treasury integration: shrine yields flow to guild treasury

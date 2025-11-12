@@ -24,12 +24,12 @@ class ShrineService:
     Responsibilities
     ----------------
     - Get/create player shrines (type + slot)
-    - Upgrade shrine levels (spend rikis)
-    - Collect shrine yields (grant grace/rikis)
+    - Upgrade shrine levels (spend lumees)
+    - Collect shrine yields (grant lumenite/lumees)
     - List and summarize shrines for UI
     - Sell (deactivate) shrines with configurable refund
 
-    RIKI LAW
+    LUMEN LAW
     --------
     - Transaction-safe: caller wraps in a single AsyncSession context
     - No Discord I/O here; cogs remain presentation-only
@@ -106,7 +106,7 @@ class ShrineService:
         levels: int = 1,
     ) -> PlayerShrine:
         """
-        Upgrade a player's shrine by N levels, spending rikis via ResourceService.
+        Upgrade a player's shrine by N levels, spending lumees via ResourceService.
         """
         if levels < 1:
             raise InvalidOperationError("Levels to upgrade must be >= 1.")
@@ -130,7 +130,7 @@ class ShrineService:
         if spend <= 0:
             return shrine
 
-        # Spend rikis through ResourceService (ensures player lock + audit)
+        # Spend lumees through ResourceService (ensures player lock + audit)
         from src.modules.resource.service import ResourceService
         player = await session.get(Player, player_id, with_for_update=True)
         if not player:
@@ -139,7 +139,7 @@ class ShrineService:
         await ResourceService.consume_resources(
             session=session,
             player=player,
-            resources={"rikis": spend},
+            resources={"lumees": spend},
             source="shrine_upgrade",
             context={"type": shrine_type, "slot": slot, "from_level": shrine.level, "to_level": level},
         )
@@ -151,7 +151,7 @@ class ShrineService:
             session=session,
             player_id=player_id,
             transaction_type="shrine_upgrade",
-            details={"type": shrine_type, "slot": slot, "spend_rikis": spend, "new_level": shrine.level},
+            details={"type": shrine_type, "slot": slot, "spend_lumees": spend, "new_level": shrine.level},
             context="shrine",
         )
         logger.info("Upgraded shrine type=%s slot=%s to L%s (spent %s) for player=%s",
@@ -169,17 +169,17 @@ class ShrineService:
           - Fixed yield (int)
           - Percent-based yield if base_yield <= 1.0 (applied to a target pool)
 
-        Target resource name is read from config: `target` (default 'grace').
+        Target resource name is read from config: `target` (default 'lumenite').
 
         Returns: (target_resource_key, amount_int)
         """
         base_yield = conf.get("base_yield", 10)
         y_mult = float(conf.get("yield_multiplier", 2.0))
-        target = str(conf.get("target", "grace"))  # e.g., 'grace' or 'rikis'
+        target = str(conf.get("target", "lumenite"))  # e.g., 'lumenite' or 'lumees'
 
-        # Percent-based yield of a reference pool (currently supports rikis)
+        # Percent-based yield of a reference pool (currently supports lumees)
         if isinstance(base_yield, float) and base_yield <= 1.0:
-            ref_key = str(conf.get("percent_of", "rikis"))  # which pool to reference
+            ref_key = str(conf.get("percent_of", "lumees"))  # which pool to reference
             ref_val = int(player_snapshot.get(ref_key, 0))
             amount = int(round(ref_val * (base_yield * pow(y_mult, max(0, level - 1)))))
         else:
@@ -217,9 +217,8 @@ class ShrineService:
         if not player:
             raise InvalidOperationError("Player not found.")
         player_snapshot = {
-            "rikis": int(getattr(player, "rikis", 0)),
-            "grace": int(getattr(player, "grace", 0)),
-            "riki_gems": int(getattr(player, "riki_gems", 0)),
+            "lumees": int(getattr(player, "lumees", 0)),
+            "lumenite": int(getattr(player, "lumenite", 0)),
         }
 
         target_key, amount = ShrineService._compute_yield(conf, shrine.level, player_snapshot)
@@ -323,7 +322,7 @@ class ShrineService:
         slot: int = 1,
     ) -> Dict[str, Any]:
         """
-        Deactivate (sell) a shrine and refund a percentage of cumulative spend as rikis.
+        Deactivate (sell) a shrine and refund a percentage of cumulative spend as lumees.
         """
         shrine = (await session.execute(
             select(PlayerShrine).where(
@@ -350,7 +349,7 @@ class ShrineService:
             await ResourceService.grant_resources(
                 session=session,
                 player=player,
-                resources={"rikis": refund},
+                resources={"lumees": refund},
                 source="shrine_sell",
                 apply_modifiers=False,  # selling shouldn't apply income boosts
                 context={"type": shrine_type, "slot": slot, "level": shrine.level, "spent": spent},
@@ -363,9 +362,9 @@ class ShrineService:
             session=session,
             player_id=player_id,
             transaction_type="shrine_sell",
-            details={"type": shrine_type, "slot": slot, "refund_rikis": refund, "level_sold": shrine.level},
+            details={"type": shrine_type, "slot": slot, "refund_lumees": refund, "level_sold": shrine.level},
             context="shrine",
         )
         logger.info("Sold shrine type=%s slot=%s (L%s) refund=%s for player=%s",
                     shrine_type, slot, shrine.level, refund, player_id)
-        return {"refund_rikis": refund, "level": shrine.level}
+        return {"refund_lumees": refund, "level": shrine.level}

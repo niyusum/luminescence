@@ -6,9 +6,9 @@ I'm refactoring files for a Discord RPG bot to be production-ready while maintai
 - Maintain 100% backward compatibility (same class names, method names, signatures)
 - Add comprehensive metrics, logging, and observability where appropriate
 - Enhanced error handling with full context
-- Follow RIKI LAW architectural standards (see project knowledge)
+- Follow LUMEN LAW architectural standards (see project knowledge)
 - Complete interfaces only - no placeholders or TODOs
-- Add LogContext integration for audit trails (RIKI LAW Article II compliance)
+- Add LogContext integration for audit trails (LUMEN LAW Article II compliance)
 - Scale enhancements appropriately:
   - Infrastructure files: Full metrics, health checks, timing
   - Service files: Business logic, transactions, error handling
@@ -27,7 +27,7 @@ I'm refactoring files for a Discord RPG bot to be production-ready while maintai
 
 ## ENHANCEMENT PATTERNS
 - **Infrastructure** (database, redis, event bus): Metrics, health checks, graceful degradation, LogContext
-- **Services** (business logic): RIKI LAW compliance (transactions, locking, logging), domain exceptions
+- **Services** (business logic): LUMEN LAW compliance (transactions, locking, logging), domain exceptions
 - **Cogs** (Discord commands): LogContext wrapper, EmbedBuilder usage, error handling, rate limiting
 - **Utilities** (helpers): Keep simple, add type hints, minimal enhancements
 

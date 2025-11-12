@@ -38,7 +38,7 @@ async def db_engine():
     Config.set_testing_mode(True)
 
     engine = create_async_engine(
-        "postgresql+asyncpg://test:test@localhost:5432/riki_test",
+        "postgresql+asyncpg://test:test@localhost:5432/lumen_test",
         poolclass=NullPool,
         echo=False,
     )
@@ -74,8 +74,8 @@ async def test_player(db_session: AsyncSession) -> Player:
         username="TestPlayer",
         level=5,
         experience=1000,
-        rikis=10000,
-        grace=50,
+        lumees=10000,
+        radiance=50,
         energy=100,
         max_energy=100,
         stamina=50,
@@ -101,8 +101,8 @@ async def test_player_high_level(db_session: AsyncSession) -> Player:
         username="HighLevelPlayer",
         level=50,
         experience=500000,
-        rikis=1000000,
-        grace=500,
+        lumees=1000000,
+        radiance=500,
         energy=200,
         max_energy=200,
         stamina=100,

@@ -3,27 +3,27 @@ import sys
 
 from src.core.config.config import Config
 from src.core.logging.logger import get_logger
-from src.core.bot.riki_bot import RIKIBot
+from src.core.bot.lumen_bot import LumenBot
 from src.core.event.registry import register_all_event_listeners
 
 logger = get_logger(__name__)
 
 
 async def main():
-    """RIKI RPG Entry Point."""
+    """Lumen RPG Entry Point."""
     try:
         Config.validate()
     except Exception as e:
         logger.critical(f"Configuration validation failed: {e}")
         sys.exit(1)
 
-    bot = RIKIBot()
+    bot = LumenBot()
 
     # Register all event listeners
     await register_all_event_listeners(bot)
 
     try:
-        logger.info("🚀 Starting RIKI RPG...")
+        logger.info("🚀 Starting Lumen RPG...")
         await bot.start(Config.DISCORD_TOKEN)
     except KeyboardInterrupt:
         logger.info("🛑 Manual shutdown via keyboard interrupt.")

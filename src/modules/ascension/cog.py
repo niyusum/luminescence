@@ -4,7 +4,7 @@ Unified ascension and token management system.
 Consolidates tower climbing, combat, and token redemption into a single
 cohesive ascension feature cog.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
     - Article I.6: Configuration drawn from ConfigManager, never literals. (CLEAN)
     - Article I.7: All business logic delegated to services (Thin Cogs, Thick Services)
     - Article I.9: Metrics for command latency and failures
@@ -24,7 +24,6 @@ from src.core.logging.logger import get_logger, LogContext
 from src.modules.player.service import PlayerService
 from src.modules.ascension.service import AscensionService
 from src.modules.ascension.token_logic import TokenService
-# RIKI LAW I.6: All imports from src.modules.ascension.constants have been removed.
 from src.modules.combat.service import CombatService
 from src.modules.maiden.constants import Element
 from src.core.infra.transaction_logger import TransactionLogger
@@ -48,7 +47,7 @@ class AscensionCog(BaseCog):
 
     def _get_floor_color(self, floor: int) -> int:
         """Helper to determine embed color based on floor number, using ConfigManager."""
-        # RIKI LAW I.6: Configuration drawn from ConfigManager.
+        # LUMEN LAW I.6: Configuration drawn from ConfigManager.
         FLOOR_COLOR_TIERS = ConfigManager.get("ASCENSION.FLOOR_COLOR_TIERS", {})
         for _, (start, end, color) in FLOOR_COLOR_TIERS.items():
             if start <= floor <= end:
@@ -59,7 +58,7 @@ class AscensionCog(BaseCog):
 
     @commands.command(
         name="ascension",
-        aliases=["rasc", "rascension", "rikiascension"],
+        aliases=[],
         description="Climb the infinite tower (strategic combat)"
     )
     @ratelimit(
@@ -80,7 +79,7 @@ class AscensionCog(BaseCog):
 
                 combat_data = await AscensionService.initiate_floor(session, player)
 
-                # RIKI LAW Article II: Transaction Logging for floor initiation
+                # LUMEN LAW Article II: Transaction Logging for floor initiation
                 await TransactionLogger.log_transaction(
                     session=session,
                     player_id=ctx.author.id,
@@ -106,7 +105,7 @@ class AscensionCog(BaseCog):
             message = await ctx.send(embed=embed, view=view)
             view.set_message(message)
 
-            # RIKI LAW Article I.9: Latency Metric Logging
+            # LUMEN LAW Article I.9: Latency Metric Logging
             latency = (time.perf_counter() - start_time) * 1000
             self.log_command_use(
                 "ascension",
@@ -116,7 +115,7 @@ class AscensionCog(BaseCog):
             )
 
         except Exception as e:
-            # RIKI LAW Article II: Structured Error Logging
+            # LUMEN LAW Article II: Structured Error Logging
             self.log_cog_error(
                 "ascension",
                 e,
@@ -188,7 +187,7 @@ class AscensionCog(BaseCog):
 
         # Combat gauges
         embed.add_field(
-            name="⚡ Combat Status",
+            name="🪙 Combat Status",
             value=(
                 f"**Critical Gauge:** ░░░░░░░░░░ 0%\n"
                 f"**Momentum:** ░░░░░░░░░░ 0%"
@@ -217,7 +216,7 @@ class AscensionCog(BaseCog):
 
     @commands.command(
         name="tokens",
-        aliases=["rtk", "rtokens", "rikitokens"],
+        aliases=[],
         description="View your token inventory"
     )
     @ratelimit(
@@ -236,12 +235,12 @@ class AscensionCog(BaseCog):
                 if not player:
                     return
 
-                # RIKI LAW Article I.11: Read-only operation uses no lock
+                # LUMEN LAW Article I.11: Read-only operation uses no lock
                 inventory = await TokenService.get_player_tokens(
                     session, player.discord_id
                 )
 
-            # RIKI LAW I.6: Configuration drawn from ConfigManager.
+            # LUMEN LAW I.6: Configuration drawn from ConfigManager.
             TOKEN_TIERS = ConfigManager.get("ASCENSION.TOKEN_TIERS", {})
 
             # Build inventory embed
@@ -257,7 +256,7 @@ class AscensionCog(BaseCog):
             total_tokens = sum(inventory.values())
             has_tokens = False
 
-            # RIKI LAW I.6: Iterate over keys from ConfigManager
+            # LUMEN LAW I.6: Iterate over keys from ConfigManager
             for token_type, token_data in TOKEN_TIERS.items():
                 quantity = inventory.get(token_type, 0)
                 tier_range = token_data.get("tier_range", (1, 1))
@@ -311,7 +310,7 @@ class AscensionCog(BaseCog):
 
             await ctx.send(embed=embed)
 
-            # RIKI LAW Article I.9: Latency Metric Logging
+            # LUMEN LAW Article I.9: Latency Metric Logging
             latency = (time.perf_counter() - start_time) * 1000
             self.log_command_use(
                 "tokens",
@@ -321,7 +320,7 @@ class AscensionCog(BaseCog):
             )
 
         except Exception as e:
-            # RIKI LAW Article II: Structured Error Logging
+            # LUMEN LAW Article II: Structured Error Logging
             self.log_cog_error(
                 "tokens",
                 e,
@@ -343,7 +342,7 @@ class AscensionCog(BaseCog):
 
     @commands.command(
         name="redeem",
-        aliases=["rrd", "rredeem", "rikiredeem"],
+        aliases=[],
         description="Redeem a token for a random maiden"
     )
     @ratelimit(
@@ -361,11 +360,11 @@ class AscensionCog(BaseCog):
         await self.defer(ctx)
 
         token_type = token_type.lower()
-        # RIKI LAW I.6: Configuration drawn from ConfigManager.
+        # LUMEN LAW I.6: Configuration drawn from ConfigManager.
         TOKEN_TIERS = ConfigManager.get("ASCENSION.TOKEN_TIERS", {})
 
         if token_type not in TOKEN_TIERS:
-            # RIKI LAW I.6: Use keys from ConfigManager for validation list
+            # LUMEN LAW I.6: Use keys from ConfigManager for validation list
             valid_types = ", ".join(TOKEN_TIERS.keys())
             first_token = next(iter(TOKEN_TIERS), 'bronze')
             await self.send_error(
@@ -378,12 +377,12 @@ class AscensionCog(BaseCog):
 
         try:
             async with self.get_session() as session:
-                # RIKI LAW Article I.1: Pessimistic locking for state mutation
+                # LUMEN LAW Article I.1: Pessimistic locking for state mutation
                 player = await self.require_player(ctx, session, ctx.author.id, lock=True)
                 if not player:
                     return
 
-                # RIKI LAW I.7: All business logic delegated to services
+                # LUMEN LAW I.7: All business logic delegated to services
                 result = await TokenService.redeem_token(
                     session=session,
                     player=player,
@@ -445,7 +444,7 @@ class AscensionCog(BaseCog):
 
             await ctx.send(embed=embed)
 
-            # RIKI LAW Article I.9: Latency Metric Logging
+            # LUMEN LAW Article I.9: Latency Metric Logging
             latency = (time.perf_counter() - start_time) * 1000
             self.log_command_use(
                 "redeem",
@@ -455,7 +454,7 @@ class AscensionCog(BaseCog):
                 latency_ms=round(latency, 2)
             )
 
-        # RIKI LAW Article I.5 & Article VII: Specific Exception Handling
+        # LUMEN LAW Article I.5 & Article VII: Specific Exception Handling
         except InsufficientResourcesError as e:
             token_info = TOKEN_TIERS.get(
                 token_type,
@@ -480,7 +479,7 @@ class AscensionCog(BaseCog):
             )
 
         except Exception as e:
-            # RIKI LAW Article II: Structured Error Logging
+            # LUMEN LAW Article II: Structured Error Logging
             self.log_cog_error(
                 "redeem",
                 e,
@@ -552,7 +551,7 @@ class AscensionCombatView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
-        """Execute x10 attack (10 stamina + 10 gems)."""
+        """Execute x10 attack (10 stamina + 10 lumenite)."""
         await self._execute_attack(interaction, "x10")
 
     @discord.ui.button(
@@ -601,10 +600,10 @@ class AscensionCombatView(discord.ui.View):
         lock_key = f"ascension_combat:{self.user_id}:{floor}"
 
         try:
-            # RIKI LAW Article I.3: Redis lock for concurrent button prevention
+            # LUMEN LAW Article I.3: Redis lock for concurrent button prevention
             async with RedisService.acquire_lock(lock_key, timeout=5):
                 async with DatabaseService.get_transaction() as session:
-                    # RIKI LAW Article I.1: Pessimistic locking for state mutation
+                    # LUMEN LAW Article I.1: Pessimistic locking for state mutation
                     player = await PlayerService.get_player_with_regen(
                         session, self.user_id, lock=True
                     )
@@ -617,7 +616,7 @@ class AscensionCombatView(discord.ui.View):
                         combat_state=self.combat_data["combat_state"]
                     )
 
-                    # RIKI LAW Article II: Transaction Logging for attack action
+                    # LUMEN LAW Article II: Transaction Logging for attack action
                     await TransactionLogger.log_transaction(
                         session=session,
                         player_id=self.user_id,
@@ -631,7 +630,7 @@ class AscensionCombatView(discord.ui.View):
                             "turn_number": result["turns_taken"],
                             "critical": result.get("critical", False),
                             "stamina_cost": result.get("stamina_cost", 0),
-                            "gem_cost": result.get("gem_cost", 0),
+                            "lumenite_cost": result.get("lumenite_cost", 0),
                         },
                         context=f"ascension:floor_{self.combat_data['floor']}"
                     )
@@ -645,7 +644,7 @@ class AscensionCombatView(discord.ui.View):
 
                 # Check outcome
                 if result["victory"]:
-                    # RIKI LAW I.1: Need a new transaction for state modification
+                    # LUMEN LAW I.1: Need a new transaction for state modification
                     async with DatabaseService.get_transaction() as session:
                         player = await PlayerService.get_player_with_regen(
                             session, self.user_id, lock=True
@@ -657,7 +656,7 @@ class AscensionCombatView(discord.ui.View):
                             turns_taken=result["turns_taken"]
                         )
 
-                        # RIKI LAW Article II: Transaction Logging for victory
+                        # LUMEN LAW Article II: Transaction Logging for victory
                         await TransactionLogger.log_transaction(
                             session=session,
                             player_id=self.user_id,
@@ -679,9 +678,9 @@ class AscensionCombatView(discord.ui.View):
                     await interaction.edit_original_response(embed=embed, view=view)
 
                 elif result["defeat"]:
-                    # RIKI LAW I.1: No state change on defeat, only logging
+                    # LUMEN LAW I.1: No state change on defeat, only logging
                     async with DatabaseService.get_transaction() as session:
-                        # RIKI LAW Article II: Transaction Logging for defeat
+                        # LUMEN LAW Article II: Transaction Logging for defeat
                         await TransactionLogger.log_transaction(
                             session=session,
                             player_id=self.user_id,
@@ -703,7 +702,7 @@ class AscensionCombatView(discord.ui.View):
                     embed = self._build_combat_turn_embed(result)
                     await interaction.edit_original_response(embed=embed, view=self)
 
-        # RIKI LAW Article I.5 & Article VII: Specific Exception Handling
+        # LUMEN LAW Article I.5 & Article VII: Specific Exception Handling
         except InsufficientResourcesError as e:
             embed = EmbedBuilder.error(
                 title="Insufficient Resources",
@@ -712,7 +711,7 @@ class AscensionCombatView(discord.ui.View):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
-        # RIKI LAW Article II: Structured Error Logging for audit
+        # LUMEN LAW Article II: Structured Error Logging for audit
         except Exception as e:
             self.cog_error_logger(
                 "ascension_combat_view",
@@ -782,10 +781,10 @@ class AscensionCombatView(discord.ui.View):
         elif momentum >= 50:
             momentum_status = " 🔥 BLAZING!"
         elif momentum >= 30:
-            momentum_status = " ⚡ RISING!"
+            momentum_status = " 🪙 RISING!"
 
         embed.add_field(
-            name="⚡ Combat Status",
+            name="🪙 Combat Status",
             value=(
                 f"**Critical Gauge:** {crit_bar} {crit_gauge}%\n"
                 f"**Momentum:** {momentum_bar} {momentum}%{momentum_status}"
@@ -793,7 +792,7 @@ class AscensionCombatView(discord.ui.View):
             inline=False
         )
 
-        embed.set_footer(text=f"Stamina: {result['stamina_cost']} | Gems: {result['gem_cost']}")
+        embed.set_footer(text=f"Stamina: {result['stamina_cost']} | Lumenite: {result['lumenite_cost']}")
 
         return embed
 
@@ -824,9 +823,9 @@ class AscensionCombatView(discord.ui.View):
         )
 
         # Rewards
-        reward_text = f"**+{rewards['rikis']:,}** Rikis\n**+{rewards['xp']}** XP"
+        reward_text = f"**+{rewards['lumees']:,}** Lumees\n**+{rewards['xp']}** XP"
 
-        # RIKI LAW I.6: Use ConfigManager for token tiers
+        # LUMEN LAW I.6: Use ConfigManager for token tiers
         TOKEN_TIERS = ConfigManager.get("ASCENSION.TOKEN_TIERS", {})
         if rewards.get("token"):
             token_data = rewards["token"]

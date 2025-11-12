@@ -13,7 +13,7 @@ class GuildAudit(SQLModel, table=True):
     """
     Immutable guild audit log.
 
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - Serves as durable, queryable log
         - All write operations in services mirror here
         - Used for analytics, moderation, rollback reconstruction

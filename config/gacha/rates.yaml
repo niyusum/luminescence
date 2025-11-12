@@ -1,5 +1,5 @@
 # Gacha/Summon System Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
 # CRITICAL: Gacha rates are legally sensitive and must be auditable
 # All rate changes must be version-controlled and transparent
@@ -39,12 +39,12 @@ pity_system:
   pity_type: "new_maiden_or_next_bracket"
 
 summon_costs:
-  # Grace cost per single summon
-  grace_per_summon: 1
+  # AuricCoin cost per single summon
+  auric_coin_per_summon: 1
 
   # Cost multipliers for bulk summons
-  x5_multiplier: 5   # 5 summons = 5x grace
-  x10_multiplier: 10  # 10 summons = 10x grace
+  x5_multiplier: 5   # 5 summons = 5x auric coin
+  x10_multiplier: 10  # 10 summons = 10x auric coin
 
   # Whether 10x summons require premium currency
   x10_premium_only: true

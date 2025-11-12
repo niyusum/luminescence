@@ -13,7 +13,7 @@ class DailyQuest(SQLModel, table=True):
     and progress toward each. Rewards claimed separately to prevent double-claiming.
     
     Quest Types:
-        - prayer_performed: Use /prayer at least once
+        - drop_performed: Use /drop at least once
         - summon_maiden: Summon at least one maiden
         - attempt_fusion: Attempt fusion at least once
         - spend_energy: Spend energy on quests
@@ -45,7 +45,7 @@ class DailyQuest(SQLModel, table=True):
     
     quests_completed: Dict[str, bool] = Field(
         default_factory=lambda: {
-            "prayer_performed": False,
+            "drop_performed": False,
             "summon_maiden": False,
             "attempt_fusion": False,
             "spend_energy": False,
@@ -56,7 +56,7 @@ class DailyQuest(SQLModel, table=True):
     
     quest_progress: Dict[str, int] = Field(
         default_factory=lambda: {
-            "prayers_done": 0,
+            "drops_done": 0,
             "summons_done": 0,
             "fusions_attempted": 0,
             "energy_spent": 0,

@@ -1,5 +1,5 @@
 """
-RIKI RPG Test Suite
+Lumen RPG Test Suite
 
 Test organization:
 - tests/unit/ - Unit tests for individual functions/methods

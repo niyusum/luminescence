@@ -32,10 +32,10 @@ async def _handle_tutorial_event(event_name: str, data):
             await channel.send(
                 f"🎉 **Tutorial Complete:** {result['title']}\n"
                 f"{result['congrats']}\n\n"
-                f"💰 Rewards: +{result['reward']['rikis']} Rikis, +{result['reward']['grace']} Grace"
+                f"💰 Rewards: +{result['reward']['lumees']} Lumees, +{result['reward']['auric_coin']} AuricCoin"
             )
 
 async def register_tutorial_listeners(bot):
     """Bind tutorial steps to the EventBus."""
-    for trigger in ["tos_agreed", "prayer_completed", "summons_completed", "fusion_completed", "collection_viewed", "leader_set"]:
+    for trigger in ["tos_agreed", "drop_completed", "summons_completed", "fusion_completed", "collection_viewed", "leader_set"]:
         EventBus.subscribe(trigger, lambda data, e=trigger: asyncio.create_task(_handle_tutorial_event(e, data)))

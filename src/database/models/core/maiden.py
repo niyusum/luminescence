@@ -14,7 +14,7 @@ class Maiden(SQLModel, table=True):
     the `quantity` field.
 
     ---
-    ⚖️ RIKI LAW Compliance:
+    ⚖️ LUMEN LAW Compliance:
         - Article I.4  → Dynamic references via Tier/Element constants
         - Article II   → Indexed by ownership, tier, and fusion state
         - Article III  → No hard-coded display or color values

@@ -1,5 +1,5 @@
 # Fusion System Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
 # Fusion mechanics control the core loop of combining maidens
 # to create higher-tier maidens. These values are critical for
@@ -21,7 +21,7 @@ fusion_rates:
   "11": 25
 
 fusion_costs:
-  # Base rikis cost for tier 1 fusion
+  # Base lumees cost for tier 1 fusion
   base: 1000
 
   # Cost multiplier per tier increase

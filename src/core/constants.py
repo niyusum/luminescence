@@ -1,10 +1,10 @@
 """
-RIKI RPG Core Constants
+Lumen RPG Core Constants
 
 Centralized constants file to eliminate magic numbers throughout the codebase.
 Organized by functional area for easy maintenance.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article IV: All tunable values should be in ConfigManager
 - This file contains immutable game constants that rarely change
 """
@@ -57,12 +57,12 @@ MIN_SHARDS_PER_FAILURE = 1  # Minimum shards from failed fusion
 MAX_SHARDS_PER_FAILURE = 12  # Maximum shards from failed fusion
 
 # ============================================================================
-# PRAYER SYSTEM
+# DROP SYSTEM
 # ============================================================================
 
-PRAYER_CHARGES_MAX = 1  # Single charge system
-PRAYER_REGEN_SECONDS = 300  # 5 minutes
-PRAYER_REGEN_MINUTES = 5  # Alternative representation
+drop_CHARGES_MAX = 1  # Single charge system
+drop_REGEN_SECONDS = 300  # 5 minutes
+drop_REGEN_MINUTES = 5  # Alternative representation
 
 # ============================================================================
 # COMBAT & POWER

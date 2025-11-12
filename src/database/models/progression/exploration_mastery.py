@@ -5,7 +5,7 @@ Each sector has 3 mastery ranks that can be completed sequentially.
 Completing each rank grants permanent stat bonuses via mastery items.
 Players must complete Rank 1 before Rank 2, and Rank 2 before Rank 3.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article I: Core domain model with proper indexing
 - Article II: Complete audit trail (created_at, updated_at, completion timestamps)
 - Article IV: Tunable rank requirements via ConfigManager

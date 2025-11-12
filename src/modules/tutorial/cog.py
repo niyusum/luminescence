@@ -35,7 +35,7 @@ class TutorialCog(BaseCog):
 
     @commands.command(
         name="tutorial",
-        aliases=["rtt", "rtutorial", "rikitutorial"],
+        aliases=["t"],
         description="View your tutorial progress and hints"
     )
     @ratelimit(
@@ -107,10 +107,10 @@ class TutorialCog(BaseCog):
 
                     # Build reward text
                     reward_parts = []
-                    if reward.get("rikis", 0) > 0:
-                        reward_parts.append(f"+{reward['rikis']} rikis")
-                    if reward.get("grace", 0) > 0:
-                        reward_parts.append(f"+{reward['grace']} grace")
+                    if reward.get("lumees", 0) > 0:
+                        reward_parts.append(f"+{reward['lumees']} lumees")
+                    if reward.get("auric_coin", 0) > 0:
+                        reward_parts.append(f"+{reward['auric_coin']} auric coin")
 
                     reward_text = f" ({', '.join(reward_parts)})" if reward_parts else ""
 
@@ -245,8 +245,8 @@ class TutorialCog(BaseCog):
                     details={
                         "step_key": step["key"],
                         "step_title": done["title"],
-                        "rikis_rewarded": done["reward"].get("rikis", 0),
-                        "grace_rewarded": done["reward"].get("grace", 0),
+                        "lumees_rewarded": done["reward"].get("lumees", 0),
+                        "auric_coin_rewarded": done["reward"].get("auric_coin", 0),
                         "trigger": topic,
                     },
                     context=f"tutorial_step:{step['key']}",
@@ -269,14 +269,14 @@ class TutorialCog(BaseCog):
             await channel.send(embed=embed)
 
             # Plain text reward message (no embed)
-            rikis = done["reward"].get("rikis", 0)
-            grace = done["reward"].get("grace", 0)
-            if rikis or grace:
+            lumees = done["reward"].get("lumees", 0)
+            auric_coin = done["reward"].get("auric_coin", 0)
+            if lumees or auric_coin:
                 parts = []
-                if rikis:
-                    parts.append(f"+{rikis} rikis")
-                if grace:
-                    parts.append(f"+{grace} grace")
+                if lumees:
+                    parts.append(f"+{lumees} lumees")
+                if auric_coin:
+                    parts.append(f"+{auric_coin} auric_coin")
                 await channel.send(f"You received {' and '.join(parts)} as a tutorial reward!")
 
         except Exception as e:

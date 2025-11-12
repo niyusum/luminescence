@@ -1,6 +1,6 @@
 # Ascension Core Configuration
 # Token tiers, attack costs, and visual settings
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 
 ASCENSION:
   # Token tier definitions for maiden redemption

@@ -19,7 +19,7 @@ class SectorProgress(SQLModel, table=True):
         progress: Completion percentage (0.0 - 100.0)
         miniboss_defeated: Whether sublevel matron has been beaten (legacy field name)
         times_explored: Total exploration attempts in this sublevel
-        total_rikis_earned: Cumulative rikis from this sublevel
+        total_lumees_earned: Cumulative lumees from this sublevel
         total_xp_earned: Cumulative XP from this sublevel
         maidens_purified: Count of maidens purified in this sublevel
         last_explored: Timestamp of most recent exploration
@@ -50,7 +50,7 @@ class SectorProgress(SQLModel, table=True):
     miniboss_defeated: bool = Field(default=False)
     
     times_explored: int = Field(default=0, ge=0)
-    total_rikis_earned: int = Field(default=0, ge=0, sa_column=Column(BigInteger))
+    total_lumees_earned: int = Field(default=0, ge=0, sa_column=Column(BigInteger))
     total_xp_earned: int = Field(default=0, ge=0, sa_column=Column(BigInteger))
     maidens_purified: int = Field(default=0, ge=0)
     

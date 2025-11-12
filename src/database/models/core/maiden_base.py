@@ -14,7 +14,7 @@ class MaidenBase(SQLModel, table=True):
     their fundamental attributes, visual metadata, and leader effects.
 
     ---
-    ⚖️ RIKI LAW Compliance:
+    ⚖️ LUMEN LAW Compliance:
         - Article I.4 → All tier, element, and rarity metadata sourced via constants
         - Article II → Indexed for query optimization (element, tier, name)
         - Article V → Supports dynamic gacha weighting and rarity schemas

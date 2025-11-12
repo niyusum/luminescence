@@ -1,5 +1,5 @@
 # Exploration System Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
 # Controls exploration mechanics, energy costs, rewards, and encounter rates
 # This is a large, complex config - changes affect core gameplay loop
@@ -37,8 +37,8 @@ exploration_system:
     # Boss battles cost multiplier
     boss_multiplier: 1.5
 
-  # Rikis reward ranges
-  riki_rewards:
+  # Lumees reward ranges
+  lumees_rewards:
     sector_1_min: 50
     sector_1_max: 100
 
@@ -114,22 +114,22 @@ exploration_system:
   # Formula: base_rate - sector_penalty + (level_diff * modifier)
   capture_level_modifier: 2.0
 
-  # Guaranteed purification costs (grace currency)
-  # Alternative to RNG capture - pay grace to guarantee
+  # Guaranteed purification costs (lumenite currency)
+  # Alternative to RNG capture - pay lumenite to guarantee
   # Updated to use tier names
   guaranteed_purification_costs:
     common: 50         # T1
-    uncommon: 100      # T2
-    rare: 200          # T3
-    epic: 500          # T4
-    mythic: 1500       # T5
-    divine: 3000       # T6
-    legendary: 6000    # T7
-    ethereal: 12000    # T8
-    genesis: 25000     # T9
-    empyrean: 50000    # T10
-    void: 100000       # T11
-    singularity: 250000 # T12
+    uncommon: 75      # T2
+    rare: 100         # T3
+    epic: 125         # T4
+    mythic: 150      # T5
+    divine: 300      # T6
+    legendary: 600    # T7
+    ethereal: 1200   # T8
+    genesis: 2500     # T9
+    empyrean: 5000    # T10
+    void: 10000      # T11
+    singularity: 25000 # T12
 
   # Progress required to unlock exploration system
   # Usually tied to tutorial completion or level

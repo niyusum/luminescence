@@ -58,7 +58,7 @@ class ConfigMetrics:
 
 class Config:
     """
-    Centralized configuration management for RIKI RPG Discord Bot.
+    Centralized configuration management for Lumen RPG Discord Bot.
     
     All configuration values loaded from environment variables with sensible defaults.
     Validates critical settings on startup to prevent runtime failures.
@@ -121,25 +121,25 @@ class Config:
     DATA_DIR: Path = BASE_DIR / "data"
     
     # Bot Metadata
-    BOT_NAME: str = "RIKI RPG"
+    BOT_NAME: str = "Lumen RPG"
     BOT_VERSION: str = "1.0.0"
     BOT_DESCRIPTION: str = "A Discord RPG featuring maidens, fusion, and strategic gameplay"
-    
+
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_FAILOVER_TO_MEMORY: bool = True
     RATE_LIMIT_COOLDOWN_MESSAGE: str = "⏳ Please wait {remaining:.1f} seconds before using this command again."
-    
+
     # UI Colors
     EMBED_COLOR_PRIMARY: int = 0x2c2d31
     EMBED_COLOR_SUCCESS: int = 0x2d5016
     EMBED_COLOR_ERROR: int = 0x8b0000
     EMBED_COLOR_WARNING: int = 0x8b6914
     EMBED_COLOR_INFO: int = 0x1e3a8a
-    
+
     # Game Defaults
-    DEFAULT_STARTING_RIKIS: int = 1000
-    DEFAULT_STARTING_GRACE: int = 5
+    DEFAULT_STARTING_LUMEES: int = 1000
+    DEFAULT_STARTING_auric_coin: int = 5
     DEFAULT_STARTING_ENERGY: int = 100
     DEFAULT_STARTING_STAMINA: int = 50
     
@@ -308,7 +308,7 @@ class Config:
         # Database Configuration with validation
         cls.DATABASE_URL = cls._safe_str(
             "DATABASE_URL",
-            "postgresql+psycopg://user:password@localhost:5432/riki_rpg",
+            "postgresql+psycopg://user:password@localhost:5432/lumen_rpg",
             required=True
         )
         cls.DATABASE_POOL_SIZE = cls._safe_int("DATABASE_POOL_SIZE", 20, min_val=1, max_val=200)
@@ -328,8 +328,8 @@ class Config:
         cls.LOG_LEVEL = cls._safe_str("LOG_LEVEL", "INFO")
         
         # Game Configuration
-        cls.DEFAULT_STARTING_RIKIS = cls._safe_int("DEFAULT_STARTING_RIKIS", 1000, min_val=0)
-        cls.DEFAULT_STARTING_GRACE = cls._safe_int("DEFAULT_STARTING_GRACE", 5, min_val=0)
+        cls.DEFAULT_STARTING_LUMEES = cls._safe_int("DEFAULT_STARTING_LUMEES", 1000, min_val=0)
+        cls.DEFAULT_STARTING_auric_coin = cls._safe_int("DEFAULT_STARTING_auric_coin", 5, min_val=0)
         cls.DEFAULT_STARTING_ENERGY = cls._safe_int("DEFAULT_STARTING_ENERGY", 100, min_val=0)
         cls.DEFAULT_STARTING_STAMINA = cls._safe_int("DEFAULT_STARTING_STAMINA", 50, min_val=0)
         
@@ -495,8 +495,8 @@ class Config:
         cls.RATE_LIMIT_ENABLED = cls._safe_bool("RATE_LIMIT_ENABLED", cls.RATE_LIMIT_ENABLED)
         
         # Game balance values (safe to reload)
-        cls.DEFAULT_STARTING_RIKIS = cls._safe_int("DEFAULT_STARTING_RIKIS", cls.DEFAULT_STARTING_RIKIS, min_val=0)
-        cls.DEFAULT_STARTING_GRACE = cls._safe_int("DEFAULT_STARTING_GRACE", cls.DEFAULT_STARTING_GRACE, min_val=0)
+        cls.DEFAULT_STARTING_LUMEES = cls._safe_int("DEFAULT_STARTING_LUMEES", cls.DEFAULT_STARTING_LUMEES, min_val=0)
+        cls.DEFAULT_STARTING_auric_coin = cls._safe_int("DEFAULT_STARTING_auric_coin", cls.DEFAULT_STARTING_auric_coin, min_val=0)
         cls.MAX_FUSION_COST = cls._safe_int("MAX_FUSION_COST", cls.MAX_FUSION_COST, min_val=1)
         
         logger.info("Safe configuration values reloaded successfully")

@@ -4,7 +4,7 @@ Matron boss system with speed-based rewards.
 Matrons are powerful maiden guardians that don't fight back.
 Challenge is defeating them within turn limit for optimal rewards.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article III: Pure business logic service
 - Article II: Comprehensive audit trails
 - Article VII: No Discord dependencies
@@ -142,7 +142,7 @@ class MatronService:
                 "optimal_turns": 5
             }
         """
-        # Get base HP from config (RIKI LAW I.6 - YAML is source of truth)
+        # Get base HP from config (LUMEN LAW I.6 - YAML is source of truth)
         # Config stored in exploration/matron.yaml as "sector_N_hp_base"
         base_hp = ConfigManager.get(f"sector_{sector_id}_hp_base")
         
@@ -227,24 +227,24 @@ class MatronService:
                 "rewards": Optional[Dict],
                 "dismissal_text": Optional[str],
                 "stamina_cost": int,
-                "gem_cost": int
+                "lumenite_cost": int
             }
         """
         # Validate and consume resources
         costs = MatronService.get_attack_cost(attack_type)
         stamina_cost = costs["stamina"]
-        gem_cost = costs["gems"]
-        
+        lumenite_cost = costs["lumenite"]
+
         if player.stamina < stamina_cost:
             raise InsufficientResourcesError("stamina", stamina_cost, player.stamina)
-        
-        if gem_cost > 0 and player.riki_gems < gem_cost:
-            raise InsufficientResourcesError("riki_gems", gem_cost, player.riki_gems)
-        
+
+        if lumenite_cost > 0 and player.lumenite < lumenite_cost:
+            raise InsufficientResourcesError("lumenite", lumenite_cost, player.lumenite)
+
         # Consume resources
         player.stamina -= stamina_cost
-        if gem_cost > 0:
-            player.riki_gems -= gem_cost
+        if lumenite_cost > 0:
+            player.lumenite -= lumenite_cost
         
         # Calculate damage (uses total power, not strategic)
         player_power = await CombatService.calculate_total_power(
@@ -268,7 +268,7 @@ class MatronService:
             "victory": victory,
             "dismissed": dismissed,
             "stamina_cost": stamina_cost,
-            "gem_cost": gem_cost
+            "lumenite_cost": lumenite_cost
         }
         
         if victory:
@@ -290,32 +290,32 @@ class MatronService:
                 reward_mult = 0.5
             
             # Base rewards
-            base_rikis = ConfigManager.get(
-                f"matron_rewards.sector_{matron['sector_id']}_rikis", 5000
+            base_lumees = ConfigManager.get(
+                f"matron_rewards.sector_{matron['sector_id']}_lumees", 5000
             )
             base_xp = ConfigManager.get(
                 f"matron_rewards.sector_{matron['sector_id']}_xp", 200
             )
-            
+
             # Apply turn bonus
             rewards = {
-                "rikis": int(base_rikis * reward_mult),
+                "lumees": int(base_lumees * reward_mult),
                 "xp": int(base_xp * reward_mult),
                 "turn_bonus": turn_bonus
             }
-            
+
             # Sector boss bonus (sublevel 9)
             if matron["is_sector_boss"]:
                 rewards["sector_clear_bonus"] = {
-                    "rikis": base_rikis,
+                    "lumees": base_lumees,
                     "silver_token": 1
                 }
-            
+
             # Grant rewards
             await ResourceService.grant_resources(
                 session=session,
                 player=player,
-                resources={"rikis": rewards["rikis"]},
+                resources={"lumees": rewards["lumees"]},
                 source="matron_victory",
                 context={
                     "sector": matron["sector_id"],
@@ -420,16 +420,16 @@ class MatronService:
     def get_attack_cost(attack_type: str) -> Dict[str, int]:
         """
         Get resource costs for attack type.
-        
+
         Returns:
-            {"stamina": int, "gems": int}
+            {"stamina": int, "lumenite": int}
         """
         costs = {
-            "x1": {"stamina": 1, "gems": 0},
-            "x3": {"stamina": 3, "gems": 0},
-            "x10": {"stamina": 10, "gems": 10}
+            "x1": {"stamina": 1, "lumenite": 0},
+            "x3": {"stamina": 3, "lumenite": 0},
+            "x10": {"stamina": 10, "lumenite": 10}
         }
-        return costs.get(attack_type, {"stamina": 1, "gems": 0})
+        return costs.get(attack_type, {"stamina": 1, "lumenite": 0})
     
     @staticmethod
     def get_dismissal_line(matron: Dict[str, Any], turns_taken: int) -> str:

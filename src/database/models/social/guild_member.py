@@ -12,7 +12,7 @@ class GuildMember(SQLModel, table=True):
     """
     Guild membership record linking players to guilds.
 
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - Relationship-safe association table
         - All joins indexed for performance
     """

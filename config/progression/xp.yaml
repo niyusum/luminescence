@@ -1,5 +1,5 @@
 # Player Progression Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
 # Controls XP curves, level requirements, and milestone rewards
 
@@ -24,22 +24,22 @@ level_milestones:
 
   # Rewards for minor milestones (levels 5, 15, 25, etc.)
   minor_rewards:
-    # Rikis reward = player_level * rikis_multiplier
-    rikis_multiplier: 100
+    # Lumees reward = player_level * lumees_multiplier
+    lumees_multiplier: 100
 
-    # Flat grace reward
-    grace: 5
+    # Flat auric coin reward
+    auric coin: 5
 
     # Gems reward = player_level / gems_divisor
     gems_divisor: 10
 
   # Rewards for major milestones (levels 10, 20, 30, etc.)
   major_rewards:
-    # Rikis reward = player_level * rikis_multiplier
-    rikis_multiplier: 500
+    # Lumees reward = player_level * lumees_multiplier
+    lumees_multiplier: 500
 
-    # Flat grace reward
-    grace: 10
+    # Flat auric coin reward
+    auric coin: 10
 
     # Flat gems reward
     gems: 5

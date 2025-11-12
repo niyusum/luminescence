@@ -1,33 +1,38 @@
 # Daily/Weekly Rewards Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
 # Daily login rewards, quests, streaks, and comeback bonuses
 # Critical for player retention and engagement
+#
+# CURRENCY SOURCES:
+# - Lumees: Primary currency (shrines, quests, exploration)
+# - Lumenite: Premium currency (radiant shrines, daily rewards)
+# - AuricCoin: Special currency (drop command primary, small rewards secondary)
 
 daily_rewards:
   # Base daily claim rewards
-  base_rikis: 1250
-  base_grace: 2
-  base_gems: 2
+  base_lumees: 1250
+  base_auric_coin: 2
+  base_lumenite: 2
   base_xp: 150
 
   # Bonus for completing all daily quests
-  completion_bonus_rikis: 800
-  completion_bonus_grace: 3
-  completion_bonus_gems: 2
+  completion_bonus_lumees: 800
+  completion_bonus_auric_coin: 3
+  completion_bonus_lumenite: 2
   completion_bonus_xp: 350
 
   # Streak bonus multiplier per consecutive day
   # Example: 7-day streak = rewards * (1 + 0.15 * 7) = 2.05x
   streak_multiplier: 0.15
 
-  # Grace days allowed before streak breaks
+  # AuricCoin days allowed before streak breaks
   # Missing 1 day doesn't break streak
-  grace_days: 1
+  auric_coin_days: 1
 
 daily_quests:
   # Requirements to complete daily quest set
-  prayer_required: 1      # Pray at least once
+  drop_required: 1      # drop at least once
   summon_required: 1      # Summon at least once
   fusion_required: 1      # Fuse at least once
   energy_required: 10     # Spend at least 10 energy
@@ -38,9 +43,9 @@ weekly_bonus:
   enabled: true
 
   # Weekly bonus rewards
-  rikis: 10000
-  grace: 25
-  gems: 10
+  lumees: 10000
+  auric_coin: 25
+  lumenite: 10
 
   # Requirements to claim weekly bonus
   requirements:
@@ -55,8 +60,8 @@ comeback_bonus:
   days_inactive: 7
 
   # Rewards per day of absence
-  rikis_per_day: 1000
-  grace_per_day: 5
+  lumees_per_day: 1000
+  auric_coin_per_day: 5
 
   # Maximum days to calculate comeback bonus
   # (prevents infinite stacking for very long absences)

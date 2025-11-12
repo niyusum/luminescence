@@ -9,48 +9,48 @@ from src.core.logging.logger import get_logger
 logger = get_logger(__name__)
 
 # Ordered, tangible tutorial steps.
-# Each step: key, title, trigger (EventBus topic), reward (rikis/grace), congrats text.
+# Each step: key, title, trigger (EventBus topic), reward (lumees/auric coin), congrats text.
 TUTORIAL_STEPS = [
     {
         "key": "tos_agreed",
         "title": "Accepted Terms of Service",
         "trigger": "tos_agreed",
-        "reward": {"rikis": 0, "grace": 0},
+        "reward": {"lumees": 0, "auric_coin": 0},
         "congrats": "Thanks for agreeing to our **Terms of Service**. Welcome aboard!"
     },
     {
-        "key": "first_pray",
-        "title": "First Prayer",
-        "trigger": "prayer_completed",
-        "reward": {"rikis": 250, "grace": 1},
-        "congrats": "Prayer grants **Grace** used for summoning maidens."
+        "key": "first_drop",
+        "title": "First DROP",
+        "trigger": "drop_completed",
+        "reward": {"lumees": 250, "auric_coin": 1},
+        "congrats": "DROP grants **AuricCoin** used for summoning maidens."
     },
     {
         "key": "first_summon",
         "title": "First Summon",
         "trigger": "summons_completed",
-        "reward": {"rikis": 0, "grace": 1},
+        "reward": {"lumees": 0, "auric_coin": 1},
         "congrats": "Summoning adds new maidens to your collection."
     },
     {
         "key": "first_fusion",
         "title": "First Fusion",
         "trigger": "fusion_completed",
-        "reward": {"rikis": 500, "grace": 0},
+        "reward": {"lumees": 500, "auric_coin": 0},
         "congrats": "Fusion upgrades tiers — save duplicates to progress faster."
     },
     {
         "key": "view_collection",
         "title": "Viewed Collection",
         "trigger": "collection_viewed",
-        "reward": {"rikis": 0, "grace": 1},
+        "reward": {"lumees": 0, "auric_coin": 1},
         "congrats": "Use filters to plan your fusions and leaders."
     },
     {
         "key": "set_leader",
         "title": "Set a Leader",
         "trigger": "leader_set",
-        "reward": {"rikis": 0, "grace": 1},
+        "reward": {"lumees": 0, "auric_coin": 1},
         "congrats": "Leaders grant passive element-based bonuses."
     },
 ]
@@ -97,10 +97,10 @@ class TutorialService:
 
         reward = step.get("reward") or {}
         reward_resources = {}
-        if reward.get("rikis", 0) > 0:
-            reward_resources["rikis"] = reward["rikis"]
-        if reward.get("grace", 0) > 0:
-            reward_resources["grace"] = reward["grace"]
+        if reward.get("lumees", 0) > 0:
+            reward_resources["lumees"] = reward["lumees"]
+        if reward.get("auric_coin", 0) > 0:
+            reward_resources["auric_coin"] = reward["auric_coin"]
 
         # ✅ Unified resource grant through ResourceService (no modifiers)
         if reward_resources:
@@ -119,8 +119,8 @@ class TutorialService:
             "title": step["title"],
             "congrats": step["congrats"],
             "reward": {
-                "rikis": reward.get("rikis", 0),
-                "grace": reward.get("grace", 0)
+                "lumees": reward.get("lumees", 0),
+                "auric_coin": reward.get("auric_coin", 0)
             },
         }
 

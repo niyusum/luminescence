@@ -16,7 +16,7 @@ class Guild(SQLModel, table=True):
     Guild (social organization) model.
     
     Represents a player-created guild with treasury, upgrades,
-    and community functionality. Fully RIKI LAW compliant:
+    and community functionality. Fully LUMEN LAW compliant:
     - No logic here; schema-only
     - Indexed for performance and query speed
     - JSONB fields for flexible perks and audit history

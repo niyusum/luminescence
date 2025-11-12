@@ -1,5 +1,5 @@
 # Cache System Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
 # Performance tuning for caching layer
 # TTL values control how long data stays in cache before refresh
@@ -15,7 +15,7 @@ cache:
 
   # Cache TTL by data type (seconds)
   ttl:
-    # Player resource data (rikis, grace, energy, stamina)
+    # Player resource data (lumees, auric coin, energy, stamina)
     player_resources: 300  # 5 minutes
 
     # Maiden collection data
@@ -33,8 +33,8 @@ cache:
     # Daily quest progress
     daily_quest: 86400  # 24 hours
 
-    # Prayer charges
-    prayer_charges: 300  # 5 minutes
+    # DROP charges
+    DROP_CHARGES: 300  # 5 minutes
 
     # Leaderboard data
     leaderboards: 600  # 10 minutes

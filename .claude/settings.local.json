@@ -1,31 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(test:*)",
       "Bash(python -c:*)",
-      "Bash(find:*)",
-      "Bash(tree:*)",
-      "Bash(cat:*)",
-      "Bash(python -m py_compile:*)",
-      "Bash(for file in src/features/**/*.py src/database/models/**/*.py src/core/**/*.py)",
-      "Bash(do [ -f \"$file\" ])",
-      "Bash(if ! head -20 \"$file\")",
-      "Bash(then echo \"$file\")",
-      "Bash(fi)",
-      "Bash(done)",
-      "Bash(python3:*)",
-      "Bash(where:*)",
-      "Bash(nul)",
-      "Bash(.venv/Scripts/python.exe -m py_compile:*)",
       "Bash(.venv/Scripts/python.exe:*)",
-      "Bash(cp:*)",
-      "Bash(mv:*)",
-      "Bash(git restore:*)",
-      "Bash(requirements.txt)",
-      "Bash(for file in src/core/bot/base_cog.py src/core/bot/riki_bot.py src/core/event/registry.py src/database/models/core/maiden.py src/database/models/core/maiden_base.py src/modules/ascension/cog.py src/modules/ascension/service.py src/modules/ascension/token_logic.py src/modules/combat/service.py src/modules/daily/cog.py src/modules/daily/service.py src/modules/exploration/cog.py src/modules/exploration/mastery_logic.py src/modules/exploration/mastery_relic.py src/modules/exploration/matron_logic.py src/modules/exploration/service.py src/modules/fusion/cog.py src/modules/fusion/service.py src/modules/guilds/cog.py src/modules/guilds/service.py src/modules/guilds/shrine_logic.py src/modules/leaderboard/cog.py src/modules/maiden/cog.py src/modules/maiden/service.py src/modules/player/cog.py src/modules/player/service.py src/modules/prayer/cog.py src/modules/prayer/service.py src/modules/resource/service.py src/modules/shrines/cog.py src/modules/shrines/service.py src/modules/summon/cog.py src/modules/summon/service.py src/modules/tutorial/cog.py src/modules/tutorial/listener.py src/modules/tutorial/service.py src/utils/embed_builder.py)",
-      "Bash(do sed -i 's/src\\.features/src.modules/g' \"$file\")",
-      "Bash(for file in src/core/bot/base_cog.py src/core/validation/input_validator.py src/core/validation/transaction_validator.py src/core/infra/transaction_logger.py src/modules/fusion/service.py src/modules/resource/service.py src/modules/player/service.py)",
-      "Bash(echo:*)"
+      "Bash(dir:*)",
+      "Bash(nul)"
     ],
     "deny": [],
     "ask": []

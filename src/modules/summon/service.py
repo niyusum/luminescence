@@ -30,7 +30,7 @@ class SummonService:
         - Dynamic rate calculation (exponential decay favoring low tiers)
         - Pity system (guaranteed unowned maiden every 25 summons)
         - Batch summon support (x1, x5, x10)
-        - ResourceService integration for grace-based summoning
+        - ResourceService integration for auric coin-based summoning
     """
 
     # -------------------------------------------------------
@@ -101,7 +101,7 @@ class SummonService:
         cost_override: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Perform a single summon using ResourceService for grace consumption.
+        Perform a single summon using ResourceService for auric coin consumption.
         Applies pity tracking and full transaction logging.
         """
         from src.modules.maiden.service import MaidenService
@@ -112,15 +112,15 @@ class SummonService:
         if not player:
             raise ValueError(f"Player {player_id} not found")
 
-        # Determine grace cost
-        cost = cost_override if cost_override is not None else ConfigManager.get("summon_costs.grace_per_summon", 5)
+        # Determine auric coin cost
+        cost = cost_override if cost_override is not None else ConfigManager.get("summon_costs.auric_coin_per_summon", 5)
 
-        # ✅ Unified grace consumption via ResourceService (skip if cost is 0 for batch summons)
+        # ✅ Unified auric coin consumption via ResourceService (skip if cost is 0 for batch summons)
         if cost > 0:
             await ResourceService.consume_resources(
                 session=session,
                 player=player,
-                resources={"grace": cost},
+                resources={"auric_coin": cost},
                 source="summon_cost",
                 context={"cost": cost}
             )
@@ -173,13 +173,13 @@ class SummonService:
                 session=session,
                 player_id=player_id,
                 transaction_type="summon",
-                rikis_change=0,
+                lumees_change=0,
                 details={
                     "maiden_base_id": result["maiden_base"].id,
                     "tier": result["tier"],
                     "was_pity": result.get("was_pity", False),
                     "pity_counter": result["new_pity_counter"],
-                    "grace_cost": cost
+                    "auric_coin_cost": cost
                 }
             )
         except Exception as e:
@@ -268,22 +268,22 @@ class SummonService:
         count: int = 10
     ) -> Dict[str, Any]:
         """
-        Perform multiple summons at once (x5 or x10) using grace.
-        Consumes all grace up front via ResourceService for atomic deduction.
+        Perform multiple summons at once (x5 or x10) using auric coin.
+        Consumes all auric coin up front via ResourceService for atomic deduction.
         """
         # Lock player
         player = await session.get(Player, player_id, with_for_update=True)
         if not player:
             raise ValueError(f"Player {player_id} not found")
 
-        cost_per = ConfigManager.get("summon_costs.grace_per_summon", 5)
+        cost_per = ConfigManager.get("summon_costs.auric_coin_per_summon", 5)
         total_cost = cost_per * count
 
-        # ✅ Deduct all grace once before loop
+        # ✅ Deduct all auric coin once before loop
         await ResourceService.consume_resources(
             session=session,
             player=player,
-            resources={"grace": total_cost},
+            resources={"auric_coin": total_cost},
             source="batch_summon_cost",
             context={"count": count, "total_cost": total_cost}
         )
@@ -306,5 +306,5 @@ class SummonService:
             "results": results,
             "total_cost": total_cost,
             "pity_triggers": pity_count,
-            "remaining_grace": player.grace
+            "remaining_auric_coin": player.auric_coin
         }

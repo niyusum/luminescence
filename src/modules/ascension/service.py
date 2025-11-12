@@ -1,7 +1,7 @@
 """
 Infinite tower climbing system with turn-based strategic combat.
 
-RIKI LAW Compliance: Article III (Service Layer), Article II (Audit Trails)
+LUMEN LAW Compliance: Article III (Service Layer), Article II (Audit Trails)
 - Pure business logic with no Discord dependencies
 - Uses CombatService for strategic power calculations (best 6 maidens)
 - Turn-based combat with boss retaliation and player HP
@@ -44,7 +44,7 @@ logger = get_logger(__name__)
 
 class AscensionService:
     """
-    Strategic tower climbing system (RIKI LAW Article III).
+    Strategic tower climbing system (LUMEN LAW Article III).
     
     Uses best 6 maidens (one per element) for challenging turn-based combat.
     """
@@ -135,7 +135,7 @@ class AscensionService:
             range_key = "101_plus"
         
         # Get monster pool for range
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         monster_pool = ConfigManager.get(f"ascension_monsters.floor_ranges.{range_key}.monsters")
         if not monster_pool:
             # Fallback
@@ -154,7 +154,7 @@ class AscensionService:
                 break
         
         # Get scaling
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         scaling = ConfigManager.get(f"ascension_monsters.floor_ranges.{range_key}.scaling")
         atk_per_floor = scaling.get("atk_per_floor", 1.08)
         def_per_floor = scaling.get("def_per_floor", 1.10)
@@ -314,24 +314,24 @@ class AscensionService:
                 "defeat": bool,
                 "combat_log": List[str],
                 "stamina_cost": int,
-                "gem_cost": int
+                "lumenite_cost": int
             }
         """
         # Validate and consume resources
         costs = AscensionService.get_attack_cost(attack_type)
         stamina_cost = costs["stamina"]
-        gem_cost = costs["gems"]
-        
+        lumenite_cost = costs["lumenite"]
+
         if player.stamina < stamina_cost:
             raise InsufficientResourcesError("stamina", stamina_cost, player.stamina)
-        
-        if gem_cost > 0 and player.riki_gems < gem_cost:
-            raise InsufficientResourcesError("riki_gems", gem_cost, player.riki_gems)
-        
+
+        if lumenite_cost > 0 and player.lumenite < lumenite_cost:
+            raise InsufficientResourcesError("lumenite", lumenite_cost, player.lumenite)
+
         # Consume resources
         player.stamina -= stamina_cost
-        if gem_cost > 0:
-            player.riki_gems -= gem_cost
+        if lumenite_cost > 0:
+            player.lumenite -= lumenite_cost
         
         # Get strategic power
         strategic = await CombatService.calculate_strategic_power(
@@ -432,7 +432,7 @@ class AscensionService:
             "defeat": defeat,
             "combat_log": combat_log,
             "stamina_cost": stamina_cost,
-            "gem_cost": gem_cost,
+            "lumenite_cost": lumenite_cost,
             "critical_gauge": combat_state["critical_gauge"],
             "turns_taken": combat_state["turns_taken"]
         }
@@ -486,11 +486,11 @@ class AscensionService:
         rewards = await AscensionService._calculate_rewards(session, player, floor)
         
         # Grant rewards
-        if rewards["rikis"] > 0:
+        if rewards["lumees"] > 0:
             await ResourceService.grant_resources(
                 session=session,
                 player=player,
-                resources={"rikis": rewards["rikis"]},
+                resources={"lumees": rewards["lumees"]},
                 source="ascension_victory",
                 context={"floor": floor, "turns": turns_taken}
             )
@@ -545,25 +545,25 @@ class AscensionService:
     ) -> Dict[str, Any]:
         """Calculate rewards for floor victory."""
         # Base rewards
-        base_rikis = 100
+        base_lumees = 100
         base_xp = 20
         growth_rate = 1.08
-        
-        rikis = int(base_rikis * (growth_rate ** floor))
+
+        lumees = int(base_lumees * (growth_rate ** floor))
         xp = int(base_xp * (growth_rate ** floor))
-        
+
         # Token reward
         token = AscensionService._determine_token_drop(floor)
-        
+
         rewards = {
-            "rikis": rikis,
+            "lumees": lumees,
             "xp": xp,
             "token": token
         }
         
         # Milestone bonuses
         if floor in [50, 100, 150, 200]:
-            # RIKI LAW I.6 - YAML is source of truth
+            # LUMEN LAW I.6 - YAML is source of truth
             milestone_config = ConfigManager.get(
                 f"ascension_monsters.milestone_bosses.{floor}.bonus_rewards"
             )
@@ -600,11 +600,11 @@ class AscensionService:
     @staticmethod
     def get_attack_cost(attack_type: str) -> Dict[str, int]:
         """
-        Get resource costs for attack type (RIKI LAW I.6 - ConfigManager).
+        Get resource costs for attack type (LUMEN LAW I.6 - ConfigManager).
 
         Returns:
-            {"stamina": int, "gems": int}
+            {"stamina": int, "lumenite": int}
         """
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         ATTACK_COSTS = ConfigManager.get("ASCENSION.ATTACK_COSTS")
-        return ATTACK_COSTS.get(attack_type, {"stamina": 1, "gems": 0})
+        return ATTACK_COSTS.get(attack_type, {"stamina": 1, "lumenite": 0})

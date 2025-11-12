@@ -70,7 +70,7 @@ sector_5:
   rank_1:
     relic_type: "shrine_income"
     bonus_value: 15.0
-    description: "Radiant Shrine Blessing"
+    description: "Auric Shrine Blessing"
   
   rank_2:
     relic_type: "attack_boost"
@@ -99,7 +99,7 @@ sector_6:
     description: "Shadowheart Aegis"
 
 # Relic type definitions (for reference)
-# - shrine_income: Increases passive shrine rikis generation (%)
+# - shrine_income: Increases passive shrine lumees generation (%)
 # - attack_boost: Increases strategic power (%)
 # - defense_boost: Increases strategic defense (%)
 # - energy_regen: Increases energy regeneration rate per hour

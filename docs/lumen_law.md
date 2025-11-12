@@ -1,4 +1,4 @@
-# 🏛️ RIKI LAW
+# 🏛️ LUMEN LAW
 ### *The Architectural Constitution for Discord RPG Bots*
 
 ---
@@ -35,7 +35,7 @@ async with DatabaseService.get_transaction() as session:
 **Rationale:** Discord commands execute concurrently. Two simultaneous `/fuse` commands must not corrupt maiden inventory.
 
 **When to Use:**
-- ANY command that changes resources (energy, stamina, rikis, grace)
+- ANY command that changes resources (energy, stamina, lumees, auric coin)
 - ANY command that modifies inventory (maidens, items, equipment)
 - ANY button interaction that triggers state changes
 - Trading, fusion, summoning, battling, economy transactions
@@ -90,7 +90,7 @@ async with RedisService.acquire_lock(f"fusion:{user_id}", timeout=5):
 # ✅ MANDATORY for ALL game balance values
 fusion_cost = ConfigManager.get("maiden.fusion_cost_tier_3")
 energy_per_zone = ConfigManager.get("exploration.energy_cost")
-prayer_grace = ConfigManager.get("prayer.grace_amount")
+drop_auric_coin = ConfigManager.get("drop.auric_coin_amount")
 
 # ❌ FORBIDDEN — hardcoded values
 fusion_cost = 5000  # NEVER DO THIS
@@ -99,10 +99,10 @@ fusion_cost = 5000  # NEVER DO THIS
 **Rationale:** Balance changes without redeploying the bot. Configuration changes propagate instantly.
 
 **What Belongs in Config:**
-- All costs (rikis, grace, energy, stamina)
+- All costs (lumees, auric coin, energy, stamina)
 - All rewards (XP, loot, currency amounts)
 - All rates (fusion success, summon rates, drop chances)
-- All cooldowns (prayer timer, daily reset times)
+- All cooldowns (drop timer, daily reset times)
 - All limits (max inventory, max energy, rate limits)
 
 ---
@@ -180,7 +180,7 @@ async def fuse(self, ctx: commands.Context, maiden_name: str):
     await ctx.send(embed=embed)
 
 # ❌ ABSOLUTELY FORBIDDEN — Game logic in cog
-player.rikis -= 5000  # NEVER in cog files!
+player.lumees -= 5000  # NEVER in cog files!
 maiden.tier += 1  # NEVER in cog files!
 ```
 
@@ -263,11 +263,11 @@ except RedisConnectionError:
 # ✅ MANDATORY — Game rules in value objects, not cogs
 @dataclass(frozen=True)
 class FusionCost:
-    rikis: int
+    lumees: int
     tier: int
     
-    def can_afford(self, player_rikis: int) -> bool:
-        return player_rikis >= self.rikis
+    def can_afford(self, player_lumees: int) -> bool:
+        return player_lumees >= self.lumees
     
     def validate_tier(self) -> ValidationResult:
         if self.tier > 11:
@@ -275,9 +275,9 @@ class FusionCost:
         return ValidationResult(True, "Valid")
 
 # Usage in Discord command
-cost = FusionCost(rikis=5000, tier=3)
-if not cost.can_afford(player.rikis):
-    embed = EmbedBuilder.error("Insufficient Rikis", "...")
+cost = FusionCost(lumees=5000, tier=3)
+if not cost.can_afford(player.lumees):
+    embed = EmbedBuilder.error("Insufficient Lumees", "...")
     await ctx.send(embed=embed)
 ```
 
@@ -323,7 +323,7 @@ async def fuse(self, ctx: commands.Context):
         snapshot_type="pre_fusion",
         state_data={
             "maidens": player.get_maidens_snapshot(),
-            "rikis": player.rikis,
+            "lumees": player.lumees,
             "tier_attempting": tier
         },
         discord_context={
@@ -405,7 +405,7 @@ class FusionService:
     """
     Pure business logic, zero Discord dependencies.
     
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - All methods are @staticmethod (stateless)
         - No Discord imports (discord.py stays in cogs)
         - ConfigManager for all values
@@ -434,8 +434,8 @@ class FusionService:
         
         # 2. Validate
         cost = ConfigManager.get(f"fusion.tier_{tier}_cost")
-        if player.rikis < cost:
-            raise InsufficientResourcesError("rikis", cost, player.rikis)
+        if player.lumees < cost:
+            raise InsufficientResourcesError("lumees", cost, player.lumees)
         
         # 3. Execute
         result = await FusionService._perform_fusion(session, player, maiden_ids)
@@ -474,7 +474,7 @@ class FusionConfirmView(discord.ui.View):
     """
     Discord button confirmation for fusion.
     
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - Timeout handling (Article I.13)
         - Redis locks on button clicks (Article I.3)
         - User validation (only command author can click)
@@ -589,7 +589,7 @@ class FusionCog(commands.Cog):
     """
     Discord UI layer for fusion feature.
     
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - Zero business logic (Article I.7)
         - All logic through FusionService
         - Specific exception handling (Article I.5)
@@ -636,7 +636,7 @@ class FusionCog(commands.Cog):
                 title="Confirm Fusion",
                 description=f"Fuse **{maiden_1}** + **{maiden_2}**?"
             )
-            embed.add_field(name="Cost", value=f"{cost:,} Rikis")
+            embed.add_field(name="Cost", value=f"{cost:,} Lumees")
             
             await ctx.send(embed=embed, view=view)
             
@@ -781,7 +781,7 @@ embed.add_field(
 
 # Footer for meta information
 embed.set_footer(
-    text="Level 42 • Zone 12 • 50,000 Rikis",
+    text="Level 42 • Zone 12 • 50,000 Lumees",
     icon_url=user.display_avatar.url
 )
 
@@ -884,7 +884,7 @@ INTERACTION_TIMING = {
 
 ## 🏛️ CLOSING STATEMENT
 
-**RIKI LAW is not a suggestion. It is the supreme architectural constitution.**
+**LUMEN LAW is not a suggestion. It is the supreme architectural constitution.**
 
 Every Discord command, every button click, every embed, every service call must comply with these laws.
 

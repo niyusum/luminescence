@@ -3,7 +3,7 @@ Quest mastery system for sector completion rewards.
 
 Each sector has 3 mastery ranks granting permanent stat boost relics.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article III: Pure business logic service
 - Article II: Comprehensive transaction logging
 - Article VII: Domain exceptions only

@@ -4,7 +4,7 @@ Input validation layer for all user inputs.
 Provides type-safe validation with security checks for all Discord commands.
 Prevents injection attacks, type errors, and database corruption.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article VII: Domain validation without Discord dependencies
 - Security-first design with explicit bounds checking
 - Clear error messages for user feedback
@@ -347,7 +347,7 @@ class InputValidator:
         max_value: Optional[int] = None
     ) -> int:
         """
-        Validate resource amount (rikis, grace, etc.).
+        Validate resource amount (lumees, auric coin, etc.).
 
         Args:
             value: Amount to validate

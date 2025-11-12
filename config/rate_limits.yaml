@@ -24,7 +24,7 @@ guild:
     uses: 5
     period: 60
   donate:
-    uses: 20
+    uses: 15  # Reduced from 20 - economic transaction requiring validation and guild updates
     period: 60
   upgrade:
     uses: 5
@@ -57,7 +57,7 @@ guild:
 # Fusion Commands
 fusion:
   main:
-    uses: 15
+    uses: 10  # Reduced from 15 - expensive operation (DB writes, RNG, transaction locks)
     period: 60
 
 # Exploration Commands
@@ -81,7 +81,7 @@ daily:
 # Ascension Commands
 ascension:
   climb:
-    uses: 20
+    uses: 15  # Reduced from 20 - expensive combat calculations with RNG and reward processing
     period: 60
   status:
     uses: 10
@@ -132,13 +132,13 @@ maiden:
     uses: 10
     period: 60
   upgrade:
-    uses: 15
+    uses: 10  # Reduced from 15 - expensive stat recalculation and database updates
     period: 60
 
 # Shrine Commands
 shrines:
   offer:
-    uses: 20
+    uses: 20  # Moderately expensive but needs higher limit for shrine building UX
     period: 60
   status:
     uses: 10
@@ -159,9 +159,9 @@ tutorial:
     uses: 10
     period: 60
 
-# Prayer Commands
-prayer:
-  pray:
+# DROP Commands
+drop:
+  drop:
     uses: 20
     period: 60
   status:

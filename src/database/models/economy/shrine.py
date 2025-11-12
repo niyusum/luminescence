@@ -12,7 +12,7 @@ class PlayerShrine(SQLModel, table=True):
     """
     Player-owned Shrine (personal passive-yield structure).
 
-    RIKI LAW:
+    LUMEN LAW:
       - Pure schema (no business logic here).
       - Indexed for hot paths (player lookups, type filtering).
       - JSONB ring buffer for quick UI history without heavy joins.

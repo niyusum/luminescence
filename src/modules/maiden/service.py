@@ -12,7 +12,7 @@ Features:
 - Collection statistics
 - Performance metrics and monitoring
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Session-first parameter pattern (Article I.6)
 - Delegates power calculations to CombatService (Article VII)
 - Transaction logging for audit trails (Article II)

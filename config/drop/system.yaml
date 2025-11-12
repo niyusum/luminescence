@@ -1,12 +1,12 @@
-# Prayer System Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# DROP System Configuration
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
-# Prayer system provides grace currency through charge-based mechanics
+# DROP system provides auric coin currency through charge-based mechanics
 # Charges regenerate over time (no accumulation/storage)
 
-prayer_system:
-  # Grace awarded per prayer
-  grace_per_prayer: 1
+drop_system:
+  # AuricCoin awarded per drop
+  auric_coin_per_drop: 1
 
   # Maximum charges (single charge system - no accumulation)
   max_charges: 1

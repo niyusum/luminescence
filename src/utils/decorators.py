@@ -1,7 +1,7 @@
 """
 Production-grade rate limiting decorators for Discord commands.
 
-RIKI LAW Compliance: Article IV (Rate Limiting & Degradation)
+LUMEN LAW Compliance: Article IV (Rate Limiting & Degradation)
 - Distributed rate limiting via Redis
 - Graceful degradation on Redis failure
 - Comprehensive metrics and audit trails
@@ -46,7 +46,7 @@ def ratelimit(
     scope: Literal["user", "guild"] = "user"
 ) -> Callable[[F], F]:
     """
-    Rate limit decorator for Discord commands (RIKI LAW Article IV).
+    Rate limit decorator for Discord commands (LUMEN LAW Article IV).
 
     Prevents command spam by limiting uses within time window using Redis.
     Falls back to allowing command if Redis is unavailable (graceful degradation).

@@ -4,7 +4,7 @@ Mastery relic - permanent stat boost from exploration mastery.
 Relics are earned by completing exploration sector mastery ranks.
 They provide stackable, persistent bonuses that can be toggled active/inactive.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article I: Economy domain model with proper indexing
 - Article II: Complete audit trail (acquired_at timestamp)
 - Article IV: Tunable relic values via ConfigManager
@@ -19,7 +19,7 @@ Features:
 - Performance indexes for queries
 
 Relic Types:
-- shrine_income: Passive rikis boost from shrines
+- shrine_income: Passive lumees boost from shrines
 - combine_rate: Fusion success rate increase
 - attack_boost: ATK multiplier for all maidens
 - defense_boost: DEF multiplier for all maidens

@@ -4,7 +4,7 @@ Unified player management system.
 Consolidates registration, profile viewing, stat allocation, and transaction history
 into a single cohesive player management cog.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
     - All business logic delegated to services (Article I.7)
     - BaseCog pattern for standardized error handling
     - Read-only operations use no locks (Article I.11)
@@ -83,7 +83,7 @@ class PlayerCog(BaseCog):
     and transaction history through a cohesive interface.
 
     Commands:
-        /register (rr) - Create your RIKI RPG account
+        /register (rr) - Create your Lumen RPG account
         /me (rme, profile, mystats, ms, stats) - View player profile
         /allocate (alloc, ralloc, rallocate) - Allocate stat points
         /transactions (rt, rtrans) - View transaction history
@@ -99,8 +99,8 @@ class PlayerCog(BaseCog):
 
     @commands.command(
         name="register",
-        aliases=["rr", "rregister", "rikiregister"],
-        description="Register your RIKI RPG account and begin your journey"
+        aliases=["reg"],
+        description="Register your Lumen RPG account and begin your journey"
     )
     async def register(self, ctx: commands.Context):
         """Register a new player account with ToS acknowledgement."""
@@ -120,22 +120,22 @@ class PlayerCog(BaseCog):
                     )
                     embed.add_field(
                         name="Next Steps",
-                        value="`/me` to view profile • `/pray` to gain grace • `/summon` to pull maidens",
+                        value="`;me` to view profile • `;charge` to gain auric coin • `;summon` to pull maidens",
                         inline=False
                     )
                     await ctx.send(embed=embed)
                     return
 
-                starting_rikis = ConfigManager.get("player.starting_rikis", 1000)
-                starting_grace = ConfigManager.get("player.starting_grace", 5)
+                starting_lumees = ConfigManager.get("player.starting_lumees", 1000)
+                starting_auric_coin = ConfigManager.get("player.starting_auric_coin", 5)
                 starting_energy = ConfigManager.get("player.starting_max_energy", 100)
                 starting_stamina = ConfigManager.get("player.starting_max_stamina", 50)
 
                 new_player = Player(
                     discord_id=ctx.author.id,
                     username=ctx.author.name,
-                    rikis=starting_rikis,
-                    grace=starting_grace,
+                    lumees=starting_lumees,
+                    auric_coin=starting_auric_coin,
                     energy=starting_energy,
                     max_energy=starting_energy,
                     stamina=starting_stamina,
@@ -153,8 +153,8 @@ class PlayerCog(BaseCog):
                     transaction_type="player_registered",
                     details={
                         "username": ctx.author.name,
-                        "starting_rikis": starting_rikis,
-                        "starting_grace": starting_grace,
+                        "starting_lumees": starting_lumees,
+                        "starting_auric_coin": starting_auric_coin,
                         "starting_energy": starting_energy,
                         "starting_stamina": starting_stamina
                     },
@@ -165,9 +165,9 @@ class PlayerCog(BaseCog):
 
             # Public welcome + ToS post
             embed = EmbedBuilder.success(
-                title="🎉 Welcome to RIKI RPG!",
+                title="🎉 Welcome to Lumen RPG!",
                 description=(
-                    f"{ctx.author.mention} has joined the world of RIKI!\n\n"
+                    f"{ctx.author.mention} has joined the world of Lumen!\n\n"
                     "By registering, you agree to follow our **Terms of Service** and community rules.\n"
                     "Be kind, no cheating, and have fun."
                 ),
@@ -185,7 +185,7 @@ class PlayerCog(BaseCog):
             )
             embed.add_field(
                 name="🚀 First Steps",
-                value="`/pray` to gain grace • `/summon` to pull maidens • `/me` to view your profile",
+                value="`;charge` to gain auric coin • ``;summon` to pull maidens • `;me` to view your profile",
                 inline=False
             )
 
@@ -211,7 +211,7 @@ class PlayerCog(BaseCog):
 
     @commands.command(
         name="me",
-        aliases=["rme", "rstats", "rikistats"],
+        aliases=[],
         description="View your player profile and statistics"
     )
     @ratelimit(
@@ -249,7 +249,7 @@ class PlayerCog(BaseCog):
                             ctx,
                             "Player Not Found",
                             f"{target.mention} hasn't registered yet.",
-                            help_text="They can use /register to join RIKI RPG."
+                            help_text="They can use /register to join Lumen RPG."
                         )
                     return
 
@@ -288,27 +288,27 @@ class PlayerCog(BaseCog):
                 inline=True
             )
 
-            # === 2. RIKIS ===
-            rikis = int(getattr(player, "rikis", 0))
+            # === 2. LUMEES ===
+            lumees = int(getattr(player, "lumees", 0))
             embed.add_field(
-                name="💰 Rikis",
-                value=f"**{rikis:,}**",
+                name="💰 Lumees",
+                value=f"**{lumees:,}**",
                 inline=True
             )
 
-            # === 3. RIKI GEMS ===
-            gems = int(getattr(player, "riki_gems", 0))
+            # === 3. LUMENITE ===
+            gems = int(getattr(player, "lumenite", 0))
             embed.add_field(
-                name="💎 Riki Gems",
+                name="💎 Lumenite",
                 value=f"**{gems:,}**",
                 inline=True
             )
 
-            # === 4. GRACE ===
-            grace = int(getattr(player, "grace", 0))
+            # === 4. AURIC_COIN ===
+            auric_coin = int(getattr(player, "auric_coin", 0))
             embed.add_field(
-                name="🙏 Grace",
-                value=f"**{grace:,}**",
+                name="💎 AuricCoin",
+                value=f"**{auric_coin:,}**",
                 inline=True
             )
 
@@ -370,7 +370,7 @@ class PlayerCog(BaseCog):
 
     @commands.command(
         name="allocate",
-        aliases=["rall", "rallocate", "rikiallocate"],
+        aliases=[],
         description="Allocate stat points to Energy, Stamina, or HP"
     )
     @ratelimit(
@@ -403,7 +403,7 @@ class PlayerCog(BaseCog):
                     embed.add_field(
                         name="📊 Current Stats",
                         value=(
-                            f"⚡ **Energy:** {player.max_energy} "
+                            f"🪙 **Energy:** {player.max_energy} "
                             f"({spent['energy']} points)\n"
                             f"💪 **Stamina:** {player.max_stamina} "
                             f"({spent['stamina']} points)\n"
@@ -438,7 +438,7 @@ class PlayerCog(BaseCog):
                 embed.add_field(
                     name="Current Max Stats",
                     value=(
-                        f"⚡ Energy: {player.max_energy}\n"
+                        f"🪙 Energy: {player.max_energy}\n"
                         f"💪 Stamina: {player.max_stamina}\n"
                         f"❤️ HP: {player.max_hp}"
                     ),
@@ -450,7 +450,7 @@ class PlayerCog(BaseCog):
                 embed.add_field(
                     name="Points Invested",
                     value=(
-                        f"⚡ {spent['energy']} in Energy\n"
+                        f"🪙 {spent['energy']} in Energy\n"
                         f"💪 {spent['stamina']} in Stamina\n"
                         f"❤️ {spent['hp']} in HP\n"
                         f"**Total:** {total_spent} points"
@@ -465,7 +465,7 @@ class PlayerCog(BaseCog):
                     build_text += (
                         f"**{name.title()}**\n"
                         f"{build['description']}\n"
-                        f"⚡{build['energy']} 💪{build['stamina']} ❤️{build['hp']}\n"
+                        f"🪙{build['energy']} 💪{build['stamina']} ❤️{build['hp']}\n"
                         f"✅ {build['pros']}\n"
                         f"❌ {build['cons']}\n\n"
                     )
@@ -498,7 +498,7 @@ class PlayerCog(BaseCog):
 
     @commands.command(
         name="transactions",
-        aliases=["rlog", "rtransactions", "rikitransactions"],
+        aliases=[],
         description="View recent resource transaction history"
     )
     @ratelimit(
@@ -532,7 +532,7 @@ class PlayerCog(BaseCog):
 
             embed = discord.Embed(
                 title=f"📜 Resource Transactions (Last {len(logs)})",
-                description="Recent rikis, grace, and gem changes",
+                description="Recent lumees, auric coin, and lumenite changes",
                 color=0x2C2D31
             )
 
@@ -623,18 +623,18 @@ class TosAgreeView(discord.ui.View):
                         embed = EmbedBuilder.success(
                             title=f"🎉 Tutorial Complete: {done['title']}",
                             description=done["congrats"],
-                            footer="You're all set — try `/pray` next!"
+                            footer="You're all set — try `/charge` next!"
                         )
                         await channel.send(embed=embed)
                         # Plain text reward line (ToS likely has no rewards)
-                        rk = done["reward"].get("rikis", 0)
-                        gr = done["reward"].get("grace", 0)
+                        rk = done["reward"].get("lumees", 0)
+                        gr = done["reward"].get("auric_coin", 0)
                         if rk or gr:
                             parts = []
                             if rk:
-                                parts.append(f"+{rk} rikis")
+                                parts.append(f"+{rk} lumees")
                             if gr:
-                                parts.append(f"+{gr} grace")
+                                parts.append(f"+{gr} auric coin")
                             await channel.send(f"You received {' and '.join(parts)} as a tutorial reward!")
                 except Exception:
                     pass
@@ -651,7 +651,7 @@ class TosAgreeView(discord.ui.View):
 
         # Private confirmation (so the clicker gets immediate feedback)
         await interaction.response.send_message(
-            "Thanks! You've accepted the ToS. Start with `/pray`, then try `/summon`.",
+            "Thanks! You've accepted the ToS. Start with `/charge`, then try `/summon`.",
             ephemeral=True
         )
 
@@ -694,7 +694,7 @@ class UnifiedProfileView(discord.ui.View):
         # Remove action buttons if viewing someone else
         if not is_self:
             self.remove_item(self.allocate_button)
-            self.remove_item(self.pray_button)
+            self.remove_item(self.drop_button)
             self.remove_item(self.summon_button)
             # Mail button will be added conditionally, so check if it exists before removing
             try:
@@ -775,7 +775,7 @@ class UnifiedProfileView(discord.ui.View):
             total_spent = spent["energy"] + spent["stamina"] + spent["hp"]
 
             embed.add_field(
-                name="⚡ Resources & Allocation",
+                name="🪙 Resources & Allocation",
                 value=_safe_value(
                     f"**Energy:** {self.player.energy}/{self.player.max_energy} (+{spent['energy']} pts)\n"
                     f"**Stamina:** {self.player.stamina}/{self.player.max_stamina} (+{spent['stamina']} pts)\n"
@@ -854,9 +854,9 @@ class UnifiedProfileView(discord.ui.View):
             embed.add_field(
                 name="💰 Currency",
                 value=_safe_value(
-                    f"**Rikis:** {self.player.rikis:,}\n"
-                    f"**Grace:** {self.player.grace:,}\n"
-                    f"**Gems:** {self.player.riki_gems:,}"
+                    f"**Lumees:** {self.player.lumees:,}\n"
+                    f"**AuricCoin:** {self.player.auric_coin:,}\n"
+                    f"**Gems:** {self.player.lumenite:,}"
                 ),
                 inline=True
             )
@@ -902,32 +902,32 @@ class UnifiedProfileView(discord.ui.View):
                 inline=True
             )
 
-            # === PRAYER STATISTICS ===
+            # === DROP STATISTICS ===
             stats_json = _as_dict(getattr(self.player, "stats", None))
-            prayers_performed = int(stats_json.get("prayers_performed", 0))
-            has_charge = int(getattr(self.player, "prayer_charges", 0)) >= 1
-            prayer_status = "✅ Ready!" if has_charge else "⏳ Regenerating"
+            drops_performed = int(stats_json.get("drops_performed", 0))
+            has_charge = int(getattr(self.player, "DROP_CHARGES", 0)) >= 1
+            drop_status = "✅ Ready!" if has_charge else "⏳ Regenerating"
 
             embed.add_field(
-                name="🙏 Prayer Statistics",
+                name="💎 DROP Statistics",
                 value=_safe_value(
-                    f"**Total Prayers:** {prayers_performed:,}\n"
-                    f"**Status:** {prayer_status}"
+                    f"**Total DROPS:** {drops_performed:,}\n"
+                    f"**Status:** {drop_status}"
                 ),
                 inline=True
             )
 
             # === ECONOMY STATISTICS ===
-            rikis_earned = int(stats_json.get("total_rikis_earned", 0))
-            rikis_spent = int(stats_json.get("total_rikis_spent", 0))
-            net_rikis = rikis_earned - rikis_spent
+            lumees_earned = int(stats_json.get("total_lumees_earned", 0))
+            lumees_spent = int(stats_json.get("total_lumees_spent", 0))
+            net_lumees = lumees_earned - lumees_spent
 
             embed.add_field(
                 name="💹 Economy Statistics",
                 value=_safe_value(
-                    f"**Earned:** {rikis_earned:,} rikis\n"
-                    f"**Spent:** {rikis_spent:,} rikis\n"
-                    f"**Net:** {net_rikis:,} rikis"
+                    f"**Earned:** {lumees_earned:,} lumees\n"
+                    f"**Spent:** {lumees_spent:,} lumees\n"
+                    f"**Net:** {net_lumees:,} lumees"
                 ),
                 inline=False
             )
@@ -1040,17 +1040,17 @@ class UnifiedProfileView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="🙏 Pray",
+        label="💎 drop",
         style=discord.ButtonStyle.secondary,
-        custom_id="pray_action",
+        custom_id="drop_action",
         row=2
     )
-    async def pray_button(
+    async def drop_button(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
-        """Link to pray command."""
+        """Link to drop command."""
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "This button isn't for you!",
@@ -1059,7 +1059,7 @@ class UnifiedProfileView(discord.ui.View):
             return
 
         await interaction.response.send_message(
-            "Use `/pray` to gain grace!",
+            "Use `;charge` to gain auric coin!",
             ephemeral=True
         )
 
@@ -1262,7 +1262,7 @@ class AllocationModal(discord.ui.Modal, title="Allocate Stat Points"):
             embed.add_field(
                 name="New Max Stats",
                 value=(
-                    f"⚡ **Energy:** {new_max['max_energy']}" + (f" (+{energy_gain})" if energy_gain > 0 else "") + "\n"
+                    f"🪙 **Energy:** {new_max['max_energy']}" + (f" (+{energy_gain})" if energy_gain > 0 else "") + "\n"
                     f"💪 **Stamina:** {new_max['max_stamina']}" + (f" (+{stamina_gain})" if stamina_gain > 0 else "") + "\n"
                     f"❤️ **HP:** {new_max['max_hp']}" + (f" (+{hp_gain})" if hp_gain > 0 else "")
                 ),

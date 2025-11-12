@@ -1,5 +1,5 @@
 # Event Modifiers Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
 # Global event modifiers for live events and balance adjustments
 # Can be hot-reloaded via database for instant activation
@@ -13,9 +13,9 @@ event_modifiers:
   # Example: 0.5 = +50% XP from all sources
   xp_boost: 0.0
 
-  # Rikis currency boost (percentage increase)
-  # Example: 1.0 = +100% (double) rikis from all sources
-  rikis_boost: 0.0
+  # Lumees currency boost (percentage increase)
+  # Example: 1.0 = +100% (double) lumees from all sources
+  lumees_boost: 0.0
 
   # Shard drop boost (percentage increase)
   # Example: 0.3 = +30% shards on fusion failure

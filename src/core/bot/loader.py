@@ -1,7 +1,7 @@
 """
-Dynamic feature cog loader for RIKI RPG Bot.
+Dynamic feature cog loader for Lumen RPG Bot.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Dynamic discovery (Article I.8)
 - Service modularity (Article I.2)
 - Zero hardcoded paths
@@ -339,7 +339,7 @@ async def load_all_features(bot):
     This is the original API maintained for backward compatibility.
     New code should use FeatureLoader directly for access to stats.
     
-    RIKI LAW:
+    LUMEN LAW:
         • Dynamic discovery (Article I.8)
         • Service modularity (Article I.2)
         • No hard-coded paths

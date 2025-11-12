@@ -1,14 +1,14 @@
 """
 Core Player model with comprehensive progression tracking and stat allocation system.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article I: Core domain model with proper indexing
 - Article II: Complete audit trail (created_at, last_active, last_level_up)
 - Article IV: Tunable values via ConfigManager integration
 - Article V: Immutable base constants for stat calculations
 
 Features:
-- Multi-resource management (energy, stamina, hp, grace, rikis, prayer charges)
+- Multi-resource management (energy, stamina, hp, auric coin, lumees, drop charges)
 - Stat allocation system (5 points per level, allocate to energy/stamina/hp)
 - Player class system (destroyer, adapter, invoker)
 - Tutorial progression tracking
@@ -21,7 +21,7 @@ Features:
 Player Classes (Choose ONE - Permanent):
 - DESTROYER: +25% stamina regeneration (faster combat recovery)
 - ADAPTER: +25% energy regeneration (faster exploration recovery)
-- INVOKER: +25% rewards from shrines (more rikis/items from shrine visits)
+- INVOKER: +25% rewards from shrines (more lumees/items from shrine visits)
 
 Stat Allocation Mechanics:
 - Players gain 5 allocation points per level
@@ -41,7 +41,7 @@ from datetime import datetime
 
 class Player(SQLModel, table=True):
     """
-    Core player data model representing a Discord user in RIKI RPG.
+    Core player data model representing a Discord user in Lumen RPG.
     
     Stores player progression, resources, stats, metadata, and stat allocations.
     All resource regeneration and activity tracking handled through this model.
@@ -49,13 +49,13 @@ class Player(SQLModel, table=True):
     Attributes:
         discord_id: Unique Discord user ID (primary key)
         level: Current player level (1-∞)
-        grace: Prayer currency for summoning maidens
-        rikis: Primary currency for fusion and upgrades
-        riki_gems: Premium currency for shop purchases
+        auric coin: DROP currency for summoning maidens
+        lumees: Primary currency for fusion and upgrades
+        lumenite: Premium currency for shop purchases
         energy: Resource for questing and exploration
         stamina: Resource for battles and raids
         hp: Resource for ascension tower (survival stat)
-        prayer_charges: Charges for prayer system (0-1, regenerates every 5 minutes)
+        DROP_CHARGES: Charges for drop system (0-1, regenerates every 5 minutes)
         fusion_shards: Dictionary of shards per tier for guaranteed fusions
         total_power: Calculated combat power from all maidens
         stat_points_available: Unspent allocation points
@@ -145,10 +145,10 @@ class Player(SQLModel, table=True):
     # ========================================================================
     # CURRENCIES
     # ========================================================================
-    
-    grace: int = Field(default=5, ge=0)
-    rikis: int = Field(default=1000, ge=0, sa_column=Column(BigInteger))
-    riki_gems: int = Field(default=0, ge=0)  # Premium currency
+
+    auric_coin: int = Field(default=5, ge=0)
+    lumees: int = Field(default=1000, ge=0, sa_column=Column(BigInteger))
+    lumenite: int = Field(default=0, ge=0)  # Premium currency
     
     # ========================================================================
     # RESOURCES (CURRENT VALUES)
@@ -163,9 +163,9 @@ class Player(SQLModel, table=True):
     hp: int = Field(default=500, ge=0)  # NEW: Ascension survival stat
     max_hp: int = Field(default=500, ge=0)  # NEW: Scales with stat allocation
     
-    prayer_charges: int = Field(default=0, ge=0, le=1)
-    max_prayer_charges: int = Field(default=1, ge=0)  # DEPRECATED: Always 1 (single charge system)
-    last_prayer_regen: Optional[datetime] = Field(default=None)
+    DROP_CHARGES: int = Field(default=0, ge=0, le=1)
+    max_drop_charges: int = Field(default=1, ge=0)  # DEPRECATED: Always 1 (single charge system)
+    last_drop_regen: Optional[datetime] = Field(default=None)
     
     # ========================================================================
     # STAT ALLOCATION SYSTEM (NEW)
@@ -246,9 +246,9 @@ class Player(SQLModel, table=True):
         default_factory=lambda: {
             "battles_fought": 0,
             "battles_won": 0,
-            "total_rikis_earned": 0,
-            "total_rikis_spent": 0,
-            "prayers_performed": 0,
+            "total_lumees_earned": 0,
+            "total_lumees_spent": 0,
+            "drops_performed": 0,
             "shards_earned": 0,
             "shards_spent": 0,
             "level_ups": 0,
@@ -295,27 +295,27 @@ class Player(SQLModel, table=True):
             return f"{self.total_power / 1_000:.1f}K"
         return str(self.total_power)
     
-    def get_prayer_regen_time_remaining(self) -> int:
+    def get_drop_regen_time_remaining(self) -> int:
         """
-        Calculate seconds until next prayer charge regenerates.
+        Calculate seconds until next drop charge regenerates.
         
         Returns:
             Seconds remaining (0 if at max charges or ready to regen)
         """
-        if self.prayer_charges >= self.max_prayer_charges:
+        if self.DROP_CHARGES >= self.max_drop_charges:
             return 0
         
-        if self.last_prayer_regen is None:
+        if self.last_drop_regen is None:
             return 0
         
         from src.core.config.config_manager import ConfigManager
-        regen_interval = ConfigManager.get("prayer_system.regen_minutes", 5) * 60
-        time_since = (datetime.utcnow() - self.last_prayer_regen).total_seconds()
+        regen_interval = ConfigManager.get("drop_system.regen_minutes", 5) * 60
+        time_since = (datetime.utcnow() - self.last_drop_regen).total_seconds()
         return max(0, int(regen_interval - time_since))
     
-    def get_prayer_regen_display(self) -> str:
-        """Format prayer regeneration time as 'Xm Ys' or 'Ready!'."""
-        remaining = self.get_prayer_regen_time_remaining()
+    def get_drop_regen_display(self) -> str:
+        """Format drop regeneration time as 'Xm Ys' or 'Ready!'."""
+        remaining = self.get_drop_regen_time_remaining()
         if remaining == 0:
             return "Ready!"
         
@@ -378,13 +378,13 @@ class Player(SQLModel, table=True):
         
         Actions:
             1. Calculate new max stats from allocations
-            2. Refresh all resources to max (energy, stamina, hp, prayer)
+            2. Refresh all resources to max (energy, stamina, hp, drop)
             3. Update max values in database
             4. Grant POINTS_PER_LEVEL allocation points
             5. Update last_level_up timestamp
             6. Increment stats.level_ups counter
         
-        RIKI LAW Compliance:
+        LUMEN LAW Compliance:
             - Called within transaction context
             - Audit trail via last_level_up timestamp
             - Stats tracking for analytics
@@ -396,7 +396,7 @@ class Player(SQLModel, table=True):
         self.energy = max_stats["max_energy"]
         self.stamina = max_stats["max_stamina"]
         self.hp = max_stats["max_hp"]
-        self.prayer_charges = 1  # Always 1 in new system
+        self.DROP_CHARGES = 1  # Always 1 in new system
         
         # Update max values (in case allocations changed)
         self.max_energy = max_stats["max_energy"]
@@ -455,27 +455,27 @@ class Player(SQLModel, table=True):
     # RESOURCE CAP ENFORCEMENT
     # ========================================================================
 
-    def set_grace_safe(self, amount: int) -> int:
+    def set_auric_coin_safe(self, amount: int) -> int:
         """
-        Safely set grace with cap enforcement.
+        Safely set auric coin with cap enforcement.
 
-        IMPORTANT: All grace modifications should go through ResourceService.
+        IMPORTANT: All auric coin modifications should go through ResourceService.
         This method is a fallback for cases where direct assignment is unavoidable.
 
         Args:
-            amount: Grace amount to set
+            amount: AuricCoin amount to set
 
         Returns:
-            Actual grace value after cap enforcement
+            Actual auric coin value after cap enforcement
 
         Example:
-            >>> actual_grace = player.set_grace_safe(1000000)
-            >>> # actual_grace will be 999999 if that's the cap
+            >>> actual_auric_coin = player.set_auric_coin_safe(1000000)
+            >>> # actual_auric_coin will be 999999 if that's the cap
         """
         from src.core.config.config_manager import ConfigManager
-        grace_cap = ConfigManager.get("resource_system.grace_max_cap", 999999)
-        self.grace = min(max(0, amount), grace_cap)
-        return self.grace
+        auric_coin_cap = ConfigManager.get("resource_system.auric_coin_max_cap", 999999)
+        self.auric_coin = min(max(0, amount), auric_coin_cap)
+        return self.auric_coin
 
     # ========================================================================
     # REPR

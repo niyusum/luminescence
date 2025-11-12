@@ -1,5 +1,5 @@
 # Resource Systems Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
 # Manages energy, stamina, and resource caps for player progression
 
@@ -37,9 +37,9 @@ stamina_system:
 
 resource_system:
   # Maximum caps for resources (null = unlimited)
-  grace_max_cap: 999999
-  rikis_max_cap: null  # Unlimited
-  riki_gems_max_cap: null  # Unlimited
+  auric_coin_max_cap: 999999
+  lumees_max_cap: null  # Unlimited
+  lumenite_max_cap: null  # Unlimited
 
   # How modifiers stack (multiplicative vs additive)
   modifier_stacking: "multiplicative"
@@ -49,3 +49,14 @@ resource_system:
 
   # How long to retain audit logs (days)
   audit_retention_days: 90
+
+# Player Starting Resources
+# Initial resources granted to new players
+player:
+  starting_lumees: 1000        # Starting lumees balance
+  starting_auric_coin: 5       # Starting auric coin (enough for 5 summons)
+  starting_lumenite: 0         # Starting lumenite (premium currency)
+  starting_max_energy: 100     # Starting energy cap (matches energy_system.base_max)
+  starting_max_stamina: 50     # Starting stamina cap (matches stamina_system.base_max)
+  starting_max_hp: 500         # Starting HP for ascension
+  starting_level: 1            # New players start at level 1

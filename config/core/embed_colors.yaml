@@ -1,0 +1,33 @@
+# Discord Embed Colors Configuration
+# LUMEN LAW I.6: All tunable UI parameters externalized
+#
+# Hex color codes for Discord embeds (0xRRGGBB format)
+# Referenced by: src/modules/exploration/cog.py and other UI modules
+
+embed_colors:
+  # Primary/Default colors
+  primary: 0x2c2d31          # Dark gray - default/neutral
+  success: 0x00FF00          # Bright green - success states
+  danger: 0xFF0000           # Bright red - dangerous/critical states
+  warning: 0xFFA500          # Orange - warnings
+  info: 0x0099FF             # Light blue - informational
+
+  # Specific feature colors
+  mastery: 0x9B59B6          # Purple - mastery/achievement
+  turn_update: 0x0099FF      # Light blue - combat turn updates
+  dismiss: 0x808080          # Gray - dismissed/neutral actions
+
+  # Rarity/tier colors
+  common: 0x9E9E9E           # Gray
+  uncommon: 0x4CAF50         # Green
+  rare: 0x2196F3             # Blue
+  epic: 0x9C27B0             # Purple
+  mythic: 0xFF9800           # Orange
+  legendary: 0xFFD700        # Gold
+  divine: 0xFFFFFF           # White
+
+  # System colors
+  economy: 0xF1C40F          # Yellow - lumees/currency
+  premium: 0xE91E63          # Pink - lumenite/premium
+  energy: 0x3498DB           # Blue - energy resource
+  stamina: 0xE67E22          # Orange - stamina resource

@@ -1,6 +1,6 @@
 # src/utils/embed_builder.py
 """
-Factory for standardized Discord embeds across RIKI systems.
+Factory for standardized Discord embeds across Lumen systems.
 
 Features:
 - Consistent branding and colors (from maiden_constants)
@@ -24,7 +24,7 @@ from src.modules.maiden.constants import EmbedColor, UIConstants
 
 class EmbedBuilder:
     """
-    Factory for standardized Discord embeds across RIKI systems.
+    Factory for standardized Discord embeds across Lumen systems.
 
     Ensures consistent branding, tone, and hierarchy.
     All embeds automatically include timestamps and enforce Discord limits.
@@ -182,14 +182,14 @@ class EmbedBuilder:
         )
     
     @staticmethod
-    def prayer(
+    def drop(
         title: str,
         description: str,
         footer: Optional[str] = None
     ) -> discord.Embed:
-        """Prayer system embeds."""
+        """DROP system embeds."""
         return EmbedBuilder._base_embed(
-            title, description, EmbedColor.PRAYER, footer
+            title, description, EmbedColor.DROP, footer
         )
     
     @staticmethod
@@ -255,20 +255,20 @@ class EmbedBuilder:
         )
 
         # Resource summary
-        gems = getattr(player, "riki_gems", 0)
+        gems = getattr(player, "lumenite", 0)
         embed.add_field(
             name="💰 Resources",
             value=(
-                f"Rikis: **{UIConstants.format_number(player.rikis)}**\n"
-                f"Grace: **{player.grace}**\n"
-                f"Gems: **{gems}**"
+                f"Lumees: **{UIConstants.format_number(player.lumees)}**\n"
+                f"AuricCoin: **{player.auric_coin}**\n"
+                f"Lumenite: **{player.lumenite}**"
             ),
             inline=True
         )
 
         # Energy & stamina
         embed.add_field(
-            name="⚡ Energy & Stamina",
+            name="🪙 Energy & Stamina",
             value=(
                 f"Energy: **{player.energy}/{player.max_energy}**\n"
                 f"Stamina: **{player.stamina}/{player.max_stamina}**"
@@ -276,17 +276,17 @@ class EmbedBuilder:
             inline=True
         )
 
-        # Prayer
-        next_regen = getattr(player, "get_prayer_regen_display", lambda: "N/A")
+        # DROP
+        next_regen = getattr(player, "get_drop_regen_display", lambda: "N/A")
         next_regen_str = next_regen() if callable(next_regen) else "N/A"
         
-        # Prayer status (1 charge every 5 minutes)
-        prayer_status = "✅ Ready!" if player.prayer_charges >= 1 else "⏳ Regenerating"
+        # DROP status (1 charge every 5 minutes)
+        drop_status = "✅ Ready!" if player.DROP_CHARGES >= 1 else "⏳ Regenerating"
 
         embed.add_field(
-            name="🙏 Prayer",
+            name="💎 DROP",
             value=(
-                f"**{prayer_status}**\n"
+                f"**{drop_status}**\n"
                 f"Next: {next_regen_str}"
             ),
             inline=True
@@ -318,7 +318,7 @@ class EmbedBuilder:
             inline=True
         )
 
-        embed.set_footer(text="RIKI RPG • Goddess blesses the prepared")
+        embed.set_footer(text="Lumen RPG • Light favors the vigilant")
         return embed
     
     @staticmethod
@@ -348,12 +348,12 @@ class EmbedBuilder:
         
         # Format resources
         resource_emojis = {
-            "rikis": "💰",
-            "grace": "✨",
-            "riki_gems": "💎",
-            "energy": "⚡",
+            "lumees": "💰",
+            "auric_coin": "✨",
+            "lumenite": "💎",
+            "energy": "🪙",
             "stamina": "🔋",
-            "prayer_charges": "🙏",
+            "DROP_CHARGES": "💎",
             "experience": "📈"
         }
         

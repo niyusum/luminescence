@@ -4,7 +4,7 @@ Shrine management Discord interface.
 Provides interactive shrine viewing, upgrading, collecting, and selling
 through Discord commands and button-based UI.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
     - All business logic delegated to ShrineService (Article I.7)
     - No locks for read operations (Article I.11)
     - Pessimistic locking for state modifications (Article I.1)
@@ -32,7 +32,7 @@ class ShrineCog(BaseCog):
     shrines that provide passive resource yields.
 
     Commands:
-        shrines (rsh, rshrines, rikishrines) - View shrines and manage them
+        shrines - View shrines and manage them
     """
 
     def __init__(self, bot: commands.Bot):
@@ -40,7 +40,7 @@ class ShrineCog(BaseCog):
 
     @commands.command(
         name="shrines",
-        aliases=["rsh", "rshrines", "rikishrines"],
+        aliases=[],
         description="View and manage your personal shrines"
     )
     @ratelimit(
@@ -94,8 +94,8 @@ class ShrineCog(BaseCog):
 
                     # Estimate value (simplified)
                     player_snapshot = {
-                        "rikis": int(getattr(player, "rikis", 0)),
-                        "grace": int(getattr(player, "grace", 0)),
+                        "lumees": int(getattr(player, "lumees", 0)),
+                        "lumenite": int(getattr(player, "lumenite", 0)),
                     }
                     _, amount = ShrineService._compute_yield(conf, shrine.level, player_snapshot)
                     if player.player_class == "invoker":
@@ -123,7 +123,7 @@ class ShrineCog(BaseCog):
                     cap_hours = int(conf.get("collection_cap_hours", 24))
 
                     # Shrine emoji based on type
-                    shrine_emoji = "⛩️" if shrine.shrine_type == "grace" else "🏛️"
+                    shrine_emoji = "✨" if shrine.shrine_type == "radiant" else "🏛️"
 
                     # Check readiness
                     status = "✅ Ready"
@@ -273,7 +273,7 @@ class ShrineMenuView(discord.ui.View):
 
             embed = EmbedBuilder.info(
                 title="⬆️ Upgrade Shrine",
-                description="Select a shrine to upgrade. Upgrading increases yield but costs rikis.",
+                description="Select a shrine to upgrade. Upgrading increases yield but costs lumees.",
                 footer="Higher levels = better rewards"
             )
 
@@ -307,8 +307,8 @@ class ShrineMenuView(discord.ui.View):
             async with DatabaseService.get_session() as session:
                 player = await session.get(Player, self.user_id)
                 player_snapshot = {
-                    "rikis": int(getattr(player, "rikis", 0)),
-                    "grace": int(getattr(player, "grace", 0)),
+                    "lumees": int(getattr(player, "lumees", 0)),
+                    "lumenite": int(getattr(player, "lumenite", 0)),
                 }
 
                 embed = EmbedBuilder.primary(
@@ -333,7 +333,7 @@ class ShrineMenuView(discord.ui.View):
                         if player.player_class == "invoker":
                             next_yield = int(next_yield * 1.25)
                         upgrade_cost = ShrineService._next_level_cost(conf, shrine.level)
-                        next_info = f"\nNext: {next_yield:,} {target_key} (Cost: {upgrade_cost:,} rikis)"
+                        next_info = f"\nNext: {next_yield:,} {target_key} (Cost: {upgrade_cost:,} lumees)"
                     else:
                         next_info = "\n*Max Level*"
 
@@ -407,7 +407,7 @@ class ShrineUpgradeView(discord.ui.View):
             if shrine.level >= max_level:
                 description = "MAX LEVEL"
             else:
-                description = f"Upgrade to L{shrine.level + 1} for {upgrade_cost:,} rikis"
+                description = f"Upgrade to L{shrine.level + 1} for {upgrade_cost:,} lumees"
                 if len(description) > 100:
                     description = description[:97] + "..."
 
@@ -418,7 +418,7 @@ class ShrineUpgradeView(discord.ui.View):
                 label=label,
                 value=value,
                 description=description,
-                emoji="⛩️" if shrine.shrine_type == "grace" else "🏛️",
+                emoji="✨" if shrine.shrine_type == "radiant" else "🏛️",
                 default=False
             ))
 
@@ -463,8 +463,8 @@ class ShrineUpgradeView(discord.ui.View):
                 from src.database.models.core.player import Player
                 player = await session.get(Player, self.user_id)
                 player_snapshot = {
-                    "rikis": int(getattr(player, "rikis", 0)),
-                    "grace": int(getattr(player, "grace", 0)),
+                    "lumees": int(getattr(player, "lumees", 0)),
+                    "lumenite": int(getattr(player, "lumenite", 0)),
                 }
                 target_key, new_yield = ShrineService._compute_yield(conf, shrine.level, player_snapshot)
                 if player.player_class == "invoker":
@@ -484,9 +484,9 @@ class ShrineUpgradeView(discord.ui.View):
 
             if isinstance(e, InsufficientResourcesError):
                 embed = EmbedBuilder.error(
-                    title="Insufficient Rikis",
+                    title="Insufficient Lumees",
                     description=str(e),
-                    help_text="Earn more rikis and try again."
+                    help_text="Earn more lumees and try again."
                 )
             elif isinstance(e, InvalidOperationError):
                 embed = EmbedBuilder.error(

@@ -27,7 +27,7 @@ class GuildShrineService:
       - Manage shrine creation, upgrades, collection, cooldowns.
       - Use ConfigManager for cost/yield multipliers.
       - Route resource flow to Guild.treasury (not players).
-      - Transaction-safe under RIKI LAW (single DB session).
+      - Transaction-safe under LUMEN LAW (single DB session).
     """
 
     # ---------- Retrieval / Creation ----------
@@ -46,7 +46,7 @@ class GuildShrineService:
         if shrine:
             return shrine
 
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         conf = ConfigManager.get(f"shrines.{shrine_type}")
         if not conf:
             raise InvalidOperationError(f"Invalid shrine type: {shrine_type}")
@@ -69,7 +69,7 @@ class GuildShrineService:
     @staticmethod
     async def upgrade_shrine(session: AsyncSession, guild_id: int, shrine_type: str) -> GuildShrine:
         shrine = await GuildShrineService.get_or_create_shrine(session, guild_id, shrine_type)
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         conf = ConfigManager.get(f"shrines.{shrine_type}")
         max_level = int(conf.get("max_level", 12))
 
@@ -82,7 +82,7 @@ class GuildShrineService:
             raise InvalidOperationError("Guild not found.")
 
         if guild.treasury < cost:
-            raise InvalidOperationError(f"Guild treasury has insufficient rikis. Need {cost}, have {guild.treasury}.")
+            raise InvalidOperationError(f"Guild treasury has insufficient lumees. Need {cost}, have {guild.treasury}.")
 
         guild.treasury -= cost
         shrine.level += 1
@@ -106,7 +106,7 @@ class GuildShrineService:
     def _compute_yield(conf: Dict[str, Any], level: int) -> Tuple[str, int]:
         base_yield = conf.get("base_yield", 50)
         y_mult = float(conf.get("yield_multiplier", 2.0))
-        target = str(conf.get("target", "grace"))
+        target = str(conf.get("target", "lumees"))
         if isinstance(base_yield, float) and base_yield <= 1.0:
             # Percent-based (of treasury or static reference)
             # For guild shrines, percent yield applies to guild treasury
@@ -116,7 +116,7 @@ class GuildShrineService:
     @staticmethod
     async def collect_yield(session: AsyncSession, guild_id: int, shrine_type: str) -> Dict[str, Any]:
         shrine = await GuildShrineService.get_or_create_shrine(session, guild_id, shrine_type)
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         conf = ConfigManager.get(f"shrines.{shrine_type}")
         cap_hours = int(conf.get("collection_cap_hours", 24))
         now = datetime.utcnow()

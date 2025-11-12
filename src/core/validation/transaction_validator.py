@@ -7,7 +7,7 @@ Features:
 - PII scrubbing for sensitive data
 - Clear error messages for validation failures
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article II: Ensures transaction log integrity
 - Article IX: Graceful error handling with clear messages
 """
@@ -36,13 +36,13 @@ class TransactionValidator:
     # Allowed fields per transaction type
     TRANSACTION_SCHEMAS: Dict[str, Set[str]] = {
         # Resource changes
-        "resource_change_rikis": {"resource", "old_value", "new_value", "delta", "reason"},
-        "resource_change_grace": {"resource", "old_value", "new_value", "delta", "reason"},
+        "resource_change_lumees": {"resource", "old_value", "new_value", "delta", "reason"},
+        "resource_change_auric_coin": {"resource", "old_value", "new_value", "delta", "reason"},
         "resource_change_energy": {"resource", "old_value", "new_value", "delta", "reason"},
         "resource_change_stamina": {"resource", "old_value", "new_value", "delta", "reason"},
         "resource_change_hp": {"resource", "old_value", "new_value", "delta", "reason"},
-        "resource_change_prayer_charges": {"resource", "old_value", "new_value", "delta", "reason"},
-        "resource_change_riki_gems": {"resource", "old_value", "new_value", "delta", "reason"},
+        "resource_change_drop_charges": {"resource", "old_value", "new_value", "delta", "reason"},
+        "resource_change_lumenite": {"resource", "old_value", "new_value", "delta", "reason"},
         "resource_change_experience": {"resource", "old_value", "new_value", "delta", "reason"},
 
         # Maiden operations
@@ -53,7 +53,7 @@ class TransactionValidator:
         # Game operations
         "fusion_attempt": {"success", "input_tier", "result_tier", "cost", "outcome", "roll", "success_rate"},
         "summon_attempt": {"tier", "maiden_name", "maiden_base", "cost", "source", "pity_used"},
-        "prayer_performed": {"shrine_type", "cost", "rewards", "success", "multiplier"},
+        "drop_performed": {"shrine_type", "cost", "rewards", "success", "multiplier"},
         "level_up": {"old_level", "new_level", "stat_points_awarded", "full_refresh"},
         "quest_completed": {"quest_id", "quest_name", "sector", "rewards", "completion_time"},
         "combat_result": {"opponent_type", "opponent_level", "victory", "rewards", "damage_dealt", "damage_taken"},
@@ -69,8 +69,14 @@ class TransactionValidator:
 
     # Required fields per transaction type
     REQUIRED_FIELDS: Dict[str, Set[str]] = {
-        "resource_change_rikis": {"resource", "old_value", "new_value", "delta", "reason"},
-        "resource_change_grace": {"resource", "old_value", "new_value", "delta", "reason"},
+        "resource_change_lumees": {"resource", "old_value", "new_value", "delta", "reason"},
+        "resource_change_auric_coin": {"resource", "old_value", "new_value", "delta", "reason"},
+        "resource_change_energy": {"resource", "old_value", "new_value", "delta", "reason"},
+        "resource_change_stamina": {"resource", "old_value", "new_value", "delta", "reason"},
+        "resource_change_hp": {"resource", "old_value", "new_value", "delta", "reason"},
+        "resource_change_drop_charges": {"resource", "old_value", "new_value", "delta", "reason"},
+        "resource_change_lumenite": {"resource", "old_value", "new_value", "delta", "reason"},
+        "resource_change_experience": {"resource", "old_value", "new_value", "delta", "reason"},
         "fusion_attempt": {"success", "input_tier", "cost", "outcome"},
         "summon_attempt": {"tier", "maiden_name", "cost"},
         "level_up": {"old_level", "new_level", "stat_points_awarded"},
@@ -101,8 +107,8 @@ class TransactionValidator:
             ValidationError: If validation fails
 
         Example:
-            >>> details = {"resource": "rikis", "old_value": 100, "new_value": 150, "delta": 50, "reason": "quest"}
-            >>> sanitized = TransactionValidator.validate_transaction("resource_change_rikis", details)
+            >>> details = {"resource": "lumees", "old_value": 100, "new_value": 150, "delta": 50, "reason": "quest"}
+            >>> sanitized = TransactionValidator.validate_transaction("resource_change_lumees", details)
         """
         # 1. Validate transaction type
         if not transaction_type:

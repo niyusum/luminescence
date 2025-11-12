@@ -2,7 +2,7 @@
 Token inventory for maiden redemption.
 Tokens are earned from ascension and redeemed for random maidens in tier range.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article I: Economy domain model
 - Article II: Audit trail fields
 - Article VII: Pure schema only, no business logic
@@ -30,7 +30,7 @@ class Token(SQLModel, table=True):
     )  # bronze, silver, gold, platinum, diamond
     quantity: int = Field(default=0, nullable=False)
 
-    # Audit trail (RIKI LAW Article II)
+    # Audit trail (LUMEN LAW Article II)
     created_at: datetime = Field(
         sa_column=Column(DateTime, default=datetime.utcnow, nullable=False)
     )

@@ -1,7 +1,7 @@
 """
 Combat calculation and resolution service.
 
-RIKI LAW Compliance: Article III (Service Layer), Article II (Audit Trails)
+LUMEN LAW Compliance: Article III (Service Layer), Article II (Audit Trails)
 - Pure business logic with no Discord dependencies
 - Comprehensive transaction logging for all combat events
 - Pessimistic locking for combat state modifications
@@ -108,7 +108,7 @@ class CombatTurn:
 # ELEMENT BONUS DEFINITIONS
 # ============================================================================
 # NOTE: Element bonuses now configured via ConfigManager.get("combat_element_bonuses.{element}")
-# This allows live balance tuning without code changes (RIKI LAW Article IV)
+# This allows live balance tuning without code changes (LUMEN LAW Article IV)
 
 
 # ============================================================================
@@ -117,7 +117,7 @@ class CombatTurn:
 
 class CombatService:
     """
-    Core combat mechanics service (RIKI LAW Article III).
+    Core combat mechanics service (LUMEN LAW Article III).
     
     Provides dual power calculation modes and combat resolution.
     """
@@ -194,7 +194,7 @@ class CombatService:
                 total_power += maiden_power
                 total_defense += maiden_defense
         
-        # Apply element bonuses (RIKI LAW I.6 - YAML is source of truth)
+        # Apply element bonuses (LUMEN LAW I.6 - YAML is source of truth)
         if "infernal" in generals:
             multiplier = ConfigManager.get("combat_element_bonuses.infernal.multiplier")
             total_power = int(total_power * multiplier)
@@ -340,7 +340,7 @@ class CombatService:
         # Base damage
         base_damage = player_power * attack_count
 
-        # Momentum bonus (RIKI LAW I.6 - YAML is source of truth)
+        # Momentum bonus (LUMEN LAW I.6 - YAML is source of truth)
         momentum_config = ConfigManager.get("combat_mechanics.momentum.thresholds")
         momentum_mult = 1.0
 
@@ -414,7 +414,7 @@ class CombatService:
         Returns:
             Damage dealt to player (minimum 1)
         """
-        # Apply umbral reduction (RIKI LAW I.6 - YAML is source of truth)
+        # Apply umbral reduction (LUMEN LAW I.6 - YAML is source of truth)
         effective_boss_atk = boss_atk
         if umbral_general_present:
             multiplier = ConfigManager.get("combat_element_bonuses.umbral.multiplier")

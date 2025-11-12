@@ -1,7 +1,7 @@
 from src.core.bot.base_cog import BaseCog
 import discord
 from discord.ext import commands
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import time
 
 from src.core.infra.database_service import DatabaseService
@@ -22,10 +22,10 @@ logger = get_logger(__name__)
 class SummonCog(BaseCog):
     """
     Maiden summoning system with batch support.
-    Players spend grace to summon maidens. Batch summons (x5/x10) use
+    Players spend auric coin to summon maidens. Batch summons (x5/x10) use
     an interactive sequence to reveal results before the final summary.
 
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - SELECT FOR UPDATE on summons (Article I.1)
         - Transaction logging (Article I.2)
         - Redis locks for summon sessions (Article I.3)
@@ -43,8 +43,8 @@ class SummonCog(BaseCog):
 
     @commands.command(
         name="summon",
-        aliases=["rs", "rsummon", "rikisummon"],
-        description="Summon powerful maidens using grace"
+        aliases=[],
+        description="Summon powerful maidens using auric coin"
     )
     @ratelimit(
         uses=ConfigManager.get("rate_limits.summon.single.uses", 20),
@@ -53,7 +53,7 @@ class SummonCog(BaseCog):
     )
     async def summon(self, ctx: commands.Context, count: int = 1):
         """
-        Summon maidens using grace.
+        Summon maidens using auric coin.
 
         Single summons show results immediately. Batch summons (x5/x10)
         use an interactive flow to reveal each result before a summary.
@@ -71,10 +71,10 @@ class SummonCog(BaseCog):
                     if not player:
                         return
 
-                    grace_cost = ConfigManager.get("summon.grace_cost", 1) * count
-                    if player.grace < grace_cost:
+                    auric_coin_cost = ConfigManager.get("summon.auric_coin_cost", 1) * count
+                    if player.auric_coin < auric_coin_cost:
                         raise InsufficientResourcesError(
-                            resource="grace", required=grace_cost, current=player.grace
+                            resource="auric_coin", required=auric_coin_cost, current=player.auric_coin
                         )
 
                     results = await SummonService.perform_summons(session, player, count=count)
@@ -85,7 +85,7 @@ class SummonCog(BaseCog):
                         transaction_type="summons_performed",
                         details={
                             "count": count,
-                            "grace_spent": grace_cost,
+                            "auric_coin_spent": auric_coin_cost,
                             "maidens": [
                                 {"id": r["maiden_id"], "tier": r["tier"], "element": r["element"]}
                                 for r in results
@@ -100,11 +100,11 @@ class SummonCog(BaseCog):
                         "count": count,
                         "results": results,
                         "channel_id": ctx.channel.id,
-                        "__topic__": "prayer_completed",
+                        "__topic__": "drop_completed",
                         "timestamp": discord.utils.utcnow()
                     })
 
-                remaining = player.grace - grace_cost
+                remaining = player.auric_coin - auric_coin_cost
 
                 if count == 1:
                     await self._display_single(ctx, results[0], remaining)
@@ -190,7 +190,7 @@ class SummonCog(BaseCog):
         embed = EmbedBuilder.success(
             title=title,
             description=desc,
-            footer=f"Summon {index}/{total} • {remaining} grace remaining"
+            footer=f"Summon {index}/{total} • {remaining} auric coin remaining"
         )
 
         atk = result.get("attack", 0)
@@ -309,7 +309,7 @@ class SingleSummonView(discord.ui.View):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This button isn't for you!", ephemeral=True)
             return
-        await interaction.response.send_message(f"Use `/summon` again! ({self.remaining} grace left)", ephemeral=True)
+        await interaction.response.send_message(f"Use `/summon` again! ({self.remaining} auric coin left)", ephemeral=True)
 
     @discord.ui.button(label="🎴 View Collection", style=discord.ButtonStyle.secondary)
     async def view_collection(self, interaction: discord.Interaction, button: discord.ui.Button):

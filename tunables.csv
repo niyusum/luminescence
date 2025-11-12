@@ -1,0 +1,146 @@
+Category,Name,Config Path,Current Value,Default Value,Type,Purpose,Tuning Notes
+XP Curve,Base XP,progression/xp.yaml:base,50,50,int,Base XP for level 2,Affects leveling speed globally
+XP Curve,Exponent,progression/xp.yaml:exponent,2.0,2.0,float,Polynomial curve exponent,Higher = steeper curve
+XP Curve,Type,progression/xp.yaml:type,polynomial,polynomial,string,Formula type,"Options: polynomial, exponential, linear"
+Fusion Costs,Base Cost,fusion/rates.yaml:fusion_costs.base,1000,1000,int,T1 fusion cost in lumees,Starting fusion economy
+Fusion Costs,Multiplier,fusion/rates.yaml:fusion_costs.multiplier,2.2,2.2,float,Cost scaling per tier,Exponential growth rate
+Fusion Costs,Max Cost Cap,fusion/rates.yaml:fusion_costs.max_cost,100000000,100000000,int,Maximum fusion cost,Prevents integer overflow
+Fusion Rates,Tier 1 Success Rate,fusion/rates.yaml:fusion_rates.1,75,75,int,Percentage success for T1,Easy early game
+Fusion Rates,Tier 5 Success Rate,fusion/rates.yaml:fusion_rates.5,55,55,int,Percentage success for T5,Mid-game balance
+Fusion Rates,Tier 11 Success Rate,fusion/rates.yaml:fusion_rates.11,25,25,int,Percentage success for T11,Endgame difficulty
+Shard System,Shards Per Failure Min,fusion/rates.yaml:shard_system.shards_per_failure_min,3,3,int,Minimum shards on fail,Pity system floor
+Shard System,Shards Per Failure Max,fusion/rates.yaml:shard_system.shards_per_failure_max,15,15,int,Maximum shards on fail,Pity system ceiling
+Shard System,Shards For Redemption,fusion/rates.yaml:shard_system.shards_for_redemption,100,100,int,Shards for guaranteed fusion,Pity threshold
+Shard System,Enabled,fusion/rates.yaml:shard_system.enabled,TRUE,TRUE,bool,Master toggle for shards,Can disable pity system
+Gacha Rates,Decay Factor,gacha/rates.yaml:gacha_rates.rate_distribution.decay_factor,0.75,0.75,float,Rate decay per tier,Lower = more extreme rarity
+Gacha Rates,Highest Tier Base Rate,gacha/rates.yaml:gacha_rates.rate_distribution.highest_tier_base,22.0,22.0,float,Base rate for unlocked highest tier,Starting point for distribution
+Gacha Rates,Tier 4 Unlock Level,gacha/rates.yaml:gacha_rates.tier_unlock_levels.tier_4,10,10,int,Player level for T4 summons,Progression gate
+Gacha Rates,Tier 7 Unlock Level,gacha/rates.yaml:gacha_rates.tier_unlock_levels.tier_7,30,30,int,Player level for T7 summons,Mid-game unlock
+Gacha Rates,Tier 12 Unlock Level,gacha/rates.yaml:gacha_rates.tier_unlock_levels.tier_12,50,50,int,Player level for T12 summons,Endgame unlock
+Pity System,Summons For Pity,gacha/rates.yaml:pity_system.summons_for_pity,25,25,int,Summons before guaranteed,Legally must be disclosed
+Pity System,Pity Type,gacha/rates.yaml:pity_system.pity_type,new_maiden_or_next_bracket,new_maiden_or_next_bracket,string,Type of pity guarantee,"Options: new_maiden_or_next_bracket, highest_tier, player_choice"
+Summon Costs,Auric Coin Per Summon,gacha/rates.yaml:summon_costs.auric_coin_per_summon,1,1,int,Cost for single summon,Primary auric coin sink
+Summon Costs,x5 Multiplier,gacha/rates.yaml:summon_costs.x5_multiplier,5,5,int,Cost for x5 summon,Batch summon discount
+Summon Costs,x10 Multiplier,gacha/rates.yaml:summon_costs.x10_multiplier,10,10,int,Cost for x10 summon,Batch summon discount
+Summon Costs,x10 Premium Only,gacha/rates.yaml:summon_costs.x10_premium_only,TRUE,TRUE,bool,Require lumenite for x10,Monetization lever
+Ascension,Base Stamina Cost,ascension/balance.yaml:ascension_balance.base_stamina_cost,5,5,int,Starting stamina per floor,Entry cost
+Ascension,Stamina Increase Per 10 Levels,ascension/balance.yaml:ascension_balance.stamina_increase_per_10_levels,1,1,int,Additional stamina every 10 floors,Scaling difficulty
+Ascension,Enemy HP Base,ascension/balance.yaml:ascension_balance.enemy_hp_base,1000,1000,int,Starting enemy HP,Floor 1 baseline
+Ascension,Enemy HP Growth Rate,ascension/balance.yaml:ascension_balance.enemy_hp_growth_rate,1.10,1.10,float,HP multiplier per floor,Exponential scaling
+Ascension,Reward Base Lumees,ascension/balance.yaml:ascension_balance.reward_base_lumees,50,50,int,Starting lumees reward,Floor 1 baseline
+Ascension,Reward Base XP,ascension/balance.yaml:ascension_balance.reward_base_xp,20,20,int,Starting XP reward,Floor 1 baseline
+Ascension,Reward Growth Rate,ascension/balance.yaml:ascension_balance.reward_growth_rate,1.12,1.12,float,Reward multiplier per floor,Exponential scaling
+Ascension,x20 Attack Lumenite Cost,ascension/balance.yaml:ascension_balance.x20_attack_lumenite_cost,10,10,int,Cost for mega attack,Premium currency sink
+Ascension,x20 Attack Crit Bonus,ascension/balance.yaml:ascension_balance.x20_attack_crit_bonus,0.2,0.2,float,Additional crit chance for x20,+20% crit
+Ascension,Token Every N Floors,ascension/balance.yaml:ascension_balance.bonus_intervals.token_every_n_floors,5,5,int,Token reward frequency,Regular rewards
+Ascension,DROP Charge Every N Floors,ascension/balance.yaml:ascension_balance.bonus_intervals.drop_charge_every_n_floors,10,10,int,DROP charge reward frequency,Resource refills
+Ascension,Fusion Catalyst Every N Floors,ascension/balance.yaml:ascension_balance.bonus_intervals.fusion_catalyst_every_n_floors,25,25,int,Catalyst reward frequency,Rare rewards
+Exploration,Sector 1 Progress Rate,exploration/system.yaml:exploration_system.progress_rates.sector_1,7.0,7.0,float,Progress % per energy,Fast early progression
+Exploration,Sector 7 Progress Rate,exploration/system.yaml:exploration_system.progress_rates.sector_7,1.0,1.0,float,Progress % per energy,Slow endgame progression
+Exploration,Matron Progress Multiplier,exploration/system.yaml:exploration_system.matron_progress_multiplier,0.5,0.5,float,Progress during matron battles,Slowdown factor
+Exploration,Sector 1 Base Energy Cost,exploration/system.yaml:exploration_system.energy_costs.sector_1_base,5,5,int,Energy per action in S1,Entry cost
+Exploration,Sector 7 Base Energy Cost,exploration/system.yaml:exploration_system.energy_costs.sector_7_base,38,38,int,Energy per action in S7,Endgame cost
+Exploration,Boss Energy Multiplier,exploration/system.yaml:exploration_system.energy_costs.boss_multiplier,1.5,1.5,float,Extra cost for boss sublevels,Sublevel 9 premium
+Exploration,Common Capture Rate,exploration/system.yaml:exploration_system.capture_rates.common,60.0,60.0,float,T1 base capture %,High early game success
+Exploration,Legendary Capture Rate,exploration/system.yaml:exploration_system.capture_rates.legendary,12.0,12.0,float,T7 base capture %,Mid-tier difficulty
+Exploration,Singularity Capture Rate,exploration/system.yaml:exploration_system.capture_rates.singularity,2.0,2.0,float,T12 base capture %,Extremely rare
+Exploration,Sector 1 Capture Penalty,exploration/system.yaml:exploration_system.sector_capture_penalty.sector_1,0,0,int,Penalty for S1,No penalty
+Exploration,Sector 7 Capture Penalty,exploration/system.yaml:exploration_system.sector_capture_penalty.sector_7,25,25,int,Penalty for S7,-25% capture rate
+Exploration,Capture Level Modifier,exploration/system.yaml:exploration_system.capture_level_modifier,2.0,2.0,float,Bonus per level above recommended,+2% per level
+Exploration,T1 Guaranteed Purification Cost,exploration/system.yaml:exploration_system.guaranteed_purification_costs.common,50,50,int,Lumenite cost for T1,Premium bypass
+Exploration,T12 Guaranteed Purification Cost,exploration/system.yaml:exploration_system.guaranteed_purification_costs.singularity,25000,25000,int,Lumenite cost for T12,Very expensive
+Shrines,Lesser Base Cost,shrines/types.yaml:shrines.lesser.base_cost,10000,10000,int,Cost to build L1 lesser shrine,Entry investment
+Shrines,Lesser Cost Multiplier,shrines/types.yaml:shrines.lesser.cost_multiplier,2.3,2.3,float,Cost scaling per level,Exponential growth
+Shrines,Lesser Base Yield,shrines/types.yaml:shrines.lesser.base_yield,50,50,int,Lumees per hour at L1,Starting income
+Shrines,Lesser Yield Multiplier,shrines/types.yaml:shrines.lesser.yield_multiplier,2.3,2.3,float,Yield scaling per level,Matches cost scaling
+Shrines,Lesser Max Level,shrines/types.yaml:shrines.lesser.max_level,12,12,int,Maximum shrine level,Endgame cap
+Shrines,Lesser Collection Cap Hours,shrines/types.yaml:shrines.lesser.collection_cap_hours,24,24,int,Max accumulation time,Requires daily collection
+Shrines,Lesser Max Shrines,shrines/types.yaml:shrines.lesser.max_shrines,3,3,int,Maximum lesser shrines per player,Limit passive income
+Shrines,Lesser Unlock Level,shrines/types.yaml:shrines.lesser.unlock_level,10,10,int,Player level to unlock,Early-mid game
+Shrines,Radiant Base Cost,shrines/types.yaml:shrines.radiant.base_cost,50000,50000,int,Cost to build L1 radiant shrine,High investment
+Shrines,Radiant Cost Multiplier,shrines/types.yaml:shrines.radiant.cost_multiplier,2.3,2.3,float,Cost scaling per level,Exponential growth
+Shrines,Radiant Base Yield,shrines/types.yaml:shrines.radiant.base_yield,0.05,0.05,float,Lumenite per hour at L1,Premium currency income
+Shrines,Radiant Yield Multiplier,shrines/types.yaml:shrines.radiant.yield_multiplier,1.8,2.3,float,Yield scaling per level,CHANGED: Reduced from 2.3 to fix inflation
+Shrines,Radiant Max Level,shrines/types.yaml:shrines.radiant.max_level,12,12,int,Maximum shrine level,Endgame cap
+Shrines,Radiant Max Shrines,shrines/types.yaml:shrines.radiant.max_shrines,3,3,int,Maximum radiant shrines per player,Limit premium income
+Shrines,Radiant Unlock Level,shrines/types.yaml:shrines.radiant.unlock_level,30,30,int,Player level to unlock,Mid-late game
+Shrines,Sell Refund Rate,shrines/types.yaml:shrines.sell_refund_rate,0.5,0.5,float,Percentage refund on sell,50% loss
+DROP System,Auric Coin Per DROP,drop/system.yaml:drop_system.auric_coin_per_drop,1,1,int,Reward per use,Primary auric coin source
+DROP System,Max Charges,drop/system.yaml:drop_system.max_charges,1,1,int,Charge capacity,Single charge system
+DROP System,Regen Minutes,drop/system.yaml:drop_system.regen_minutes,5,5,int,Minutes per charge,5 minute cooldown
+DROP System,Regen Interval Seconds,drop/system.yaml:drop_system.regen_interval_seconds,300,300,int,Explicit seconds interval,300s = 5min
+Daily Rewards,Base Lumees,daily/rewards.yaml:daily_rewards.base_lumees,1250,1250,int,Daily claim lumees,Base reward
+Daily Rewards,Base Auric Coin,daily/rewards.yaml:daily_rewards.base_auric_coin,2,2,int,Daily claim auric coin,Base reward
+Daily Rewards,Base Lumenite,daily/rewards.yaml:daily_rewards.base_lumenite,2,2,int,Daily claim lumenite,Base reward
+Daily Rewards,Base XP,daily/rewards.yaml:daily_rewards.base_xp,150,150,int,Daily claim XP,Base reward
+Daily Rewards,Completion Bonus Lumees,daily/rewards.yaml:daily_rewards.completion_bonus_lumees,800,800,int,Extra lumees for all quests,Engagement incentive
+Daily Rewards,Completion Bonus Auric Coin,daily/rewards.yaml:daily_rewards.completion_bonus_auric_coin,3,3,int,Extra auric coin for all quests,Engagement incentive
+Daily Rewards,Completion Bonus Lumenite,daily/rewards.yaml:daily_rewards.completion_bonus_lumenite,2,2,int,Extra lumenite for all quests,Engagement incentive
+Daily Rewards,Completion Bonus XP,daily/rewards.yaml:daily_rewards.completion_bonus_xp,350,350,int,Extra XP for all quests,Engagement incentive
+Daily Rewards,Streak Multiplier,daily/rewards.yaml:daily_rewards.streak_multiplier,0.15,0.15,float,Bonus per consecutive day,+15% per day
+Daily Rewards,Grace Days,daily/rewards.yaml:daily_rewards.auric_coin_days,1,1,int,Missed days before streak breaks,1-day buffer
+Weekly Bonus,Enabled,daily/rewards.yaml:weekly_bonus.enabled,TRUE,TRUE,bool,Master toggle,Can disable feature
+Weekly Bonus,Lumees,daily/rewards.yaml:weekly_bonus.lumees,10000,10000,int,Weekly reward,Large bonus
+Weekly Bonus,Auric Coin,daily/rewards.yaml:weekly_bonus.auric_coin,25,25,int,Weekly reward,Large bonus
+Weekly Bonus,Lumenite,daily/rewards.yaml:weekly_bonus.lumenite,10,10,int,Weekly reward,Premium currency
+Weekly Bonus,Required Daily Quests,daily/rewards.yaml:weekly_bonus.requirements.daily_quests_completed,6,6,int,Quests needed for weekly,6 out of 7 days
+Weekly Bonus,Min Level,daily/rewards.yaml:weekly_bonus.requirements.min_level,10,10,int,Level requirement,Prevents early abuse
+Comeback Bonus,Enabled,daily/rewards.yaml:comeback_bonus.enabled,TRUE,TRUE,bool,Master toggle,Retention feature
+Comeback Bonus,Days Inactive,daily/rewards.yaml:comeback_bonus.days_inactive,7,7,int,Days before eligible,7-day absence
+Comeback Bonus,Lumees Per Day,daily/rewards.yaml:comeback_bonus.lumees_per_day,1000,1000,int,Reward per absent day,Return incentive
+Comeback Bonus,Auric Coin Per Day,daily/rewards.yaml:comeback_bonus.auric_coin_per_day,5,5,int,Reward per absent day,Return incentive
+Comeback Bonus,Max Days,daily/rewards.yaml:comeback_bonus.max_days,14,14,int,Maximum days calculated,Caps at 14 days
+Resources,Energy Base Max,resources/systems.yaml:energy_system.base_max,100,100,int,Starting max energy,Level 1 baseline
+Resources,Energy Regen Minutes,resources/systems.yaml:energy_system.regen_minutes,4,4,int,Minutes per energy point,Natural regeneration
+Resources,Energy Per Level Increase,resources/systems.yaml:energy_system.per_level_increase,10,10,int,Max energy per level,Progression scaling
+Resources,Energy Overcap Bonus,resources/systems.yaml:energy_system.overcap_bonus,0.10,0.10,float,Bonus when near max,+10% at 90%+
+Resources,Stamina Base Max,resources/systems.yaml:stamina_system.base_max,50,50,int,Starting max stamina,Level 1 baseline
+Resources,Stamina Regen Minutes,resources/systems.yaml:stamina_system.regen_minutes,10,10,int,Minutes per stamina point,Natural regeneration
+Resources,Stamina Per Level Increase,resources/systems.yaml:stamina_system.per_level_increase,5,5,int,Max stamina per level,Progression scaling
+Resources,Auric Coin Max Cap,resources/systems.yaml:resource_system.auric_coin_max_cap,999999,999999,int,Maximum auric coin,Prevents overflow
+Resources,Lumees Max Cap,resources/systems.yaml:resource_system.lumees_max_cap,NULL,NULL,null,Maximum lumees,Unlimited
+Resources,Lumenite Max Cap,resources/systems.yaml:resource_system.lumenite_max_cap,NULL,NULL,null,Maximum lumenite,Unlimited
+Resources,Modifier Stacking,resources/systems.yaml:resource_system.modifier_stacking,multiplicative,multiplicative,string,How modifiers combine,Leader × class
+Resources,Passive Income Enabled,resources/systems.yaml:resource_system.passive_income_enabled,FALSE,FALSE,bool,Master toggle,Currently disabled
+Resources,Audit Retention Days,resources/systems.yaml:resource_system.audit_retention_days,90,90,int,Transaction log retention,Compliance/storage
+Guilds,Creation Cost,guilds/economy.yaml:guilds.creation_cost,50000,50000,int,Lumees to create guild,Entry barrier
+Guilds,Base Upgrade Cost,guilds/economy.yaml:guilds.base_upgrade_cost,25000,25000,int,Cost for level 2,Starting upgrade
+Guilds,Upgrade Cost Multiplier,guilds/economy.yaml:guilds.upgrade_cost_multiplier,2.5,2.5,float,Cost scaling per level,Exponential growth
+Guilds,Max Level,guilds/economy.yaml:guilds.max_level,20,20,int,Maximum guild level,Endgame cap
+Guilds,Base Max Members,guilds/economy.yaml:guilds.base_max_members,10,10,int,Starting member slots,Level 1 baseline
+Guilds,Member Growth Per Level,guilds/economy.yaml:guilds.member_growth_per_level,2,2,int,Additional slots per level,+2 per level
+Guilds,Donation Minimum,guilds/economy.yaml:guilds.donation_minimum,1000,1000,int,Minimum lumees donation,Anti-spam measure
+Guilds,Name Change Cost,guilds/economy.yaml:guilds.name_change_cost,10000,10000,int,Lumees to rename,Cosmetic sink
+Guilds,Emblem Change Cost,guilds/economy.yaml:guilds.emblem_change_cost,5000,5000,int,Lumees to change emblem,Cosmetic sink
+Combat,Momentum High Threshold,combat/mechanics.yaml:combat_mechanics.momentum.thresholds.high.threshold,80,80,int,Momentum level for high bonus,Combat scaling
+Combat,Momentum High Multiplier,combat/mechanics.yaml:combat_mechanics.momentum.thresholds.high.multiplier,1.50,1.50,float,Damage multiplier at high momentum,+50% damage
+Combat,Momentum Medium Threshold,combat/mechanics.yaml:combat_mechanics.momentum.thresholds.medium.threshold,50,50,int,Momentum level for medium bonus,Combat scaling
+Combat,Momentum Medium Multiplier,combat/mechanics.yaml:combat_mechanics.momentum.thresholds.medium.multiplier,1.30,1.30,float,Damage multiplier at medium momentum,+30% damage
+Combat,Critical Default Multiplier,combat/mechanics.yaml:combat_mechanics.critical.default_multiplier,1.5,1.5,float,Critical hit damage,+50% damage
+Combat,Critical Default Chance,combat/mechanics.yaml:combat_mechanics.critical.default_chance,0.0,0.0,float,Base crit chance,0% without bonuses
+Player Constants,Destroyer Stamina Bonus,constants.py:CLASS_DESTROYER_STAMINA_BONUS,0.75,0.75,float,Stamina regen multiplier,25% faster regen
+Player Constants,Adapter Energy Bonus,constants.py:CLASS_ADAPTER_ENERGY_BONUS,0.75,0.75,float,Energy regen multiplier,25% faster regen
+Player Constants,Invoker Shrine Bonus,constants.py:CLASS_INVOKER_SHRINE_BONUS,1.25,1.25,float,Shrine reward multiplier,+25% yields
+Player Constants,Max Points Per Stat,constants.py:MAX_POINTS_PER_STAT,999,999,int,Maximum points in single stat,Balance cap
+Player Constants,Points Per Level,constants.py:POINTS_PER_LEVEL,5,5,int,Stat points granted per level,Progression rate
+Player Constants,Base Energy,constants.py:BASE_ENERGY,100,100,int,Starting energy,Level 1 value
+Player Constants,Base Stamina,constants.py:BASE_STAMINA,50,50,int,Starting stamina,Level 1 value
+Player Constants,Base HP,constants.py:BASE_HP,500,500,int,Starting HP,Level 1 value
+Player Constants,Energy Per Point,constants.py:ENERGY_PER_POINT,10,10,int,Max energy per stat point,Allocation scaling
+Player Constants,Stamina Per Point,constants.py:STAMINA_PER_POINT,5,5,int,Max stamina per stat point,Allocation scaling
+Player Constants,HP Per Point,constants.py:HP_PER_POINT,100,100,int,Max HP per stat point,Allocation scaling
+Player Constants,Max Level Ups Per Transaction,constants.py:MAX_LEVEL_UPS_PER_TRANSACTION,10,10,int,Safety cap for level up loops,Prevents infinite loop
+Player Constants,Overcap Threshold,constants.py:OVERCAP_THRESHOLD,0.9,0.9,float,Resource % for overcap bonus,90% threshold
+Player Constants,Overcap Bonus,constants.py:OVERCAP_BONUS,0.10,0.10,float,Bonus % at overcap,+10% resources
+Player Constants,Max Fusion Tier,constants.py:MAX_FUSION_TIER,12,12,int,Cannot fuse beyond this,T12 terminal
+Player Constants,Fusion Maidens Required,constants.py:FUSION_MAIDENS_REQUIRED,2,2,int,Maidens per fusion,Always 2
+Player Constants,Strategic Team Size,constants.py:STRATEGIC_TEAM_SIZE,6,6,int,Maidens in power calculation,Best 6
+Player Constants,Energy Regen Minutes,constants.py:ENERGY_REGEN_MINUTES,5,5,int,Base energy regen,Fallback constant (overridden by config)
+Player Constants,Stamina Regen Minutes,constants.py:STAMINA_REGEN_MINUTES,10,10,int,Base stamina regen,Fallback constant (overridden by config)
+Rate Limits,Fusion Main,rate_limits.yaml:fusion.main.uses,15,15,int,Commands per period,Anti-spam
+Rate Limits,Fusion Main Period,rate_limits.yaml:fusion.main.period,60,60,int,Cooldown period in seconds,1 minute window
+Rate Limits,Exploration Explore,rate_limits.yaml:exploration.explore.uses,30,30,int,Commands per period,High activity allowed
+Rate Limits,DROP,rate_limits.yaml:drop.drop.uses,20,20,int,Commands per period,Exceeds natural limit
+Rate Limits,Summon Single,rate_limits.yaml:summon.single.uses,20,20,int,Commands per period,Reasonable summon rate
+Rate Limits,Guild Create,rate_limits.yaml:guild.create.uses,3,3,int,Commands per period,Very restricted
+Rate Limits,Guild Create Period,rate_limits.yaml:guild.create.period,300,300,int,Cooldown period in seconds,5 minute window

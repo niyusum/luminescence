@@ -1,7 +1,7 @@
 """
-Centralized event listener registration for RIKI RPG Bot.
+Centralized event listener registration for Lumen RPG Bot.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Wiring layer lives in core/ but can import from features/ (Article I)
 - main.py is the only place that imports from both core and features (Article I)
 - This module serves as the unified registration point for all event listeners
@@ -33,7 +33,7 @@ async def register_all_event_listeners(bot):
     function that handles subscribing to relevant events.
 
     Args:
-        bot: The RIKIBot instance, passed to listener registration functions
+        bot: The LumenBot instance, passed to listener registration functions
               that need access to Discord bot functionality
 
     Note:

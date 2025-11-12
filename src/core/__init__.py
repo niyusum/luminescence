@@ -1,1 +1,1 @@
-"""Core infrastructure layer for RIKI RPG."""
+"""Core infrastructure layer for Lumen RPG."""

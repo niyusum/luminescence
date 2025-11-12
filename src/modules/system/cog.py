@@ -5,7 +5,7 @@ System administration and background tasks.
 Automated maintenance tasks for system health, cache refresh,
 and transaction log cleanup.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article VI: Admin commands only (no business logic)
 - Article VII: Background tasks for maintenance only
 """
@@ -36,7 +36,7 @@ class SystemTasksCog(BaseCog):
         - /system status: View system health and metrics
         - /system trigger <task>: Manually trigger background task
     
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - NO energy/stamina regen tasks (just-in-time only)
         - Graceful error handling
         - Comprehensive logging
@@ -118,7 +118,7 @@ class SystemTasksCog(BaseCog):
         """Wait until bot ready before starting cache refresh."""
         await self.bot.wait_until_ready()
 
-    @commands.group(name="system", aliases=["rsys", "rsystem", "rikisystem"], description="System administration commands")
+    @commands.group(name="system", aliases=[], description="System administration commands")
     @commands.has_permissions(administrator=True)
     async def system(self, ctx: commands.Context):
         """System administration command group."""

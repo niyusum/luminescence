@@ -1,0 +1,485 @@
+{
+  "metadata": {
+    "generated": "2025-11-11",
+    "repository": "c:\\rikibot",
+    "bot_name": "Lumen Discord RPG",
+    "total_systems": 15,
+    "config_files": 18,
+    "python_files": 47
+  },
+  "systems": {
+    "summon": {
+      "name": "Summon System",
+      "status": "operational",
+      "purpose": "Progressive gacha with tier unlocking",
+      "files": {
+        "service": "src/modules/summon/service.py",
+        "cog": "src/modules/summon/cog.py",
+        "config": ["config/gacha/rates.yaml"]
+      },
+      "inputs": ["auric_coin"],
+      "outputs": ["maidens", "pity_counter"],
+      "key_features": [
+        "Dynamic rate distribution (exponential decay)",
+        "Pity system (25 summons)",
+        "Tier gating by level",
+        "Batch summons (x1, x5, x10)",
+        "Cryptographically secure RNG"
+      ],
+      "rate_limits": {
+        "single": "20 uses per 60s",
+        "multi": "10 uses per 60s"
+      },
+      "security": ["Redis rate limits", "Transaction locks", "Secure RNG (secrets.SystemRandom)"]
+    },
+    "fusion": {
+      "name": "Fusion System",
+      "status": "operational",
+      "purpose": "Combine 2 same-tier maidens to create next-tier maiden",
+      "files": {
+        "service": "src/modules/fusion/service.py",
+        "cog": "src/modules/fusion/cog.py",
+        "config": ["config/fusion/rates.yaml"]
+      },
+      "inputs": ["2_maidens_same_tier", "lumees"],
+      "outputs": ["tier_plus_1_maiden_or_shards"],
+      "key_features": [
+        "Tiered success rates (75% T1 → 25% T11)",
+        "Cost scaling: base * 2.2^(tier-1)",
+        "Shard pity system (100 shards = guaranteed)",
+        "Element combination matrix",
+        "Redis distributed locks"
+      ],
+      "rate_limits": {
+        "main": "15 uses per 60s"
+      },
+      "security": ["Redis distributed lock (fusion:player:{id})", "SELECT FOR UPDATE", "Transaction rollback"],
+      "gaps": []
+    },
+    "ascension": {
+      "name": "Ascension System",
+      "status": "operational",
+      "purpose": "Stamina-based dungeon tower climbing",
+      "files": {
+        "service": "src/modules/ascension/service.py",
+        "cog": "src/modules/ascension/cog.py",
+        "config": ["config/ascension/balance.yaml", "config/ascension/core.yaml", "config/ascension/monsters.yaml"]
+      },
+      "inputs": ["stamina", "lumenite_optional"],
+      "outputs": ["lumees", "xp", "tokens", "titles", "lumenite"],
+      "key_features": [
+        "Exponential HP scaling: 1000 * 1.10^floor",
+        "Attack multipliers (x1, x5, x20 with crit)",
+        "Token rewards every 5 floors",
+        "Major milestones (F50, F100, F150, F200)",
+        "Momentum system integration"
+      ],
+      "rate_limits": {
+        "climb": "20 uses per 60s"
+      },
+      "security": ["Transaction-safe combat", "Stamina validation"]
+    },
+    "exploration": {
+      "name": "Exploration System",
+      "status": "operational",
+      "purpose": "Energy-based sector exploration with maiden encounters",
+      "files": {
+        "service": "src/modules/exploration/service.py",
+        "cog": "src/modules/exploration/cog.py",
+        "config": ["config/exploration/system.yaml", "config/exploration/mastery_rewards.yaml", "config/exploration/matron.yaml"]
+      },
+      "inputs": ["energy"],
+      "outputs": ["progress", "lumees", "xp", "maiden_encounters", "mastery_relics"],
+      "key_features": [
+        "7 sectors × 9 sublevels",
+        "Percentage-based progress (7% S1 → 1% S7)",
+        "Dynamic capture rates (60% T1 → 2% T12)",
+        "Sector penalties (-3% to -25%)",
+        "Matron boss gates at 100%",
+        "Mastery system (3 ranks per sector)"
+      ],
+      "rate_limits": {
+        "explore": "30 uses per 60s"
+      },
+      "security": ["Energy consumption validation", "Transaction-safe progress updates"]
+    },
+    "shrine": {
+      "name": "Shrine System",
+      "status": "operational",
+      "purpose": "Passive currency generation via shrines",
+      "files": {
+        "service": "src/modules/shrines/service.py",
+        "cog": "src/modules/shrines/cog.py",
+        "config": ["config/shrines/types.yaml"]
+      },
+      "inputs": ["lumees_for_construction_and_upgrades"],
+      "outputs": ["lumees_per_hour_lesser", "lumenite_per_hour_radiant"],
+      "key_features": [
+        "Lesser Shrines: 10k base, 50 lumees/hr L1, 3 max, unlock L10",
+        "Radiant Shrines: 50k base, 0.05 lumenite/hr L1, 3 max, unlock L30",
+        "Cost/yield scaling: 2.3x per level",
+        "Max level 12",
+        "24-hour collection cap",
+        "50% sell refund",
+        "Invoker class: +25% yields"
+      ],
+      "rate_limits": {
+        "offer": "20 uses per 60s",
+        "claim": "10 uses per 60s"
+      },
+      "security": ["Timestamp validation for caps", "Transaction-safe builds"],
+      "gaps": ["Race condition in concurrent collection needs verification"]
+    },
+    "drop": {
+      "name": "DROP System",
+      "status": "operational",
+      "purpose": "Single-charge auric coin generation",
+      "files": {
+        "service": "src/modules/drop/service.py",
+        "cog": "src/modules/drop/cog.py",
+        "config": ["config/drop/system.yaml"]
+      },
+      "inputs": ["drop_charge"],
+      "outputs": ["1_auric_coin"],
+      "key_features": [
+        "Single charge (no stacking)",
+        "5-minute regeneration (300s)",
+        "Primary auric coin source",
+        "Class-agnostic (1.0x all classes)"
+      ],
+      "rate_limits": {
+        "drop": "20 uses per 60s"
+      },
+      "security": ["Charge consumption validation", "Regen timestamp enforcement"]
+    },
+    "daily": {
+      "name": "Daily System",
+      "status": "operational",
+      "purpose": "Daily rewards, streaks, quests, comeback bonuses",
+      "files": {
+        "service": "src/modules/daily/service.py",
+        "cog": "src/modules/daily/cog.py",
+        "config": ["config/daily/rewards.yaml"]
+      },
+      "inputs": ["daily_claim_action"],
+      "outputs": ["lumees", "auric_coin", "lumenite", "xp"],
+      "key_features": [
+        "Base: 1250 lumees, 2 auric coin, 2 lumenite, 150 XP",
+        "Streak: +15% per consecutive day",
+        "Daily quests (drop, summon, fusion, energy/stamina spend)",
+        "Completion bonus: 800 lumees, 3 auric coin, 2 lumenite, 350 XP",
+        "Weekly: 10k lumees, 25 auric coin, 10 lumenite (6/7 quests, L10+)",
+        "Comeback: 1k lumees + 5 auric coin per day absent (max 14)"
+      ],
+      "rate_limits": {
+        "claim": "5 uses per 60s"
+      },
+      "security": ["24-hour cooldown enforcement", "Quest completion tracking"]
+    },
+    "guild": {
+      "name": "Guild System",
+      "status": "operational",
+      "purpose": "Social guilds with levels, donations, roles",
+      "files": {
+        "service": "src/modules/guild/service.py",
+        "cog": "src/modules/guild/cog.py",
+        "config": ["config/guilds/economy.yaml"],
+        "models": [
+          "src/database/models/social/guild.py",
+          "src/database/models/social/guild_member.py",
+          "src/database/models/social/guild_invite.py",
+          "src/database/models/social/guild_audit.py",
+          "src/database/models/social/guild_role.py"
+        ]
+      },
+      "inputs": ["lumees_for_creation_upgrades_donations"],
+      "outputs": ["guild_bonuses", "shared_shrines", "social_features"],
+      "key_features": [
+        "Creation: 50k lumees",
+        "Max level 20",
+        "Member slots: 10 + 2*level",
+        "Upgrade cost: 25k base * 2.5x per level",
+        "Donation minimum: 1k lumees",
+        "Guild shrines (shared income)"
+      ],
+      "rate_limits": {
+        "create": "3 uses per 300s",
+        "donate": "20 uses per 60s",
+        "upgrade": "5 uses per 60s"
+      },
+      "security": ["Permission checks (officer/leader)", "Transaction-safe donations"],
+      "gaps": ["Race conditions in concurrent actions need verification"]
+    },
+    "player": {
+      "name": "Player System",
+      "status": "operational",
+      "purpose": "Core progression, stat allocation, resource regen",
+      "files": {
+        "service": "src/modules/player/service.py",
+        "cog": "src/modules/player/cog.py",
+        "config": ["config/progression/xp.yaml", "config/resources/systems.yaml"],
+        "model": "src/database/models/core/player.py"
+      },
+      "inputs": ["xp", "stat_allocation_points"],
+      "outputs": ["levels", "resources", "power"],
+      "key_features": [
+        "Polynomial XP: 50 * level^2",
+        "5 stat points per level",
+        "Stat allocation: energy +10, stamina +5, hp +100 per point",
+        "Base: 100 energy, 50 stamina, 500 HP",
+        "Regen: 4min energy, 10min stamina (class bonuses apply)",
+        "Overcap bonus: +10% at 90%+ on level up",
+        "Milestones every 5/10 levels"
+      ],
+      "rate_limits": {
+        "profile": "15 uses per 60s",
+        "allocate": "10 uses per 60s",
+        "reset": "2 uses per 600s"
+      },
+      "security": ["Player lock (SELECT FOR UPDATE)", "Stat validation"]
+    },
+    "maiden": {
+      "name": "Maiden System",
+      "status": "operational",
+      "purpose": "Core collectible entity",
+      "files": {
+        "service": "src/modules/maiden/service.py",
+        "cog": "src/modules/maiden/cog.py",
+        "models": ["src/database/models/core/maiden.py", "src/database/models/core/maiden_base.py"],
+        "constants": "src/modules/maiden/constants.py"
+      },
+      "inputs": ["summons", "fusion", "exploration_captures"],
+      "outputs": ["power", "leader_effects", "collection_stats"],
+      "key_features": [
+        "12 tiers (Common → Singularity)",
+        "6 elements (infernal, abyssal, earth, tempest, radiant, umbral)",
+        "Quantity stacking (same base + tier)",
+        "Leader effects (income_boost, xp_boost, shrine_bonus)",
+        "MaidenBase fully implemented"
+      ],
+      "rate_limits": {
+        "view": "15 uses per 60s",
+        "favorite": "10 uses per 60s"
+      },
+      "security": ["Ownership validation", "Transaction-safe quantity updates"],
+      "content_status": "0 maiden designs (need 72 total: 12 tiers × 6 elements)"
+    },
+    "resource": {
+      "name": "Resource System",
+      "status": "operational",
+      "purpose": "Unified resource transaction service",
+      "files": {
+        "service": "src/modules/resource/service.py",
+        "config": ["config/resources/systems.yaml"]
+      },
+      "inputs": ["resource_deltas"],
+      "outputs": ["modified_resources", "transaction_logs", "caps_enforcement"],
+      "key_features": [
+        "Multiplicative modifier stacking (leader × class)",
+        "Auric coin cap: 999,999",
+        "Lumees/lumenite: unlimited",
+        "Transaction logging",
+        "Performance metrics"
+      ],
+      "security": ["Validation before grants", "Rollback on error", "Audit logs (90-day retention)"]
+    },
+    "tutorial": {
+      "name": "Tutorial System",
+      "status": "operational",
+      "purpose": "Guided onboarding sequence",
+      "files": {
+        "service": "src/modules/tutorial/service.py",
+        "cog": "src/modules/tutorial/cog.py",
+        "listener": "src/modules/tutorial/listener.py",
+        "model": "src/database/models/progression/tutorial.py"
+      },
+      "inputs": ["player_actions"],
+      "outputs": ["step_completions", "rewards", "guidance"],
+      "key_features": [
+        "Event-driven step detection",
+        "Multi-step sequence",
+        "Skip option",
+        "Reward granting on completion"
+      ],
+      "rate_limits": {
+        "start": "3 uses per 300s",
+        "skip": "3 uses per 300s"
+      },
+      "security": ["Tutorial_step gating", "Event deduplication recommended"]
+    },
+    "combat": {
+      "name": "Combat System",
+      "status": "partial",
+      "purpose": "Strategic team power calculation",
+      "files": {
+        "service": "src/modules/combat/service.py",
+        "models": "src/modules/combat/models.py",
+        "config": ["config/combat/mechanics.yaml"]
+      },
+      "inputs": ["maiden_team"],
+      "outputs": ["strategic_power", "battle_results_placeholder"],
+      "key_features": [
+        "Strategic power (best 6 maidens)",
+        "Momentum system (30/50/80 for 1.2x/1.3x/1.5x)",
+        "Critical hits (1.5x default)"
+      ],
+      "rate_limits": "N/A (no player-facing commands)",
+      "gaps": ["No Cog for PvP/PvE battles", "Leaderboard integration incomplete"]
+    },
+    "leaderboard": {
+      "name": "Leaderboard System",
+      "status": "operational",
+      "purpose": "Display top players",
+      "files": {
+        "service": "src/modules/leaderboard/service.py",
+        "cog": "src/modules/leaderboard/cog.py",
+        "model": "src/database/models/progression/leaderboard.py"
+      },
+      "inputs": ["query_parameters"],
+      "outputs": ["ranked_player_lists"],
+      "key_features": [
+        "Power leaderboard",
+        "Level leaderboard",
+        "Guild leaderboard"
+      ],
+      "rate_limits": {
+        "view": "10 uses per 60s"
+      },
+      "gaps": ["No automated reward distribution"]
+    },
+    "help": {
+      "name": "Help System",
+      "status": "operational",
+      "purpose": "Command documentation",
+      "files": {
+        "cog": "src/modules/help/cog.py"
+      },
+      "inputs": ["help_query"],
+      "outputs": ["command_documentation"],
+      "key_features": [
+        "Command list",
+        "Per-command help"
+      ],
+      "rate_limits": {
+        "main": "10 uses per 60s"
+      }
+    }
+  },
+  "currencies": {
+    "lumees": {
+      "type": "primary",
+      "cap": null,
+      "sources": ["exploration", "ascension", "daily", "lesser_shrines"],
+      "sinks": ["fusion", "shrine_construction", "guild_creation_upgrades"],
+      "daily_income_estimate": "277k (L50 player, 3x L6 shrines)",
+      "inflation_risk": "medium (late-game shrines generate massive amounts)"
+    },
+    "auric_coin": {
+      "type": "summon_currency",
+      "cap": 999999,
+      "sources": ["drop_command_1_per_5min", "daily_rewards_2_to_5"],
+      "sinks": ["summons_1_to_10_per"],
+      "daily_income_estimate": "290-295 (288 from DROP + 2-5 daily)",
+      "inflation_risk": "low (tight supply, high demand)"
+    },
+    "lumenite": {
+      "type": "premium",
+      "cap": null,
+      "sources": ["daily_rewards", "ascension_milestones", "radiant_shrines"],
+      "sinks": ["guaranteed_purifications_50_to_25k", "20x_ascension_attacks_10_per"],
+      "daily_income_estimate": "54-56 (endgame with 3x L12 radiant shrines)",
+      "inflation_risk": "medium (radiant shrines may oversupply)"
+    },
+    "energy": {
+      "type": "resource",
+      "cap": "player.max_energy",
+      "sources": ["time_regeneration_4min_base", "level_ups"],
+      "sinks": ["exploration_5_to_38_per_action"],
+      "daily_income_estimate": "360 (Adapter class: 480)",
+      "inflation_risk": "balanced"
+    },
+    "stamina": {
+      "type": "resource",
+      "cap": "player.max_stamina",
+      "sources": ["time_regeneration_10min_base", "level_ups"],
+      "sinks": ["ascension_5_to_8_per_floor"],
+      "daily_income_estimate": "144 (Destroyer class: 192)",
+      "inflation_risk": "balanced"
+    },
+    "fusion_shards": {
+      "type": "pity_currency",
+      "cap": null,
+      "sources": ["failed_fusions_3_to_15_per"],
+      "sinks": ["guaranteed_fusion_100_per_tier"],
+      "notes": "Shard redemption is LESS efficient than repeated RNG attempts"
+    }
+  },
+  "formulas": {
+    "xp_required": "50 * (level ^ 2.0)",
+    "fusion_cost": "min(1000 * (2.2 ^ (tier - 1)), 100000000)",
+    "ascension_hp": "1000 * (1.10 ^ floor)",
+    "ascension_lumees": "50 * (1.12 ^ floor)",
+    "shrine_lesser_cost": "10000 * (2.3 ^ (level - 1))",
+    "shrine_lesser_yield": "50 * (2.3 ^ (level - 1))",
+    "exploration_progress": "progress_rate * energy_spent",
+    "capture_rate": "base_rate[tier] - sector_penalty[sector] + (level_diff * 2.0)",
+    "energy_regen_interval": "4 * class_multiplier (Adapter: 0.75 = 3min)",
+    "stamina_regen_interval": "10 * class_multiplier (Destroyer: 0.75 = 7.5min)"
+  },
+  "security": {
+    "distributed_locks": ["Redis lock on fusion:player:{id}"],
+    "rate_limits": "48 commands, all rate-limited",
+    "transaction_safety": "All critical operations use SELECT FOR UPDATE + transaction rollback",
+    "sql_injection_protection": "Parameterized SQLAlchemy queries only",
+    "rng_security": "secrets.SystemRandom() for all random outcomes",
+    "audit_logging": "90-day retention for all resource transactions"
+  },
+  "gaps": {
+    "critical": [],
+    "high": [],
+    "medium": [
+      "Event system inactive (no scheduler)",
+      "Guild shrine race conditions unverified",
+      "Leaderboard rewards not automated",
+      "Post-T12 progression missing (awakening system)"
+    ],
+    "low": ["Mail/inbox system", "Cosmetic system", "Combat Cog for PvP"]
+  },
+  "content_requirements": {
+    "maiden_designs": {
+      "needed": 72,
+      "found": 0,
+      "status": "critical_blocker",
+      "breakdown": "12 tiers × 6 elements"
+    },
+    "maiden_art": {
+      "needed": 72,
+      "found": 0,
+      "status": "critical_blocker"
+    },
+    "sector_descriptions": {
+      "needed": 7,
+      "status": "nice_to_have"
+    },
+    "matron_boss_designs": {
+      "needed": 7,
+      "status": "nice_to_have"
+    }
+  },
+  "launch_readiness": {
+    "score": 98,
+    "status": "approved_with_recommendations",
+    "time_to_launch": "1-2 weeks",
+    "critical_actions": [
+      "Seed MaidenBase table with 72 maidens"
+    ],
+    "completed_actions": [
+      "Create element_combinations.yaml (DONE)",
+      "Balance late-game shrine yields (DONE)"
+    ],
+    "recommended_actions": [
+      "Implement event scheduler",
+      "Verify guild shrine race conditions"
+    ]
+  }
+}

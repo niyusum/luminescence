@@ -1,7 +1,7 @@
 """
-RIKI RPG Discord Bot - Production-Grade Main Bot Class
+Lumen RPG Discord Bot - Production-Grade Main Bot Class
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Business logic confined to services (Article VII)
 - Event-driven architecture (Article VIII)
 - Transaction-safe operations (Article I)
@@ -35,7 +35,7 @@ from src.core.exceptions import (
     ConfigurationError,
     InsufficientResourcesError,
     RateLimitError,
-    RIKIException,
+    LumenException,
 )
 from src.core.bot.loader import load_all_features
 from src.core.logging.logger import LogContext, get_logger, set_log_context
@@ -110,14 +110,14 @@ class BotMetrics:
         }
 
 
-class RIKIBot(commands.Bot):
+class LumenBot(commands.Bot):
     """
-    RIKI RPG Discord Bot - Production-Grade Implementation
+    Lumen RPG Discord Bot - Production-Grade Implementation
 
     Handles startup, service orchestration, cog loading, error management,
     health monitoring, and comprehensive observability.
 
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - Business logic confined to services
         - Event-driven + transaction-safe
         - Concurrent initialization with graceful degradation
@@ -153,8 +153,8 @@ class RIKIBot(commands.Bot):
     def _get_prefix(self, bot: commands.Bot, message: discord.Message) -> List[str]:
         """Smart dynamic prefix with flexible whitespace (0-3 spaces)."""
         return commands.when_mentioned_or(
-            "r", "r ", "r  ", "r   ",
-            "riki", "riki ", "riki  ", "riki   "
+            ";", "; ", ";  ", ";   ",
+            "lumen", "lumen ", "lumen  ", "lumen   "
         )(bot, message)
 
     # --------------------------------------------------------------- #
@@ -172,7 +172,7 @@ class RIKIBot(commands.Bot):
         """
         startup_start = time.perf_counter()
         logger.info("=" * 60)
-        logger.info("🚀 RIKI RPG BOT STARTUP")
+        logger.info("🚀 LUMEN RPG BOT STARTUP")
         logger.info("=" * 60)
 
         try:
@@ -427,7 +427,7 @@ class RIKIBot(commands.Bot):
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.playing,
-                name=f"/help | r help | {len(self.guilds)} servers",
+                name=f"/help | ;help | {len(self.guilds)} servers",
             )
         )
 
@@ -439,14 +439,14 @@ class RIKIBot(commands.Bot):
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.playing,
-                name=f"/help | r help | {len(self.guilds)} servers",
+                name=f"/help | ;help | {len(self.guilds)} servers",
             )
         )
-        
+
         # Send welcome message
         if guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
             embed = EmbedBuilder.success(
-                title="Thanks for adding RIKI RPG!",
+                title="Thanks for adding Lumen RPG!",
                 description="Use `/register` to begin your maiden purification journey.",
                 footer="Use /help for full command list",
             )
@@ -462,7 +462,7 @@ class RIKIBot(commands.Bot):
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.playing,
-                name=f"/help | r help | {len(self.guilds)} servers",
+                name=f"/help | ;help | {len(self.guilds)} servers",
             )
         )
 
@@ -472,13 +472,13 @@ class RIKIBot(commands.Bot):
     async def on_command_error(self, ctx: commands.Context, error: Exception):
         """
         Global error handler for prefix commands.
-        
-        RIKI LAW Compliance:
+
+        LUMEN LAW Compliance:
         - Uses LogContext for Discord audit trail (Article II)
         - Converts domain exceptions to user-friendly embeds
         - Tracks metrics for monitoring
         """
-        # Set logging context - RIKI LAW Article II
+        # Set logging context - LUMEN LAW Article II
         async with LogContext(
             user_id=ctx.author.id,
             guild_id=ctx.guild.id if ctx.guild else None,
@@ -513,7 +513,7 @@ class RIKIBot(commands.Bot):
                 )
                 return await ctx.send(embed=embed, ephemeral=True)
 
-            if isinstance(original, RIKIException):
+            if isinstance(original, LumenException):
                 embed = EmbedBuilder.error(
                     title="Error",
                     description=original.message,
@@ -577,7 +577,7 @@ class RIKIBot(commands.Bot):
         - Comprehensive shutdown logging
         """
         logger.info("=" * 60)
-        logger.info("🛑 RIKI RPG BOT SHUTDOWN")
+        logger.info("🛑 LUMEN RPG BOT SHUTDOWN")
         logger.info("=" * 60)
         
         # Log final metrics
@@ -604,7 +604,7 @@ class RIKIBot(commands.Bot):
 
         await super().close()
         logger.info("=" * 60)
-        logger.info("👋 RIKI RPG shutdown complete")
+        logger.info("👋 Lumen RPG shutdown complete")
         logger.info("=" * 60)
 
 

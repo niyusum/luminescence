@@ -27,18 +27,18 @@ class PlayerService:
     Core service for player operations and resource management.
 
     Handles player lifecycle, resource regeneration, experience/leveling,
-    prayer system, and activity tracking. All player state changes must
-    go through this service (RIKI LAW Article I.7).
+    drop system, and activity tracking. All player state changes must
+    go through this service (LUMEN LAW Article I.7).
 
     Key Responsibilities:
-        - Resource regeneration (energy, stamina, prayer charges)
+        - Resource regeneration (energy, stamina, drop charges)
         - Experience and leveling with milestone rewards
-        - Prayer system with class bonuses
+        - DROP system with class bonuses
         - Activity tracking and scoring
     """
 
-    # Cache prayer regen interval to avoid repeated ConfigManager lookups (PERF-01 optimization)
-    _PRAYER_REGEN_INTERVAL: Optional[int] = None
+    # Cache drop regen interval to avoid repeated ConfigManager lookups (PERF-01 optimization)
+    _drop_REGEN_INTERVAL: Optional[int] = None
 
     # =========================================================================
     # PLAYER RETRIEVAL AND REGENERATION
@@ -52,7 +52,7 @@ class PlayerService:
         """
         Get player and regenerate all resources automatically.
 
-        Regenerates energy, stamina, and prayer charges based on time elapsed
+        Regenerates energy, stamina, and drop charges based on time elapsed
         since last activity. Updates last_active timestamp.
         """
         if lock:
@@ -75,22 +75,22 @@ class PlayerService:
     # =========================================================================
     @staticmethod
     def regenerate_all_resources(player: Player) -> Dict[str, Any]:
-        """Regenerate energy, stamina, and prayer charges based on elapsed time."""
-        prayer_regen = PlayerService.regenerate_prayer_charges(player)
+        """Regenerate energy, stamina, and drop charges based on elapsed time."""
+        DROP_REGEN = PlayerService.regenerate_drop_charges(player)
         energy_regen = PlayerService.regenerate_energy(player)
         stamina_regen = PlayerService.regenerate_stamina(player)
 
         return {
-            "prayer_charges_gained": prayer_regen,
+            "drop_charges_gained": DROP_REGEN,
             "energy_gained": energy_regen,
             "stamina_gained": stamina_regen,
-            "total_regenerated": prayer_regen + energy_regen + stamina_regen,
+            "total_regenerated": DROP_REGEN + energy_regen + stamina_regen,
         }
 
     @staticmethod
-    def regenerate_prayer_charges(player: Player) -> int:
+    def regenerate_drop_charges(player: Player) -> int:
         """
-        Regenerate prayer charge based on time since last regen.
+        Regenerate drop charge based on time since last regen.
 
         SINGLE CHARGE SYSTEM (300 SECONDS):
         - If player has 1 charge → no regen needed
@@ -99,7 +99,7 @@ class PlayerService:
         - No storage beyond single charge
 
         Config:
-            prayer_system.regen_interval_seconds: 300 (explicit)
+            drop_system.regen_interval_seconds: 300 (explicit)
 
         Returns:
             1 if charge granted, 0 otherwise
@@ -108,29 +108,29 @@ class PlayerService:
             Caches regen interval to avoid repeated ConfigManager lookups on every command.
         """
         # OPTIMIZATION: Early exit if already at max (avoids datetime calculations)
-        if player.prayer_charges >= 1:
+        if player.DROP_CHARGES >= 1:
             return 0
 
         # Initialize regen timer if null
-        if player.last_prayer_regen is None:
-            player.last_prayer_regen = datetime.utcnow()
+        if player.last_drop_regen is None:
+            player.last_drop_regen = datetime.utcnow()
             return 0
 
         # OPTIMIZATION: Use cached regen interval to avoid ConfigManager lookup on every command
-        if PlayerService._PRAYER_REGEN_INTERVAL is None:
-            PlayerService._PRAYER_REGEN_INTERVAL = ConfigManager.get(
-                "prayer_system.regen_interval_seconds", 300
+        if PlayerService._drop_REGEN_INTERVAL is None:
+            PlayerService._drop_REGEN_INTERVAL = ConfigManager.get(
+                "drop_system.regen_interval_seconds", 300
             )
-        regen_interval = PlayerService._PRAYER_REGEN_INTERVAL
+        regen_interval = PlayerService._drop_REGEN_INTERVAL
 
-        time_since = (datetime.utcnow() - player.last_prayer_regen).total_seconds()
+        time_since = (datetime.utcnow() - player.last_drop_regen).total_seconds()
 
         # Grant single charge if interval elapsed
         if time_since >= regen_interval:
-            player.prayer_charges = 1  # Set to 1 (not add)
-            player.last_prayer_regen = datetime.utcnow()
+            player.DROP_CHARGES = 1  # Set to 1 (not add)
+            player.last_drop_regen = datetime.utcnow()
             logger.debug(
-                f"Prayer charge regenerated for player {player.discord_id} "
+                f"DROP charge regenerated for player {player.discord_id} "
                 f"(waited {int(time_since)}s / {regen_interval}s)",
                 extra={"player_id": player.discord_id, "wait_time": int(time_since)}
             )
@@ -181,9 +181,9 @@ class PlayerService:
         return 0
 
     # =========================================================================
-    # PRAYER SYSTEM (DEPRECATED - Use PrayerService)
+    # DROP SYSTEM (DEPRECATED - Use DropService)
     # =========================================================================
-    # NOTE: Prayer logic has been moved to src.modules.prayer.service.PrayerService
+    # NOTE: DROP logic has been moved to src.modules.drop.service.DropService
     # This method is kept for backwards compatibility only and will be removed in future versions.
 
     # =========================================================================
@@ -285,28 +285,28 @@ class PlayerService:
 
             # Minor milestone
             if player.level % minor_interval == 0:
-                rikis_mult = minor_rewards_cfg.get("rikis_multiplier", 100)
-                grace_amt = minor_rewards_cfg.get("grace", 5)
-                gems_div = minor_rewards_cfg.get("gems_divisor", 10)
+                lumees_mult = minor_rewards_cfg.get("lumees_multiplier", 100)
+                auric_coin_amt = minor_rewards_cfg.get("auric_coin", 5)
+                lumenite_div = minor_rewards_cfg.get("lumenite_divisor", 10)
 
                 milestone_rewards[f"level_{player.level}"] = {
-                    "rikis": player.level * rikis_mult,
-                    "grace": grace_amt,
-                    "riki_gems": player.level // gems_div
+                    "lumees": player.level * lumees_mult,
+                    "auric_coin": auric_coin_amt,
+                    "lumenite": player.level // lumenite_div
                 }
 
             # Major milestone
             if player.level % major_interval == 0:
-                rikis_mult = major_rewards_cfg.get("rikis_multiplier", 500)
-                grace_amt = major_rewards_cfg.get("grace", 10)
-                gems_amt = major_rewards_cfg.get("gems", 5)
+                lumees_mult = major_rewards_cfg.get("lumees_multiplier", 500)
+                auric_coin_amt = major_rewards_cfg.get("auric_coin", 10)
+                lumenite_amt = major_rewards_cfg.get("lumenite", 5)
                 energy_inc = major_rewards_cfg.get("max_energy_increase", 10)
                 stamina_inc = major_rewards_cfg.get("max_stamina_increase", 5)
 
                 milestone_rewards[f"level_{player.level}_major"] = {
-                    "rikis": player.level * rikis_mult,
-                    "grace": grace_amt,
-                    "riki_gems": gems_amt,
+                    "lumees": player.level * lumees_mult,
+                    "auric_coin": auric_coin_amt,
+                    "lumenite": lumenite_amt,
                     "max_energy_increase": energy_inc,
                     "max_stamina_increase": stamina_inc
                 }
@@ -384,5 +384,5 @@ class PlayerService:
         Call this when hot-reloading configuration or during testing.
         Forces next call to re-fetch from ConfigManager.
         """
-        cls._PRAYER_REGEN_INTERVAL = None
-        logger.info("PlayerService cache reset (prayer regen interval)")
+        cls._drop_REGEN_INTERVAL = None
+        logger.info("PlayerService cache reset (drop regen interval)")

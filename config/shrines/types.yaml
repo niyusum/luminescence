@@ -1,24 +1,32 @@
 # Shrine System Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
-# Passive income shrines that generate rikis or grace over time
+# Passive income shrines that generate lumees or lumenite over time
 # Players build, upgrade, and collect from shrines
+#
+# CURRENCY SOURCES:
+# - Lumees: Lesser shrines (general currency)
+# - Lumenite: Radiant shrines (premium currency)
+# - AuricCoin: Drop command ONLY (not from shrines)
 
 shrines:
-  # Lesser Shrines (Rikis generation)
+  # Lesser Shrines (Lumees generation)
   lesser:
-    # Base cost for level 1 shrine (rikis)
+    # Base cost for level 1 shrine (lumees)
     base_cost: 10000
 
     # Cost multiplier per level
     # level_2 = base * multiplier, level_3 = level_2 * multiplier, etc.
     cost_multiplier: 2.3
 
-    # Base yield per hour at level 1 (rikis/hour)
+    # Base yield per hour at level 1 (lumees/hour)
     base_yield: 50
 
     # Yield multiplier per level
     yield_multiplier: 2.3
+
+    # Target resource (what currency this shrine generates)
+    target: "lumees"
 
     # Maximum shrine level
     max_level: 12
@@ -33,20 +41,23 @@ shrines:
     # Player level required to unlock lesser shrines
     unlock_level: 10
 
-  # Radiant Shrines (Grace generation - premium currency)
+  # Radiant Shrines (Lumenite generation - premium currency)
   radiant:
-    # Base cost for level 1 shrine (rikis)
+    # Base cost for level 1 shrine (lumees)
     base_cost: 50000
 
     # Cost multiplier per level
     cost_multiplier: 2.3
 
-    # Base yield per hour at level 1 (grace/hour, decimal)
-    # 0.05 = 1 grace per 20 hours
+    # Base yield per hour at level 1 (lumenite/hour, decimal)
+    # 0.05 = 1 lumenite per 20 hours
     base_yield: 0.05
 
     # Yield multiplier per level
-    yield_multiplier: 2.3
+    yield_multiplier: 1.8
+
+    # Target resource (what currency this shrine generates)
+    target: "lumenite"
 
     # Maximum shrine level
     max_level: 12

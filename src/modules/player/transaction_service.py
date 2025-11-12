@@ -1,7 +1,7 @@
 """
 Transaction Service - Business logic for transaction log queries.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article VII: Service layer separation (no Discord logic)
 - Article I: Transaction-safe operations
 - Article II: Audit trail integration

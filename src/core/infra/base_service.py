@@ -1,10 +1,10 @@
 """
-Base service class for RIKI LAW compliant domain services.
+Base service class for LUMEN LAW compliant domain services.
 
 Provides common utilities and enforces architectural patterns
-for all feature services in the RIKI RPG Bot.
+for all feature services in the Lumen RPG Bot.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article II: Automatic transaction logging utilities
 - Article III: Service layer pattern enforcement
 - Article VII: Clean separation from Discord layer
@@ -56,7 +56,7 @@ class BaseService:
         context: Optional[str] = None
     ) -> None:
         """
-        Log a transaction for audit trail (RIKI LAW Article II).
+        Log a transaction for audit trail (LUMEN LAW Article II).
 
         Convenience wrapper around TransactionLogger for consistent
         logging across all services.
@@ -120,8 +120,8 @@ class BaseService:
             ...         "perform_fusion",
             ...         e,
             ...         player_id=123456789,
-            ...         required_rikis=1000,
-            ...         player_rikis=500
+            ...         required_lumees=1000,
+            ...         player_lumees=500
             ...     )
             ...     raise
         """

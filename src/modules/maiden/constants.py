@@ -1,5 +1,5 @@
 """
-Unified maiden system constants for RIKI RPG.
+Unified maiden system constants for Lumen RPG.
 
 Single source of truth for:
 - Element definitions (names, emojis, colors)
@@ -8,7 +8,7 @@ Single source of truth for:
 - Embed colors for all contexts
 - Cache key templates
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Pure data only - NO business logic (Article VII)
 - Business logic stays in services (MaidenService, LeaderService, FusionService)
 - Tunable game values stay in ConfigManager (Article IV)
@@ -33,8 +33,8 @@ class Element(Enum):
     INFERNAL = ("infernal", "Infernal", "🔥", 0xEE4B2B)
     UMBRAL = ("umbral", "Umbral", "🌑", 0x36454F)
     EARTH = ("earth", "Earth", "🌍", 0x355E3B)
-    TEMPEST = ("tempest", "Tempest", "⚡", 0x818589)
-    RADIANT = ("radiant", "Radiant", "✨", 0xFFF8DC)
+    TEMPEST = ("tempest", "Tempest", "🪙", 0x818589)
+    RADFIANT = ("radiant", "Radiant", "✨", 0xFFF8DC)
     ABYSSAL = ("abyssal", "Abyssal", "🌊", 0x191970)
     
     def __init__(self, key: str, display_name: str, emoji: str, color: int):
@@ -183,7 +183,7 @@ class EmbedColor:
     FUSION_FAIL = 0xff6b6b      # Softer red for failed fusion
     SUMMON = 0x9b59b6           # Purple for summons
     LEVEL_UP = 0x00ffff         # Cyan for level ups
-    PRAYER = 0xFFD700           # Gold for prayer
+    DROP = 0xFFD700           # Gold for drop
     ASCENSION = 0xFF4500        # Orange for ascension
     
     @classmethod
@@ -226,7 +226,7 @@ class EmbedColor:
             "fusion_fail": cls.FUSION_FAIL,
             "summon": cls.SUMMON,
             "level_up": cls.LEVEL_UP,
-            "prayer": cls.PRAYER,
+            "drop": cls.DROP,
             "ascension": cls.ASCENSION,
             "victory": cls.SUCCESS,
             "defeat": cls.ERROR,

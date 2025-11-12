@@ -7,7 +7,7 @@ Single source of truth for:
 - Relic types (bonuses from mastery completion)
 - Energy costs and scaling
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article V: Centralized constants for exploration domain
 - Article IV: Tunable values via ConfigManager
 """
@@ -43,7 +43,7 @@ MASTERY_RANK_EMOJIS = {
 RELIC_TYPES = {
     "shrine_income": {
         "name": "Shrine Income Boost",
-        "description": "Increases passive rikis earned from shrines",
+        "description": "Increases passive lumees earned from shrines",
         "icon": "🏛️",
         "bonus_type": "percentage",
         "category": "economy"
@@ -79,7 +79,7 @@ RELIC_TYPES = {
     "energy_regen": {
         "name": "Energy Regeneration",
         "description": "Increases energy regeneration per hour",
-        "icon": "⚡",
+        "icon": "🪙",
         "bonus_type": "flat",
         "category": "resources"
     },
@@ -103,7 +103,7 @@ RELIC_CATEGORIES = {
     "economy": {"name": "Economy", "icon": "💰", "types": ["shrine_income"]},
     "combat": {"name": "Combat", "icon": "⚔️", "types": ["attack_boost", "defense_boost"]},
     "progression": {"name": "Progression", "icon": "📊", "types": ["combine_rate", "xp_gain"]},
-    "resources": {"name": "Resources", "icon": "⚡", "types": ["energy_regen", "stamina_regen"]},
+    "resources": {"name": "Resources", "icon": "🪙", "types": ["energy_regen", "stamina_regen"]},
     "survival": {"name": "Survival", "icon": "❤️", "types": ["hp_boost"]}
 }
 

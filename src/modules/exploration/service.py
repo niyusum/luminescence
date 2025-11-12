@@ -129,7 +129,7 @@ class ExplorationService:
         Returns:
             Energy cost
         """
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         base_cost = ConfigManager.get(f"exploration_system.energy_costs.sector_{sector_id}_base")
         increment = ConfigManager.get("exploration_system.energy_costs.sublevel_increment")
         boss_mult = ConfigManager.get("exploration_system.energy_costs.boss_multiplier")
@@ -151,7 +151,7 @@ class ExplorationService:
         Returns:
             Progress percentage (0.0 - 100.0)
         """
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         base_rate = ConfigManager.get(f"exploration_system.progress_rates.sector_{sector_id}")
         miniboss_mult = ConfigManager.get("exploration_system.miniboss_progress_multiplier")
         
@@ -163,34 +163,34 @@ class ExplorationService:
     @staticmethod
     def calculate_rewards(sector_id: int, sublevel: int) -> Dict[str, int]:
         """
-        Calculate rikis and XP rewards for exploration.
-        
+        Calculate lumees and XP rewards for exploration.
+
         Scales with sector difficulty.
-        
+
         Returns:
-            Dictionary with 'rikis' and 'xp' keys
+            Dictionary with 'lumees' and 'xp' keys
         """
-        # Riki rewards
-        # RIKI LAW I.6 - YAML is source of truth
-        riki_min = ConfigManager.get("exploration_system.riki_rewards.sector_1_min")
-        riki_max = ConfigManager.get("exploration_system.riki_rewards.sector_1_max")
-        riki_scaling = ConfigManager.get("exploration_system.riki_rewards.sector_scaling")
-        
-        scaled_riki_min = int(riki_min * (riki_scaling ** (sector_id - 1)))
-        scaled_riki_max = int(riki_max * (riki_scaling ** (sector_id - 1)))
-        rikis = secrets.SystemRandom().randint(scaled_riki_min, scaled_riki_max)
-        
+        # Lumees rewards
+        # LUMEN LAW I.6 - YAML is source of truth
+        lumees_min = ConfigManager.get("exploration_system.lumees_rewards.sector_1_min")
+        lumees_max = ConfigManager.get("exploration_system.lumees_rewards.sector_1_max")
+        lumees_scaling = ConfigManager.get("exploration_system.lumees_rewards.sector_scaling")
+
+        scaled_lumees_min = int(lumees_min * (lumees_scaling ** (sector_id - 1)))
+        scaled_lumees_max = int(lumees_max * (lumees_scaling ** (sector_id - 1)))
+        lumees = secrets.SystemRandom().randint(scaled_lumees_min, scaled_lumees_max)
+
         # XP rewards
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         xp_min = ConfigManager.get("exploration_system.xp_rewards.sector_1_min")
         xp_max = ConfigManager.get("exploration_system.xp_rewards.sector_1_max")
         xp_scaling = ConfigManager.get("exploration_system.xp_rewards.sector_scaling")
-        
+
         scaled_xp_min = int(xp_min * (xp_scaling ** (sector_id - 1)))
         scaled_xp_max = int(xp_max * (xp_scaling ** (sector_id - 1)))
         xp = secrets.SystemRandom().randint(scaled_xp_min, scaled_xp_max)
-        
-        return {"rikis": rikis, "xp": xp}
+
+        return {"lumees": lumees, "xp": xp}
     
     @staticmethod
     def roll_maiden_encounter(sector_id: int) -> bool:
@@ -202,7 +202,7 @@ class ExplorationService:
         Returns:
             True if maiden encountered
         """
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         encounter_rate = ConfigManager.get(f"exploration_system.encounter_rates.sector_{sector_id}")
         roll = secrets.SystemRandom().random() * 100
         return roll < encounter_rate
@@ -234,12 +234,12 @@ class ExplorationService:
                 - rarity: Rarity category
                 - sector_id: Origin sector
 
-        RIKI LAW Compliance:
+        LUMEN LAW Compliance:
             - Article III: Pure business logic, no UI dependencies
             - Article IV: Tier ranges from ConfigManager
             - Article VII: Reuses gacha weight system
         """
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         # Get tier range from config (T1-T12 from maiden/constants.py)
         tier_range = ConfigManager.get(f"exploration_system.sector_tier_ranges.sector_{sector_id}")
         min_tier, max_tier = tier_range[0], tier_range[1]
@@ -317,7 +317,7 @@ class ExplorationService:
         Returns:
             Capture rate percentage (0.0 - 100.0)
         """
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         base_rate = ConfigManager.get(f"exploration_system.capture_rates.{maiden_rarity}")
         sector_penalty = ConfigManager.get(f"exploration_system.sector_capture_penalty.sector_{sector_id}")
         level_modifier_per_level = ConfigManager.get("exploration_system.capture_level_modifier")
@@ -339,7 +339,7 @@ class ExplorationService:
         Returns:
             Gem cost
         """
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         return ConfigManager.get(f"exploration_system.guaranteed_purification_costs.{maiden_rarity}")
     
     @staticmethod
@@ -364,7 +364,7 @@ class ExplorationService:
         Returns:
             Dictionary with:
                 - energy_cost: Energy consumed
-                - rikis_gained: Rikis rewarded
+                - lumees_gained: Lumees rewarded
                 - xp_gained: XP rewarded
                 - progress_gained: Progress % added
                 - current_progress: New progress %
@@ -410,7 +410,7 @@ class ExplorationService:
         await ResourceService.grant_resources(
             session=session,
             player=player,
-            rikis=rewards["rikis"],
+            lumees=rewards["lumees"],
             context="exploration",
             details={"sector": sector_id, "sublevel": sublevel}
         )
@@ -419,7 +419,7 @@ class ExplorationService:
         progress_gain = ExplorationService.calculate_progress_gain(sector_id, sublevel)
         progress.progress = min(100.0, progress.progress + progress_gain)
         progress.times_explored += 1
-        progress.total_rikis_earned += rewards["rikis"]
+        progress.total_lumees_earned += rewards["lumees"]
         progress.total_xp_earned += rewards["xp"]
         progress.last_explored = datetime.utcnow()
         
@@ -444,7 +444,7 @@ class ExplorationService:
                 "sector": sector_id,
                 "sublevel": sublevel,
                 "energy_cost": energy_cost,
-                "rikis": rewards["rikis"],
+                "lumees": rewards["lumees"],
                 "xp": rewards["xp"],
                 "progress_gain": progress_gain,
                 "new_progress": progress.progress,
@@ -466,14 +466,14 @@ class ExplorationService:
         logger.info(
             f"Player {player.discord_id} explored sector {sector_id} sublevel {sublevel}: "
             f"+{progress_gain:.1f}% progress (now {progress.progress:.1f}%), "
-            f"+{rewards['rikis']} rikis, encounter={maiden_encounter is not None}"
+            f"+{rewards['lumees']} lumees, encounter={maiden_encounter is not None}"
         )
 
         await session.flush()
 
         return {
             "energy_cost": energy_cost,
-            "rikis_gained": rewards["rikis"],
+            "lumees_gained": rewards["lumees"],
             "xp_gained": rewards["xp"],
             "progress_gained": progress_gain,
             "current_progress": progress.progress,
@@ -515,14 +515,14 @@ class ExplorationService:
             # Guaranteed purification
             gem_cost = ExplorationService.get_guaranteed_purification_cost(rarity)
             
-            if player.riki_gems < gem_cost:
+            if player.lumenite < gem_cost:
                 raise InsufficientResourcesError(
-                    resource="riki_gems",
+                    resource="lumenite",
                     required=gem_cost,
-                    current=player.riki_gems
+                    current=player.lumenite
                 )
             
-            player.riki_gems -= gem_cost
+            player.lumenite -= gem_cost
             success = True
             
             await TransactionLogger.log_transaction(

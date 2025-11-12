@@ -1,7 +1,7 @@
 """
 Centralized database connection and session management.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Transaction context managers for pessimistic locking (Article I.1)
 - Automatic rollback on exceptions (Article I.6)
 - Health monitoring and graceful degradation (Article IX)
@@ -117,7 +117,7 @@ class DatabaseService:
     - Pool status inspection
     - Background health monitoring
     - Graceful degradation
-    - LogContext integration for audit trails (RIKI LAW Article II)
+    - LogContext integration for audit trails (LUMEN LAW Article II)
     
     Architecture:
         - Single async engine with connection pooling
@@ -130,7 +130,7 @@ class DatabaseService:
         # Transaction (auto-commit on success)
         >>> async with DatabaseService.get_transaction() as session:
         ...     player = await session.get(Player, discord_id, with_for_update=True)
-        ...     player.rikis += 1000
+        ...     player.lumees += 1000
         
         # Read-only (no auto-commit)
         >>> async with DatabaseService.get_session() as session:
@@ -361,7 +361,7 @@ class DatabaseService:
         if cls._metrics:
             cls._metrics.record_session_start()
         
-        # Set database context for logging - RIKI LAW Article II
+        # Set database context for logging - LUMEN LAW Article II
         set_log_context(database_operation="read")
         
         start_time = time.time()
@@ -424,7 +424,7 @@ class DatabaseService:
         """
         Get a database session with automatic commit on success.
         
-        Use for all write operations (RIKI LAW Article I.6).
+        Use for all write operations (LUMEN LAW Article I.6).
         Transaction automatically commits on clean exit, rolls back on exception.
         
         ENHANCED: Automatically sets database context in logs for audit trail.
@@ -438,7 +438,7 @@ class DatabaseService:
         Example:
             >>> async with DatabaseService.get_transaction() as session:
             ...     player = await session.get(Player, discord_id, with_for_update=True)
-            ...     player.rikis += 1000
+            ...     player.lumees += 1000
             ...     # Auto-commits here
             ...     # Logs show "database_operation: transaction" with commit status
         """
@@ -449,7 +449,7 @@ class DatabaseService:
             cls._metrics.record_session_start()
             cls._metrics.total_transactions += 1
         
-        # Set database context for logging - RIKI LAW Article II
+        # Set database context for logging - LUMEN LAW Article II
         set_log_context(database_operation="transaction")
         
         start_time = time.time()

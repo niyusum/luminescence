@@ -46,7 +46,7 @@ class FusionService:
     @staticmethod
     def get_fusion_cost(tier: int) -> int:
         """
-        Calculate rikis cost for fusing maidens of given tier.
+        Calculate lumees cost for fusing maidens of given tier.
         
         Formula: base * (multiplier ^ (tier - 1))
         Capped at max_cost to prevent overflow.
@@ -55,7 +55,7 @@ class FusionService:
             tier: Maiden tier (1-12)
         
         Returns:
-            Rikis cost (integer)
+            Lumees cost (integer)
         
         Example:
             >>> FusionService.get_fusion_cost(1)
@@ -65,7 +65,7 @@ class FusionService:
             >>> FusionService.get_fusion_cost(10)
             10000000  # Capped at max
         """
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         base_cost = ConfigManager.get("fusion_costs.base")
         multiplier = ConfigManager.get("fusion_costs.multiplier")
         max_cost = ConfigManager.get("fusion_costs.max_cost")
@@ -147,7 +147,7 @@ class FusionService:
             >>> FusionService.calculate_element_result("infernal", "infernal")
             "infernal"
         """
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         element_combinations = ConfigManager.get("element_combinations")
         
         key1 = FusionService._parse_element_key(element1, element2)
@@ -197,14 +197,14 @@ class FusionService:
                 - result_tier (int): Output maiden tier (if success)
                 - result_maiden_id (int): New maiden ID (if success)
                 - element (str): Result element
-                - cost (int): Rikis consumed
+                - cost (int): Lumees consumed
                 - shards_gained (int): Shards from failure (if failed)
                 - shards_used (int): Shards consumed (if use_shards)
 
         Raises:
             InvalidFusionError: If maiden_ids length != 2 or tier >= 12
             MaidenNotFoundError: If maidens don't exist or aren't owned
-            InsufficientResourcesError: If player lacks rikis or shards
+            InsufficientResourcesError: If player lacks lumees or shards
             RuntimeError: If cannot acquire fusion lock (concurrent fusion attempt)
 
         Example:
@@ -299,7 +299,7 @@ class FusionService:
             InsufficientResourcesError: If using shards but player lacks enough
         """
         if use_shards:
-            # RIKI LAW I.6 - YAML is source of truth
+            # LUMEN LAW I.6 - YAML is source of truth
             shards_needed = ConfigManager.get("shard_system.shards_for_redemption")
             if player.get_fusion_shards(tier) < shards_needed:
                 raise InsufficientResourcesError(
@@ -312,7 +312,7 @@ class FusionService:
             player.stats["shards_spent"] = player.stats.get("shards_spent", 0) + shards_needed
             return True, shards_needed
         else:
-            # RIKI LAW I.6 - YAML is source of truth
+            # LUMEN LAW I.6 - YAML is source of truth
             event_bonus = ConfigManager.get("event_modifiers.fusion_rate_boost")
             success = FusionService.roll_fusion_success(tier, event_bonus)
             return success, 0
@@ -446,7 +446,7 @@ class FusionService:
         Returns:
             Number of shards granted
         """
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         shards_min = ConfigManager.get("shard_system.shards_per_failure_min")
         shards_max = ConfigManager.get("shard_system.shards_per_failure_max")
         # Use cryptographically secure RNG for shard drops
@@ -476,12 +476,12 @@ class FusionService:
             session, player_id, maiden_ids
         )
 
-        # Step 2: Calculate cost and consume rikis
+        # Step 2: Calculate cost and consume lumees
         cost = FusionService.get_fusion_cost(tier)
         await ResourceService.consume_resources(
             session=session,
             player=player,
-            resources={"rikis": cost},
+            resources={"lumees": cost},
             source="fusion_cost",
             context={"tier": tier, "maiden_ids": maiden_ids, "use_shards": use_shards}
         )
@@ -514,7 +514,7 @@ class FusionService:
         # Step 7: Update global player stats
         player.total_fusions += 1
         player.stats["total_fusions"] = player.stats.get("total_fusions", 0) + 1
-        player.stats["rikis_spent_on_fusion"] = player.stats.get("rikis_spent_on_fusion", 0) + cost
+        player.stats["lumees_spent_on_fusion"] = player.stats.get("lumees_spent_on_fusion", 0) + cost
 
         # Step 8: Log transaction
         await TransactionLogger.log_transaction(
@@ -578,7 +578,7 @@ class FusionService:
             >>> result = await FusionService.add_fusion_shard(player, 3)
             >>> print(f"Gained {result['shards_gained']} shards!")
         """
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         shards_min = ConfigManager.get("shard_system.shards_per_failure_min")
         shards_max = ConfigManager.get("shard_system.shards_per_failure_max")
 
@@ -590,7 +590,7 @@ class FusionService:
         player.fusion_shards[key] = current + actual_amount
         player.stats["shards_earned"] = player.stats.get("shards_earned", 0) + actual_amount
         
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         shards_for_redemption = ConfigManager.get("shard_system.shards_for_redemption")
         
         return {

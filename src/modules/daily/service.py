@@ -22,20 +22,20 @@ class DailyService:
     and streak bonuses. Primary engagement loop for consistent play.
     
     Daily Quests:
-        - prayer_performed: Use /prayer at least once (core.configurable)
+        - drop_performed: Use ;drop at least once (core.configurable)
         - summon_maiden: Summon at least one maiden (core.configurable)
         - attempt_fusion: Attempt fusion at least once (core.configurable)
         - spend_energy: Spend energy on quests (core.configurable amount)
         - spend_stamina: Spend stamina on battles (core.configurable amount)
     
     Rewards:
-        - Base: Rikis, Grace, Gems, XP
+        - Base: Lumees, AuricCoin, Lumenite, XP
         - Completion Bonus: Extra rewards for finishing all quests
         - Streak Bonus: +10% per week of consecutive completions
     
     Usage:
         >>> daily = await DailyService.get_or_create_daily_quest(session, player_id)
-        >>> await DailyService.update_quest_progress(session, player_id, "prayer_performed")
+        >>> await DailyService.update_quest_progress(session, player_id, "drop_performed")
         >>> rewards = await DailyService.claim_rewards(session, player_id)
     """
     
@@ -117,7 +117,7 @@ class DailyService:
         Update quest progress and check for completion.
         
         Quest types:
-            - "prayer_performed": Increment prayers_done
+            - "drop_performed": Increment drops_done
             - "summon_maiden": Increment summons_done
             - "attempt_fusion": Increment fusions_attempted
             - "spend_energy": Add to energy_spent
@@ -141,13 +141,13 @@ class DailyService:
         
         Example:
             >>> result = await DailyService.update_quest_progress(
-            ...     session, player_id, "prayer_performed"
+            ...     session, player_id, "drop_performed"
             ... )
             >>> if result["quest_completed"]:
             ...     print("Quest completed!")
         """
         valid_quest_types = {
-            "prayer_performed": ("prayers_done", "daily_quests.prayer_required", 1),
+            "drop_performed": ("drops_done", "daily_quests.drop_required", 1),
             "summon_maiden": ("summons_done", "daily_quests.summon_required", 1),
             "attempt_fusion": ("fusions_attempted", "daily_quests.fusion_required", 1),
             "spend_energy": ("energy_spent", "daily_quests.energy_required", 10),
@@ -158,7 +158,7 @@ class DailyService:
             raise InvalidOperationError(f"Invalid quest type: {quest_type}")
         
         progress_key, config_key, default_required = valid_quest_types[quest_type]
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         required_amount = ConfigManager.get(config_key)
         
         daily_quest = await DailyService.get_or_create_daily_quest(session, player_id)
@@ -202,39 +202,39 @@ class DailyService:
         
         Returns:
             Dictionary with reward amounts:
-                - rikis (int)
-                - grace (int)
-                - riki_gems (int)
+                - lumees (int)
+                - auric coin (int)
+                - lumenite (int)
                 - xp (int)
-        
+
         Example:
             >>> rewards = DailyService.calculate_rewards(daily_quest)
-            >>> print(f"Rewards: {rewards['rikis']:,} rikis, {rewards['xp']} XP")
+            >>> print(f"Rewards: {rewards['lumees']:,} lumees, {rewards['xp']} XP")
         """
-        # RIKI LAW I.6 - YAML is source of truth
-        base_rikis = ConfigManager.get("daily_rewards.base_rikis")
-        base_grace = ConfigManager.get("daily_rewards.base_grace")
-        base_gems = ConfigManager.get("daily_rewards.base_gems")
+        # LUMEN LAW I.6 - YAML is source of truth
+        base_lumees = ConfigManager.get("daily_rewards.base_lumees")
+        base_auric_coin = ConfigManager.get("daily_rewards.base_auric_coin")
+        base_lumenite = ConfigManager.get("daily_rewards.base_lumenite")
         base_xp = ConfigManager.get("daily_rewards.base_xp")
 
-        completion_bonus_rikis = ConfigManager.get("daily_rewards.completion_bonus_rikis")
-        completion_bonus_grace = ConfigManager.get("daily_rewards.completion_bonus_grace")
-        completion_bonus_gems = ConfigManager.get("daily_rewards.completion_bonus_gems")
+        completion_bonus_lumees = ConfigManager.get("daily_rewards.completion_bonus_lumees")
+        completion_bonus_auric_coin = ConfigManager.get("daily_rewards.completion_bonus_auric_coin")
+        completion_bonus_lumenite = ConfigManager.get("daily_rewards.completion_bonus_lumenite")
         completion_bonus_xp = ConfigManager.get("daily_rewards.completion_bonus_xp")
 
         streak_multiplier = ConfigManager.get("daily_rewards.streak_multiplier")
-        
+
         rewards = {
-            "rikis": base_rikis,
-            "grace": base_grace,
-            "riki_gems": base_gems,
+            "lumees": base_lumees,
+            "auric_coin": base_auric_coin,
+            "lumenite": base_lumenite,
             "xp": base_xp
         }
-        
+
         if daily_quest.is_complete():
-            rewards["rikis"] += completion_bonus_rikis
-            rewards["grace"] += completion_bonus_grace
-            rewards["riki_gems"] += completion_bonus_gems
+            rewards["lumees"] += completion_bonus_lumees
+            rewards["auric_coin"] += completion_bonus_auric_coin
+            rewards["lumenite"] += completion_bonus_lumenite
             rewards["xp"] += completion_bonus_xp
         
         if daily_quest.bonus_streak >= 7:
@@ -278,7 +278,7 @@ class DailyService:
         Example:
             >>> async with DatabaseService.get_transaction() as session:
             ...     result = await DailyService.claim_rewards(session, player_id)
-            ...     print(f"Claimed {result['rewards']['rikis']:,} rikis!")
+            ...     print(f"Claimed {result['rewards']['lumees']:,} lumees!")
         """
         daily_quest = await DailyService.get_or_create_daily_quest(session, player_id)
     
@@ -383,9 +383,9 @@ class DailyService:
         if daily_quest.is_complete() and not daily_quest.rewards_claimed:
             projected_rewards = DailyService.calculate_rewards(daily_quest)
         
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         requirements = {
-            "prayer_required": ConfigManager.get("daily_quests.prayer_required"),
+            "drop_required": ConfigManager.get("daily_quests.drop_required"),
             "summon_required": ConfigManager.get("daily_quests.summon_required"),
             "fusion_required": ConfigManager.get("daily_quests.fusion_required"),
             "energy_required": ConfigManager.get("daily_quests.energy_required"),

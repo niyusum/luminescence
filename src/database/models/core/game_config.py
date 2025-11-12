@@ -12,7 +12,7 @@ class GameConfig(SQLModel, table=True):
     Allows balance and system parameters to be tuned
     without redeploying the bot.
 
-    Managed by ConfigManager (RIKI LAW Article I.4).
+    Managed by ConfigManager (LUMEN LAW Article I.4).
     """
 
     __tablename__ = "game_config"

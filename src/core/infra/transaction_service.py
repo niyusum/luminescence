@@ -2,14 +2,14 @@
 Service for logging player transactions and resource changes.
 
 Features:
-- Database-backed rikis transaction tracking
+- Database-backed lumees transaction tracking
 - Batch transaction logging for efficiency
 - Comprehensive query methods (history, analytics, aggregates)
 - Automatic cleanup of old transactions
 - Performance metrics tracking
 - Structured logging with context
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Complete audit trails for resource changes (Article II)
 - Graceful error handling (Article IX)
 - Performance metrics and monitoring (Article X)
@@ -31,13 +31,13 @@ class Transaction(SQLModel, table=True):
     """
     Audit log for all resource changes and player actions.
     
-    Tracks every rikis change, summon, fusion, and other significant
+    Tracks every lumees change, summon, fusion, and other significant
     player actions for debugging, analytics, and potential rollbacks.
     
     Attributes:
         player_id: Discord ID of player
         transaction_type: Type of action (summon, fusion, daily_claim, etc.)
-        rikis_change: Amount of rikis gained/spent (negative for spending)
+        lumees_change: Amount of lumees gained/spent (negative for spending)
         timestamp: When action occurred
         details: JSON field with additional context
     
@@ -59,7 +59,7 @@ class Transaction(SQLModel, table=True):
         sa_column=Column(BigInteger, nullable=False, index=True)
     )
     transaction_type: str = Field(max_length=50, nullable=False, index=True)
-    rikis_change: int = Field(default=0, sa_column=Column(BigInteger))
+    lumees_change: int = Field(default=0, sa_column=Column(BigInteger))
     timestamp: datetime = Field(default_factory=datetime.utcnow, nullable=False, index=True)
     details: Optional[str] = Field(default=None)
 
@@ -87,7 +87,7 @@ class TransactionService:
         session,
         player_id: int,
         transaction_type: str,
-        rikis_change: int = 0,
+        lumees_change: int = 0,
         details: Optional[Dict[str, Any]] = None
     ) -> Transaction:
         """
@@ -97,7 +97,7 @@ class TransactionService:
             session: Active database session
             player_id: Discord ID of player
             transaction_type: Type of transaction (summon, fusion, daily_claim, etc.)
-            rikis_change: Amount of rikis changed (negative for spending)
+            lumees_change: Amount of lumees changed (negative for spending)
             details: Additional context as dictionary (will be JSON serialized)
         
         Returns:
@@ -108,7 +108,7 @@ class TransactionService:
             ...     session=session,
             ...     player_id=123456789,
             ...     transaction_type="fusion",
-            ...     rikis_change=-5000,
+            ...     lumees_change=-5000,
             ...     details={
             ...         "maiden_base_id": 10,
             ...         "from_tier": 3,
@@ -135,7 +135,7 @@ class TransactionService:
             transaction = Transaction(
                 player_id=player_id,
                 transaction_type=transaction_type,
-                rikis_change=rikis_change,
+                lumees_change=lumees_change,
                 details=details_json
             )
             
@@ -147,11 +147,11 @@ class TransactionService:
             TransactionService._metrics["total_log_time_ms"] += elapsed_ms
             
             logger.debug(
-                f"Transaction logged: type={transaction_type} player={player_id} rikis={rikis_change}",
+                f"Transaction logged: type={transaction_type} player={player_id} lumees={lumees_change}",
                 extra={
                     "player_id": player_id,
                     "transaction_type": transaction_type,
-                    "rikis_change": rikis_change,
+                    "lumees_change": lumees_change,
                     "log_time_ms": round(elapsed_ms, 2)
                 }
             )
@@ -165,7 +165,7 @@ class TransactionService:
                 extra={
                     "player_id": player_id,
                     "transaction_type": transaction_type,
-                    "rikis_change": rikis_change
+                    "lumees_change": lumees_change
                 },
                 exc_info=True
             )
@@ -186,7 +186,7 @@ class TransactionService:
             transactions: List of transaction dicts with keys:
                 - player_id: Discord ID
                 - transaction_type: Type of transaction
-                - rikis_change: Amount of rikis changed
+                - lumees_change: Amount of lumees changed
                 - details: Optional details dict
         
         Returns:
@@ -197,13 +197,13 @@ class TransactionService:
             ...     {
             ...         "player_id": 123,
             ...         "transaction_type": "daily_claim",
-            ...         "rikis_change": 100,
+            ...         "lumees_change": 100,
             ...         "details": {"streak": 5}
             ...     },
             ...     {
             ...         "player_id": 456,
             ...         "transaction_type": "daily_claim",
-            ...         "rikis_change": 100,
+            ...         "lumees_change": 100,
             ...         "details": {"streak": 3}
             ...     }
             ... ])
@@ -224,7 +224,7 @@ class TransactionService:
                 transaction_obj = Transaction(
                     player_id=txn["player_id"],
                     transaction_type=txn["transaction_type"],
-                    rikis_change=txn.get("rikis_change", 0),
+                    lumees_change=txn.get("lumees_change", 0),
                     details=details_json
                 )
                 transaction_objs.append(transaction_obj)
@@ -324,7 +324,7 @@ class TransactionService:
         days: Optional[int] = None
     ) -> int:
         """
-        Calculate total rikis spent by player.
+        Calculate total lumees spent by player.
         
         Args:
             session: Active database session
@@ -333,7 +333,7 @@ class TransactionService:
             days: Optional filter for last N days
         
         Returns:
-            Total rikis spent (positive number)
+            Total lumees spent (positive number)
         
         Example:
             >>> total = await TransactionService.get_total_spent(
@@ -341,15 +341,15 @@ class TransactionService:
             ...     player_id=123456789,
             ...     transaction_type="summon"
             ... )
-            >>> print(f"Spent {total} rikis on summons")
+            >>> print(f"Spent {total} lumees on summons")
         """
         start_time = time.perf_counter()
         TransactionService._metrics["queries_executed"] += 1
         
         try:
-            stmt = select(func.sum(Transaction.rikis_change)).where(
+            stmt = select(func.sum(Transaction.lumees_change)).where(
                 Transaction.player_id == player_id,
-                Transaction.rikis_change < 0
+                Transaction.lumees_change < 0
             )
             
             if transaction_type:
@@ -383,7 +383,7 @@ class TransactionService:
         days: Optional[int] = None
     ) -> int:
         """
-        Calculate total rikis earned by player.
+        Calculate total lumees earned by player.
         
         Args:
             session: Active database session
@@ -392,7 +392,7 @@ class TransactionService:
             days: Optional filter for last N days
         
         Returns:
-            Total rikis earned
+            Total lumees earned
         
         Example:
             >>> total = await TransactionService.get_total_earned(
@@ -400,15 +400,15 @@ class TransactionService:
             ...     player_id=123456789,
             ...     transaction_type="daily_claim"
             ... )
-            >>> print(f"Earned {total} rikis from dailies")
+            >>> print(f"Earned {total} lumees from dailies")
         """
         start_time = time.perf_counter()
         TransactionService._metrics["queries_executed"] += 1
         
         try:
-            stmt = select(func.sum(Transaction.rikis_change)).where(
+            stmt = select(func.sum(Transaction.lumees_change)).where(
                 Transaction.player_id == player_id,
-                Transaction.rikis_change > 0
+                Transaction.lumees_change > 0
             )
             
             if transaction_type:
@@ -498,7 +498,7 @@ class TransactionService:
         days: Optional[int] = None
     ) -> int:
         """
-        Calculate net rikis change (earned - spent).
+        Calculate net lumees change (earned - spent).
         
         Args:
             session: Active database session
@@ -507,19 +507,19 @@ class TransactionService:
             days: Optional filter for last N days
         
         Returns:
-            Net rikis change (can be negative)
+            Net lumees change (can be negative)
         
         Example:
             >>> net = await TransactionService.get_net_change(
             ...     session, player_id=123, days=7
             ... )
-            >>> print(f"Net change this week: {net:+,} rikis")
+            >>> print(f"Net change this week: {net:+,} lumees")
         """
         start_time = time.perf_counter()
         TransactionService._metrics["queries_executed"] += 1
         
         try:
-            stmt = select(func.sum(Transaction.rikis_change)).where(
+            stmt = select(func.sum(Transaction.lumees_change)).where(
                 Transaction.player_id == player_id
             )
             
@@ -566,9 +566,9 @@ class TransactionService:
         Example:
             >>> stats = await TransactionService.get_transaction_stats(session, 123)
             >>> # {
-            >>> #     "summon": {"count": 50, "rikis_spent": 5000},
-            >>> #     "fusion": {"count": 30, "rikis_spent": 15000},
-            >>> #     "daily_claim": {"count": 25, "rikis_earned": 2500}
+            >>> #     "summon": {"count": 50, "lumees_spent": 5000},
+            >>> #     "fusion": {"count": 30, "lumees_spent": 15000},
+            >>> #     "daily_claim": {"count": 25, "lumees_earned": 2500}
             >>> # }
         """
         start_time = time.perf_counter()
@@ -581,7 +581,7 @@ class TransactionService:
                 select(
                     Transaction.transaction_type,
                     func.count(Transaction.id).label("count"),
-                    func.sum(Transaction.rikis_change).label("total_change")
+                    func.sum(Transaction.lumees_change).label("total_change")
                 )
                 .where(Transaction.player_id == player_id)
                 .where(Transaction.timestamp >= cutoff_date)

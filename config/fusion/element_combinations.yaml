@@ -1,0 +1,61 @@
+# Element Combination Configuration
+# LUMEN LAW I.6: All tunable game parameters externalized
+#
+# Defines fusion outcomes when combining maidens of different elements
+# Format: "element1|element2": "result_element"
+# Order matters: keys use pipe separator (|)
+#
+# Referenced by: src/modules/fusion/service.py:151
+# ConfigManager.get("element_combinations")
+
+element_combinations:
+  # Same-element fusions (6 combinations)
+  "infernal|infernal": "infernal"
+  "umbral|umbral": "umbral"
+  "earth|earth": "earth"
+  "tempest|tempest": "tempest"
+  "radiant|radiant": "radiant"
+  "abyssal|abyssal": "abyssal"
+
+  # Cross-element fusions (30 combinations)
+  # Infernal combinations
+  "infernal|abyssal": "tempest"
+  "infernal|earth": "infernal"      # Volcanic/magma theme
+  "infernal|tempest": "infernal"    # Fire storm dominance
+  "infernal|umbral": "umbral"       # Dark flames
+  "infernal|radiant": "earth"       # Sun/fire creates life
+
+  # Abyssal combinations
+  "abyssal|infernal": "tempest"     # Mirror of infernal|abyssal
+  "abyssal|earth": "earth"          # Ocean depths meet stone
+  "abyssal|tempest": "tempest"      # Storm seas
+  "abyssal|umbral": "umbral"        # Deep darkness
+  "abyssal|radiant": "tempest"      # Light through water
+
+  # Earth combinations
+  "earth|infernal": "infernal"      # Mirror
+  "earth|abyssal": "earth"          # Mirror
+  "earth|tempest": "abyssal"        # Erosion creates depths
+  "earth|umbral": "infernal"        # Underground heat/magma
+  "earth|radiant": "radiant"        # Life flourishes in light
+
+  # Tempest combinations
+  "tempest|infernal": "infernal"    # Mirror
+  "tempest|abyssal": "tempest"      # Mirror
+  "tempest|earth": "abyssal"        # Mirror
+  "tempest|umbral": "abyssal"       # Dark storms sink
+  "tempest|radiant": "radiant"      # Light breaks through
+
+  # Radiant combinations
+  "radiant|infernal": "earth"       # Mirror
+  "radiant|abyssal": "tempest"      # Mirror
+  "radiant|earth": "radiant"        # Mirror
+  "radiant|tempest": "radiant"      # Mirror
+  "radiant|umbral": "tempest"       # Light vs dark creates chaos
+
+  # Umbral combinations
+  "umbral|infernal": "umbral"       # Mirror
+  "umbral|abyssal": "umbral"        # Mirror
+  "umbral|earth": "infernal"        # Mirror
+  "umbral|tempest": "abyssal"       # Mirror
+  "umbral|radiant": "tempest"       # Mirror

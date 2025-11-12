@@ -3,7 +3,7 @@ Token granting and redemption system.
 
 Tokens are earned from ascension and redeemed for random maidens in tier range.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article III: Pure business logic service
 - Article II: Comprehensive transaction logging
 - Article VII: Domain exceptions only
@@ -257,7 +257,7 @@ class TokenService:
         tokens = result.scalars().all()
 
         # Initialize all token types to 0
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         TOKEN_TIERS = ConfigManager.get("ASCENSION.TOKEN_TIERS")
         inventory = {token_type: 0 for token_type in TOKEN_TIERS.keys()}
         
@@ -303,7 +303,7 @@ class TokenService:
         return token.quantity if token else 0
 
     # ========================================================================
-    # HELPER METHODS (RIKI LAW I.6 - ConfigManager Integration)
+    # HELPER METHODS (LUMEN LAW I.6 - ConfigManager Integration)
     # ========================================================================
 
     @staticmethod
@@ -317,21 +317,21 @@ class TokenService:
         Returns:
             Token tier data dict or None if invalid
         """
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         TOKEN_TIERS = ConfigManager.get("ASCENSION.TOKEN_TIERS")
         return TOKEN_TIERS.get(token_type.lower())
 
     @staticmethod
     def get_all_token_types() -> List[str]:
         """Get list of all valid token types in display order."""
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         TOKEN_TIERS = ConfigManager.get("ASCENSION.TOKEN_TIERS")
         return sorted(TOKEN_TIERS.keys(), key=lambda k: TOKEN_TIERS[k].get("order", 999))
 
     @staticmethod
     def validate_token_type(token_type: str) -> bool:
         """Check if token type is valid."""
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         TOKEN_TIERS = ConfigManager.get("ASCENSION.TOKEN_TIERS")
         return token_type.lower() in TOKEN_TIERS
 

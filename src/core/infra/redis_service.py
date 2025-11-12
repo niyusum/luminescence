@@ -10,7 +10,7 @@ Features:
 - Connection pool health monitoring
 - JSON serialization/deserialization
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Complete audit trails with LogContext (Article II)
 - ConfigManager integration for tunables (Article V)
 - Graceful degradation on failures (Article IX)
@@ -551,8 +551,8 @@ class RedisService:
         
         Example:
             >>> await RedisService.mset({
-            ...     "player:123": {"rikis": 1000},
-            ...     "player:456": {"rikis": 2000}
+            ...     "player:123": {"lumees": 1000},
+            ...     "player:456": {"lumees": 2000}
             ... }, ttl=300)
         """
         cls._metrics["operations"]["batch"] += 1
@@ -603,7 +603,7 @@ class RedisService:
     @asynccontextmanager
     async def acquire_lock(cls, lock_name: str, timeout: int = 5, blocking_timeout: int = 3):
         """
-        Acquire distributed lock for critical sections (RIKI LAW Article I.3).
+        Acquire distributed lock for critical sections (LUMEN LAW Article I.3).
         
         Prevents race conditions in concurrent operations like fusion, trading,
         or button double-clicks.

@@ -4,7 +4,7 @@ Player stat allocation system.
 Manages allocation points, validation, and stat calculation.
 Level ups grant 5 points that can be allocated to Energy, Stamina, or HP.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Article III: Pure business logic service
 - Article I.6: Session-first parameter pattern
 - Article IV: ConfigManager for ratios

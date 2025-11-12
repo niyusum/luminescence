@@ -1,5 +1,5 @@
 # Guild System Economy Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
 # Guild creation, upgrades, membership limits, and donation rules
 
@@ -28,16 +28,16 @@ guilds:
   # level_2 = base + growth, level_3 = base + 2*growth, etc.
   member_growth_per_level: 2
 
-  # Minimum donation amount (rikis)
+  # Minimum donation amount (lumees)
   # Prevents spam donations for activity tracking
   donation_minimum: 1000
 
-  # Guild creation cost (rikis)
+  # Guild creation cost (lumees)
   # Not in original _defaults, but logical to add here
   creation_cost: 50000
 
-  # Guild name change cost (rikis)
+  # Guild name change cost (lumees)
   name_change_cost: 10000
 
-  # Emblem change cost (rikis)
+  # Emblem change cost (lumees)
   emblem_change_cost: 5000

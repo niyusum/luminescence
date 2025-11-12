@@ -11,7 +11,7 @@ from src.core.logging.logger import get_logger
 from src.core.exceptions import InvalidOperationError
 from src.core.infra.database_service import DatabaseService
 from src.core.infra.redis_service import RedisService
-from src.modules.guilds.service import GuildService
+from src.modules.guild.service import GuildService
 from src.core.config.config_manager import ConfigManager
 from src.utils.embed_builder import EmbedBuilder
 from src.utils.decorators import ratelimit
@@ -39,10 +39,10 @@ def _gid(ctx: commands.Context) -> Optional[int]:
 
 class GuildCog(BaseCog):
     """
-    Guild command suite - prefix-only (rg / rguild / rikiguild).
+    Guild command suite for managing guilds.
     Thin UI layer that delegates all business logic to GuildService.
 
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - Article I.2: All state mutations log success/failure using BaseCog's structured logger.
         - Article I.3: Redis locks used on treasury mutations (donate/upgrade).
         - Article I.5: Graceful exception handling for InvalidOperationError.
@@ -55,13 +55,13 @@ class GuildCog(BaseCog):
 
     # ------------- HELP / MENU (prefix quick view) -------------
 
-    @commands.command(name="rguild", aliases=["rg"])
+    @commands.command(name="guild", aliases=["g"])
     @ratelimit(
         uses=ConfigManager.get("rate_limits.guild.menu.uses", 5),
         per_seconds=ConfigManager.get("rate_limits.guild.menu.period", 30),
-        command_name="rguild"
+        command_name="guild"
     )
-    async def rguild_menu(self, ctx: commands.Context):
+    async def guild_menu(self, ctx: commands.Context):
         """Guild command menu with interactive buttons."""
         start_time = time.perf_counter()
         await self.safe_defer(ctx)
@@ -70,29 +70,29 @@ class GuildCog(BaseCog):
             embed = _ok(
                 "🏰 Guild Commands",
                 (
-                    "**Available Commands** (use `rg` or `rguild` or `rikiguild`)\n"
-                    "• `rg create <name>` — Create your guild\n"
-                    "• `rg invite <@user>` — Invite a player (leader/officer)\n"
-                    "• `rg accept <guild_id>` — Accept an invite to a guild\n"
-                    "• `rg donate <rikis>` — Donate to guild treasury\n"
-                    "• `rg upgrade` — Upgrade guild level\n"
-                    "• `rg promote <@user>` — Promote a member (leader)\n"
-                    "• `rg demote <@user>` — Demote a member (leader)\n"
-                    "• `rg kick <@user>` — Kick a member (leader/officer)\n"
-                    "• `rg transfer <@user>` — Transfer leadership (leader)\n"
-                    "• `rg leave` — Leave your guild\n"
-                    "• `rg info [guild_id]` — Show guild overview\n"
-                    "• `rg set_description <text>` — Set description (leader/officer)\n"
-                    "• `rg set_emblem <url>` — Set emblem URL (leader/officer)\n"
-                    "• `rg revoke_invite <@user>` — Revoke pending invite (leader/officer)\n\n"
+                    "**Available Commands** (use `;guild` or `;g`)\n"
+                    "• `;guild create <name>` — Create your guild\n"
+                    "• `;guild invite <@user>` — Invite a player (leader/officer)\n"
+                    "• `;guild accept <guild_id>` — Accept an invite to a guild\n"
+                    "• `;guild donate <lumees>` — Donate to guild treasury\n"
+                    "• `;guild upgrade` — Upgrade guild level\n"
+                    "• `;guild promote <@user>` — Promote a member (leader)\n"
+                    "• `;guild demote <@user>` — Demote a member (leader)\n"
+                    "• `;guild kick <@user>` — Kick a member (leader/officer)\n"
+                    "• `;guild transfer <@user>` — Transfer leadership (leader)\n"
+                    "• `;guild leave` — Leave your guild\n"
+                    "• `;guild info [guild_id]` — Show guild overview\n"
+                    "• `;guild set_description <text>` — Set description (leader/officer)\n"
+                    "• `;guild set_emblem <url>` — Set emblem URL (leader/officer)\n"
+                    "• `;guild revoke_invite <@user>` — Revoke pending invite (leader/officer)\n\n"
                     "**Tips**\n"
-                    "• Use `rg info` to see your guild's treasury, perks, members, & recent activity.\n"
+                    "• Use `;guild info` to see your guild's treasury, perks, members, & recent activity.\n"
                     "• Officers can invite & manage members; only leaders can transfer leadership.\n\n"
                     "Use the buttons below for quick access to common actions!"
                 )
             )
 
-            # RIKI LAW II: Pass structured logger method to view for auditable failures
+            # LUMEN LAW II: Pass structured logger method to view for auditable failures
             view = GuildMenuView(ctx.author.id, self.log_cog_error)
             # MODIFIED: Combined sends into a single call
             message = await ctx.send(embed=embed, view=view)
@@ -100,14 +100,14 @@ class GuildCog(BaseCog):
             
             # Log success
             self.log_command_use(
-                "rguild_menu", ctx.author.id, guild_id=_gid(ctx),
+                "guild_menu", ctx.author.id, guild_id=_gid(ctx),
                 latency_ms=round((time.perf_counter() - start_time) * 1000, 2),
             )
 
         except Exception as e:
             # Log unexpected failure
             self.log_cog_error(
-                "rguild_menu", e, ctx.author.id, guild_id=_gid(ctx),
+                "guild_menu", e, ctx.author.id, guild_id=_gid(ctx),
                 latency_ms=round((time.perf_counter() - start_time) * 1000, 2),
                 status="unexpected_failure", error_type=type(e).__name__
             )
@@ -121,7 +121,7 @@ class GuildCog(BaseCog):
 
     # ------------- GUILD GROUP -------------
 
-    @commands.group(name="guild", aliases=["rg", "rguild", "rikiguild"])
+    @commands.group(name="guild", aliases=[])
     @commands.guild_only() # ADDED: Mandatory decorator
     @ratelimit(
         uses=ConfigManager.get("rate_limits.guild.group.uses", 10),
@@ -131,9 +131,9 @@ class GuildCog(BaseCog):
     async def guild(self, ctx: commands.Context):
         """Top-level guild command group."""
         if ctx.invoked_subcommand is None:
-            await self.rguild_menu(ctx)
+            await self.guild_menu(ctx)
 
-    # ------------- SUBCOMMANDS (RIKI LAW I.2, I.5) -------------
+    # ------------- SUBCOMMANDS (LUMEN LAW I.2, I.5) -------------
 
     @guild.command(name="create")
     @commands.guild_only() # ADDED
@@ -314,12 +314,12 @@ class GuildCog(BaseCog):
         per_seconds=ConfigManager.get("rate_limits.guild.donate.period", 60),
         command_name="guild_donate"
     )
-    async def guild_donate(self, ctx: commands.Context, rikis: int):
-        """Donate rikis to the guild treasury."""
+    async def guild_donate(self, ctx: commands.Context, lumees: int):
+        """Donate lumees to the guild treasury."""
         start_time = time.perf_counter()
         await self.safe_defer(ctx)
         player_id = ctx.author.id
-        log_context = {"rikis": rikis}
+        log_context = {"lumees": lumees}
 
         try:
             async with DatabaseService.get_transaction() as session:
@@ -330,12 +330,12 @@ class GuildCog(BaseCog):
                 guild_id = mem.guild_id
                 log_context["guild_id"] = guild_id
                 
-                # RIKI LAW I.3: Redis lock for shared treasury state mutation
+                # LUMEN LAW I.3: Redis lock for shared treasury state mutation
                 lock_key = f"guild_treasury:{guild_id}"
                 async with RedisService.acquire_lock(lock_key, timeout=5):
-                    res = await GuildService.donate_to_treasury(session, player_id=player_id, rikis=rikis)
+                    res = await GuildService.donate_to_treasury(session, player_id=player_id, lumees=lumees)
                 
-                embed = _ok("Donation Complete", f"Donated **{rikis:,}** rikis.\nTreasury: **{res['treasury']:,}**")
+                embed = _ok("Donation Complete", f"Donated **{lumees:,}** lumees.\nTreasury: **{res['treasury']:,}**")
 
             # Log success
             self.log_command_use(
@@ -385,7 +385,7 @@ class GuildCog(BaseCog):
                 guild_id = mem.guild_id
                 log_context["guild_id"] = guild_id
                 
-                # RIKI LAW I.3: Redis lock for shared treasury state mutation
+                # LUMEN LAW I.3: Redis lock for shared treasury state mutation
                 lock_key = f"guild_treasury:{guild_id}"
                 async with RedisService.acquire_lock(lock_key, timeout=5):
                     g = await GuildService.upgrade_guild(session, actor_id=actor_id)
@@ -658,7 +658,7 @@ class GuildCog(BaseCog):
                 if target_guild_id is None:
                     mem = await GuildService._get_membership(session, player_id)
                     if not mem:
-                        raise InvalidOperationError("You are not in a guild. Use `rg info <guild_id>`.")
+                        raise InvalidOperationError("You are not in a guild. Use `;guild info <guild_id>`.")
                     target_guild_id = mem.guild_id
 
                 log_context["resolved_guild_id"] = target_guild_id
@@ -667,7 +667,7 @@ class GuildCog(BaseCog):
                 # Build a rich embed (Formatting left in cog as it's UI presentation)
                 title = f"{data['name']} — L{data['level']}"
                 desc = (
-                    f"Treasury: **{data['treasury']:,}** rikis\n"
+                    f"Treasury: **{data['treasury']:,}** lumees\n"
                     f"Members: **{data['member_count']} / {data['max_members']}**\n"
                 )
                 embed = _ok(title, desc)
@@ -811,11 +811,11 @@ class GuildCog(BaseCog):
 class GuildMenuView(discord.ui.View):
     """Interactive menu for guild quick actions."""
 
-    # MODIFIED: Added cog_logger for RIKI LAW II compliance
+    # MODIFIED: Added cog_logger for LUMEN LAW II compliance
     def __init__(self, user_id: int, cog_logger: 'Callable'):
         super().__init__(timeout=180)
         self.user_id = user_id
-        self.cog_logger = cog_logger # RIKI LAW II: Keep logger method
+        self.cog_logger = cog_logger # LUMEN LAW II: Keep logger method
         self.message: Optional[discord.Message] = None
 
     @discord.ui.button(
@@ -832,7 +832,7 @@ class GuildMenuView(discord.ui.View):
             )
             return
 
-        # RIKI LAW II: Log interaction use
+        # LUMEN LAW II: Log interaction use
         self.cog_logger(
             "guild_menu_button", 
             None, 
@@ -843,7 +843,7 @@ class GuildMenuView(discord.ui.View):
         )
         
         await interaction.response.send_message(
-            "Use `rg info` to view your guild's details!",
+            "Use `;guild info` to view your guild's details!",
             ephemeral=True
         )
 
@@ -871,7 +871,7 @@ class GuildMenuView(discord.ui.View):
         )
 
         await interaction.response.send_message(
-            "Use `rg donate <amount>` to donate rikis to your guild treasury!",
+            "Use `;guild donate <amount>` to donate lumees to your guild treasury!",
             ephemeral=True
         )
 
@@ -899,7 +899,7 @@ class GuildMenuView(discord.ui.View):
         )
 
         await interaction.response.send_message(
-            "Use `rg upgrade` to level up your guild!",
+            "Use `;guild upgrade` to level up your guild!",
             ephemeral=True
         )
 
@@ -927,7 +927,7 @@ class GuildMenuView(discord.ui.View):
         )
 
         await interaction.response.send_message(
-            "Use `rg invite @user` to invite someone to your guild!",
+            "Use `;guild invite @user` to invite someone to your guild!",
             ephemeral=True
         )
 

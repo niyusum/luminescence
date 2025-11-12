@@ -1,5 +1,5 @@
 # Ascension Tower Balance Configuration
-# RIKI LAW I.6: All tunable game parameters externalized
+# LUMEN LAW I.6: All tunable game parameters externalized
 #
 # Tower climbing mechanics, costs, rewards, and milestones
 # Complements monsters.yaml (enemy stats) and core.yaml (tokens)
@@ -28,11 +28,11 @@ ascension_balance:
   # Critical hit bonus for 20x attack
   x20_attack_crit_bonus: 0.2  # +20% crit chance
 
-  # Gem cost for 20x attack
-  x20_attack_gem_cost: 10
+  # Lumenite cost for 20x attack
+  x20_attack_lumenite_cost: 10
 
   # Base rewards (scale with floor)
-  reward_base_rikis: 50
+  reward_base_lumees: 50
   reward_base_xp: 20
 
   # Reward growth rate per floor
@@ -44,8 +44,8 @@ ascension_balance:
     # Award token every N floors
     token_every_n_floors: 5
 
-    # Award prayer charge every N floors
-    prayer_charge_every_n_floors: 10
+    # Award drop charge every N floors
+    drop_charge_every_n_floors: 10
 
     # Award fusion catalyst every N floors
     fusion_catalyst_every_n_floors: 25
@@ -54,24 +54,24 @@ ascension_balance:
   milestones:
     50:
       title: "Tower Climber"
-      rikis: 10000
-      gems: 50
+      lumees: 10000
+      lumenite: 50
 
     100:
       title: "Sky Breaker"
-      rikis: 50000
-      gems: 100
+      lumees: 50000
+      lumenite: 100
       mythic_token: true
 
     150:
       title: "Heaven Piercer"
-      rikis: 100000
-      gems: 200
+      lumees: 100000
+      lumenite: 200
 
     200:
       title: "Divine Ascendant"
-      rikis: 250000
-      gems: 500
+      lumees: 250000
+      lumenite: 500
 
   # Token rarity by floor range
   token_rarity_floors:

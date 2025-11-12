@@ -6,7 +6,7 @@ import time
 
 from src.core.infra.database_service import DatabaseService
 from src.modules.player.service import PlayerService
-from src.modules.prayer.service import PrayerService
+from src.modules.drop.service import DropService
 from src.core.infra.redis_service import RedisService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.config.config_manager import ConfigManager
@@ -19,17 +19,17 @@ from utils.embed_builder import EmbedBuilder
 logger = get_logger(__name__)
 
 
-class PrayCog(BaseCog):
+class DropCog(BaseCog):
     """
-    Prayer system for grace generation.
+    DROP system for auric coin generation.
 
-    Players spend prayer charges to gain grace, which is used for summoning maidens.
-    Prayer charges regenerate over time. Class and leader bonuses affect grace gained.
+    Players spend drop charges to gain auric coin, which is used for summoning maidens.
+    DROP charges regenerate over time. Class and leader bonuses affect auric coin gained.
 
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - SELECT FOR UPDATE on state changes (Article I.1)
         - Transaction logging (Article I.2)
-        - Redis locks for multi-prayer (Article I.3)
+        - Redis locks for multi-drop (Article I.3)
         - ConfigManager for all values (Article I.4)
         - Specific exception handling (Article I.5)
         - Single commit per transaction (Article I.6)
@@ -37,62 +37,62 @@ class PrayCog(BaseCog):
     """
 
     def __init__(self, bot: commands.Bot):
-        super().__init__(bot, "PrayCog")
+        super().__init__(bot, "DropCog")
         self.bot = bot
 
     @commands.command(
-        name="pray",
-        aliases=["rp", "rpray", "rikipray"],
-        description="Perform a prayer to gain grace for summoning",
+        name="drop",
+        aliases=["d"],
+        description="Drop an AuricCoin for summoning",
     )
     @ratelimit(
-        uses=ConfigManager.get("rate_limits.prayer.pray.uses", 20),
-        per_seconds=ConfigManager.get("rate_limits.prayer.pray.period", 60),
-        command_name="pray"
+        uses=ConfigManager.get("rate_limits.drop.drop.uses", 20),
+        per_seconds=ConfigManager.get("rate_limits.drop.drop.period", 60),
+        command_name="charge"
     )
-    async def pray(self, ctx: commands.Context):
-        """Perform a prayer to gain grace (1 charge per use)."""
+    async def charge(self, ctx: commands.Context):
+        """Drop an AuricCoin (1 charge per use)."""
         start_time = time.perf_counter()
         await ctx.defer()
 
         try:
-            async with RedisService.acquire_lock(f"pray:{ctx.author.id}", timeout=5):
+            async with RedisService.acquire_lock(f"drop:{ctx.author.id}", timeout=5):
                 async with DatabaseService.get_transaction() as session:
                     player = await self.require_player(ctx, session, ctx.author.id, lock=True)
                     if not player:
                         return
 
-                    if player.prayer_charges < 1:
+                    if player.DROP_CHARGES < 1:
                         raise InsufficientResourcesError(
-                            resource="prayer_charges",
+                            resource="DROP_CHARGES",
                             required=1,
-                            current=player.prayer_charges,
+                            current=player.DROP_CHARGES,
                         )
 
-                    result = await PrayerService.perform_prayer(
+                    result = await DropService.perform_drop(
                         session, player, charges=1
                     )
 
                     await TransactionLogger.log_transaction(
                         session=session,
                         player_id=ctx.author.id,
-                        transaction_type="prayer_performed",
+                        transaction_type="drop_performed",
                         details={
-                            "grace_gained": result["grace_gained"],
+                            "auric_coin_gained": result["auric_coin_gained"],
                             "has_charge_after": result["has_charge"],
                             "modifiers_applied": result.get("modifiers_applied", {}),
                         },
-                        context="prayer_command",
+                        context="drop_command",
                     )
 
                     await EventBus.publish(
-                        "prayer_completed",
+                        "drop_completed",
                         {
                             "player_id": ctx.author.id,
-                            "grace_gained": result["grace_gained"],
+                            "auric_coin_gained": result["auric_coin_gained"],
                             "has_charge": result["has_charge"],
                             "channel_id": ctx.channel.id,
-                            "__topic__": "prayer_completed",
+                            "__topic__": "drop_completed",
                             "timestamp": discord.utils.utcnow(),
                         },
                     )
@@ -101,33 +101,33 @@ class PrayCog(BaseCog):
                     status_text = "✅ Ready!" if result['has_charge'] else f"⏳ {result['next_available']}"
 
                     embed = EmbedBuilder.success(
-                        title="🙏 Prayer Complete",
+                        title="💎 DROP Complete",
                         description=(
-                            f"+**{result['grace_gained']} Grace**\n"
-                            f"**Total Grace:** {result['total_grace']}"
+                            f"+**{result['auric_coin_gained']} AuricCoin**\n"
+                            f"**Total AuricCoin:** {result['total_auric_coin']}"
                         ),
-                        footer=f"Next prayer: {status_text}"
+                        footer=f"Next drop: {status_text}"
                     )
 
-                    view = PrayActionView(ctx.author.id, result["total_grace"])
+                    view = DropActionView(ctx.author.id, result["total_auric_coin"])
                     message = await ctx.send(embed=embed, view=view)
                     view.message = message
 
             # Log successful execution
             latency = (time.perf_counter() - start_time) * 1000
             self.log_command_use(
-                "pray",
+                "drop",
                 ctx.author.id,
                 guild_id=ctx.guild.id if ctx.guild else None,
                 latency_ms=round(latency, 2),
-                grace_gained=result["grace_gained"]
+                auric_coin_gained=result["auric_coin_gained"]
             )
 
         except Exception as e:
             # Standardized error handling
             latency = (time.perf_counter() - start_time) * 1000
             self.log_cog_error(
-                "pray",
+                "drop",
                 e,
                 user_id=ctx.author.id,
                 guild_id=ctx.guild.id if ctx.guild else None,
@@ -137,27 +137,22 @@ class PrayCog(BaseCog):
             if not await self.handle_standard_errors(ctx, e):
                 await self.send_error(
                     ctx,
-                    "Prayer Failed",
-                    "An unexpected error occurred while performing prayer.",
+                    "DROP Failed",
+                    "An unexpected error occurred while performing drop.",
                     help_text="Please try again in a moment."
                 )
 
-    @commands.command(name="rp", hidden=True)
-    async def pray_short(self, ctx: commands.Context):
-        """Alias: rp -> pray"""
-        await self.pray(ctx)
 
+class DropActionView(discord.ui.View):
+    """Action buttons after drop completion."""
 
-class PrayActionView(discord.ui.View):
-    """Action buttons after prayer completion."""
-
-    def __init__(self, user_id: int, total_grace: int):
+    def __init__(self, user_id: int, total_auric_coin: int):
         super().__init__(timeout=120)
         self.user_id = user_id
-        self.total_grace = total_grace
+        self.total_auric_coin = total_auric_coin
         self.message: Optional[discord.Message] = None
 
-        if total_grace < 1:
+        if total_auric_coin < 1:
             self.summon_button.disabled = True
 
     def set_message(self, message: discord.Message):
@@ -166,7 +161,7 @@ class PrayActionView(discord.ui.View):
     @discord.ui.button(
         label="✨ Summon Now",
         style=discord.ButtonStyle.primary,
-        custom_id="quick_summon_after_pray",
+        custom_id="quick_summon_after_drop",
     )
     async def summon_button(self, interaction: discord.Interaction, _: discord.ui.Button):
         if interaction.user.id != self.user_id:
@@ -174,28 +169,28 @@ class PrayActionView(discord.ui.View):
             return
 
         await interaction.response.send_message(
-            f"You have **{self.total_grace}** grace available!\nUse `/summon` to summon powerful maidens.",
+            f"You have **{self.total_auric_coin}** auric coin available!\nUse `/summon` to summon powerful maidens.",
             ephemeral=True,
         )
 
     @discord.ui.button(
-        label="🔁 Pray Again",
+        label="🔁 Drop Again",
         style=discord.ButtonStyle.success,
-        custom_id="pray_again",
+        custom_id="drop_again",
     )
-    async def pray_again_button(self, interaction: discord.Interaction, _: discord.ui.Button):
+    async def drio_again_button(self, interaction: discord.Interaction, _: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This button is not for you!", ephemeral=True)
             return
 
         await interaction.response.send_message(
-            "Use `/pray` to continue praying and gaining more grace!", ephemeral=True
+            "Use `/charge` to continue dropping and gaining more auric coin!", ephemeral=True
         )
 
     @discord.ui.button(
         label="📊 View Profile",
         style=discord.ButtonStyle.secondary,
-        custom_id="view_profile_after_pray",
+        custom_id="view_profile_after_drop",
     )
     async def profile_button(self, interaction: discord.Interaction, _: discord.ui.Button):
         if interaction.user.id != self.user_id:
@@ -220,4 +215,4 @@ class PrayActionView(discord.ui.View):
 
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(PrayCog(bot))
+    await bot.add_cog(DropCog(bot))

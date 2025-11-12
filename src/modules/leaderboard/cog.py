@@ -4,7 +4,7 @@ Leaderboard ranking system Discord interface.
 
 Displays global and player-specific rankings across multiple categories.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
     - Article VI: Discord UI layer only
     - Article VII: All logic delegated to LeaderboardService
     - Article I.5: Specific exception handling with embeds
@@ -37,9 +37,7 @@ class LeaderboardCog(BaseCog):
         /top level - Top players by level
         /top ascension - Top players by highest floor
         /top fusions - Top players by total fusions
-        /top wealth - Top players by rikis
-
-    Prefix aliases: rt, rtop, riki top
+        /top wealth - Top players by lumees
     """
 
     def __init__(self, bot: commands.Bot):
@@ -48,7 +46,7 @@ class LeaderboardCog(BaseCog):
 
     @commands.group(
         name="top",
-        aliases=["rtop", "rleaderboard", "rikitop"],
+        aliases=[],
         description="View global leaderboards and rankings",
         fallback="menu"
     )
@@ -173,8 +171,8 @@ class LeaderboardCog(BaseCog):
 
     @top.command(
         name="wealth",
-        aliases=["rikis", "rich"],
-        description="Top players by rikis"
+        aliases=["lumees", "rich"],
+        description="Top players by lumees"
     )
     @ratelimit(
         uses=ConfigManager.get("rate_limits.leaderboard.view.uses", 10),
@@ -183,7 +181,7 @@ class LeaderboardCog(BaseCog):
     )
     async def top_wealth(self, ctx: commands.Context, page: int = 1):
         """View wealth rankings."""
-        await self._show_leaderboard(ctx, "rikis", page)
+        await self._show_leaderboard(ctx, "lumees", page)
 
     @top.command(
         name="me",

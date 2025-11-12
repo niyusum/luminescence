@@ -22,7 +22,7 @@ class MaidenCog(BaseCog):
     an interactive menu interface. Players can browse their collection,
     filter by tier/element, and set/remove their leader maiden.
 
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - No locks for read operations (Article I.11)
         - Pessimistic locking for leader changes (Article I.1)
         - Command/Query separation (Article I.11)
@@ -36,7 +36,7 @@ class MaidenCog(BaseCog):
 
     @commands.command(
         name="maidens",
-        aliases=["rm", "rmaidens", "rikimaidens"],
+        aliases=[],
         description="View your maiden collection and manage your leader",
     )
     @ratelimit(

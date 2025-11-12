@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 class GuildService:
     """
     Guild feature service.
-    RIKI LAW: single-transaction ops, config-driven economics, immutable audit, no cog logic here.
+    LUMEN LAW: single-transaction ops, config-driven economics, immutable audit, no cog logic here.
     """
 
     # ======================
@@ -95,7 +95,7 @@ class GuildService:
         if already_in:
             raise InvalidOperationError("You must leave your current guild first.")
 
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         max_members_default = int(ConfigManager.get("guilds.base_max_members"))
 
         g = Guild(
@@ -434,8 +434,8 @@ class GuildService:
     # ====================
 
     @staticmethod
-    async def donate_to_treasury(session: AsyncSession, player_id: int, rikis: int) -> Dict[str, Any]:
-        if rikis <= 0:
+    async def donate_to_treasury(session: AsyncSession, player_id: int, lumees: int) -> Dict[str, Any]:
+        if lumees <= 0:
             raise InvalidOperationError("Donation amount must be positive.")
 
         membership = await GuildService._require_membership(session, player_id)
@@ -448,21 +448,21 @@ class GuildService:
         await ResourceService.consume_resources(
             session=session,
             player=player,
-            resources={"rikis": rikis},
+            resources={"lumees": lumees},
             source="guild_donation",
             context={"guild_id": guild.id, "guild_name": guild.name},
         )
 
-        guild.treasury += rikis
+        guild.treasury += lumees
 
-        session.add(GuildAudit(guild_id=guild.id, actor_player_id=player_id, action="donate", meta={"rikis": rikis}))
-        guild.add_activity("donate", str(player_id), {"rikis": rikis})
+        session.add(GuildAudit(guild_id=guild.id, actor_player_id=player_id, action="donate", meta={"lumees": lumees}))
+        guild.add_activity("donate", str(player_id), {"lumees": lumees})
 
         await TransactionLogger.log_transaction(
             session=session,
             player_id=player_id,
             transaction_type="guild_donate",
-            details={"rikis": rikis, "guild_id": guild.id, "guild_name": guild.name},
+            details={"lumees": lumees, "guild_id": guild.id, "guild_name": guild.name},
             context="guild",
         )
         await session.flush()
@@ -475,7 +475,7 @@ class GuildService:
 
         guild = await session.get(Guild, membership.guild_id, with_for_update=True)
         next_level = guild.level + 1
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         costs = ConfigManager.get("guilds.upgrade_costs")
         cost = int(costs.get(f"level_{next_level}", ConfigManager.get("guilds.base_upgrade_cost")))
 
@@ -486,7 +486,7 @@ class GuildService:
         guild.level = next_level
 
         # Progression knobs
-        # RIKI LAW I.6 - YAML is source of truth
+        # LUMEN LAW I.6 - YAML is source of truth
         growth = int(ConfigManager.get("guilds.member_growth_per_level"))
         guild.max_members += max(0, growth)
 

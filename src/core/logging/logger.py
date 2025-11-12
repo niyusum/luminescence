@@ -1,5 +1,5 @@
 """
-Production-grade logging system for RIKI RPG Bot.
+Production-grade logging system for Lumen RPG Bot.
 
 Features:
 - Rotating file handlers (size + time based)
@@ -9,7 +9,7 @@ Features:
 - Automatic log cleanup (30-day retention)
 - Environment-based configuration
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Audit logging for all state changes (Article II)
 - Discord context in all logs (Article II)
 - Graceful degradation (Article IX)
@@ -198,7 +198,7 @@ def setup_logging() -> None:
     root_logger.addHandler(console_handler)
     
     # === FILE HANDLER (Rotating by size) ===
-    log_file = Config.LOGS_DIR / "riki.log"
+    log_file = Config.LOGS_DIR / "lumen.log"
     
     file_handler = RotatingFileHandler(
         log_file,
@@ -220,8 +220,8 @@ def setup_logging() -> None:
     root_logger.addHandler(file_handler)
     
     # === DAILY FILE HANDLER (Rotating by time) ===
-    daily_log_file = Config.LOGS_DIR / "riki_daily.log"
-    
+    daily_log_file = Config.LOGS_DIR / "lumen_daily.log"
+
     daily_handler = TimedRotatingFileHandler(
         daily_log_file,
         when='midnight',
@@ -231,7 +231,7 @@ def setup_logging() -> None:
     )
     daily_handler.setLevel(log_level)
     daily_handler.setFormatter(file_formatter)
-    daily_handler.suffix = "%Y%m%d"  # Format: riki_daily.log.20250102
+    daily_handler.suffix = "%Y%m%d"  # Format: lumen_daily.log.20250102
     root_logger.addHandler(daily_handler)
     
     # === ERROR-ONLY FILE HANDLER ===
@@ -275,7 +275,7 @@ def _cleanup_old_logs() -> None:
         
         for log_file in Config.LOGS_DIR.glob("*.log*"):
             # Skip current log files
-            if log_file.name in ['riki.log', 'riki_daily.log', 'errors.log']:
+            if log_file.name in ['lumen.log', 'lumen_daily.log', 'errors.log']:
                 continue
             
             # Check file modification time

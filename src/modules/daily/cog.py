@@ -4,7 +4,7 @@ Daily rewards system.
 Handles the claim of daily rewards, applying streak bonuses, leader/class
 modifiers, and ensuring atomic state changes via pessimistic locking.
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
     - Article I.1: SELECT FOR UPDATE (Pessimistic Locking) for state mutation
     - Article I.9: Command latency metrics for observability
     - Article II: Structured Transaction and Error logging with full context
@@ -46,7 +46,7 @@ class DailyCog(BaseCog):
 
     @commands.command(
         name="daily",
-        aliases=["rd", "rdaily", "rikidaily"],
+        aliases=[],
         description="Claim your daily rewards",
     )
     @ratelimit(
@@ -56,28 +56,28 @@ class DailyCog(BaseCog):
     )
     async def daily(self, ctx: commands.Context):
         """Claim daily rewards."""
-        # RIKI LAW Article I.9 - Latency Metric Start
+        # LUMEN LAW Article I.9 - Latency Metric Start
         start_time = time.perf_counter()
         await ctx.defer()
 
         try:
             async with DatabaseService.get_transaction() as session:
-                # RIKI LAW Article I.1: Pessimistic locking for state mutation
+                # LUMEN LAW Article I.1: Pessimistic locking for state mutation
                 player = await self.require_player(ctx, session, ctx.author.id, lock=True)
                 if not player:
                     return
 
-                # RIKI LAW Article I.7: All business logic delegated to service
+                # LUMEN LAW Article I.7: All business logic delegated to service
                 result = await DailyService.claim_daily(session, player)
 
-                # RIKI LAW Article II: Transaction logging
+                # LUMEN LAW Article II: Transaction logging
                 await TransactionLogger.log_transaction(
                     session=session,
                     player_id=ctx.author.id,
                     transaction_type="daily_claimed",
                     details={
-                        "rikis_gained": result["rikis_gained"],
-                        "grace_gained": result["grace_gained"],
+                        "lumees_gained": result["lumees_gained"],
+                        "auric_coin_gained": result["auric_coin_gained"],
                         "streak": result["streak"],
                         "bonus_applied": result.get("bonus_applied", False),
                         "modifiers_applied": result.get("modifiers_applied", {}),
@@ -106,14 +106,14 @@ class DailyCog(BaseCog):
 
             embed.add_field(
                 name="💰 Rewards Received",
-                value=f"**+{result['rikis_gained']:,}** Rikis\n**+{result['grace_gained']}** Grace",
+                value=f"**+{result['lumees_gained']:,}** Lumees\n**+{result['auric_coin_gained']}** AuricCoin", 
                 inline=True,
             )
 
             if result.get("bonus_applied"):
                 embed.add_field(
                     name="🎉 Streak Bonus",
-                    value=f"**+{result.get('bonus_amount', 0):,}** extra rikis!\nKeep your streak going!",
+                    value=f"**+{result.get('bonus_amount', 0):,}** extra lumees!\nKeep your streak going!",
                     inline=True,
                 )
 
@@ -142,7 +142,7 @@ class DailyCog(BaseCog):
 
             await ctx.send(embed=embed)
 
-            # RIKI LAW Article I.9 - Latency Metric Logging (Success)
+            # LUMEN LAW Article I.9 - Latency Metric Logging (Success)
             latency = (time.perf_counter() - start_time) * 1000
             self.log_command_use(
                 "daily",
@@ -169,11 +169,6 @@ class DailyCog(BaseCog):
                     "An unexpected error occurred while claiming daily rewards.",
                     help_text="Please try again in a moment."
                 )
-
-    @commands.command(name="rd", hidden=True)
-    async def daily_short(self, ctx: commands.Context):
-        """Alias: rd -> daily"""
-        await self.daily(ctx)
 
 
 async def setup(bot: commands.Bot):

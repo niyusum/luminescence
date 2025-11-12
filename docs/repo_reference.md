@@ -1,10 +1,10 @@
-# RIKI RPG - Repository Reference
+# Lumen RPG - Repository Reference
 
 This file provides guidance to anyone when working with code in this repository.
 
 ## Project Overview
 
-RIKI RPG is a **production-ready** Discord bot built with discord.py for a maiden collection and progression RPG game. The architecture follows strict design principles documented in [docs/riki_law.md](docs/riki_law.md) - **all code must comply with RIKI LAW**.
+Lumen RPG is a **production-ready** Discord bot built with discord.py for a maiden collection and progression RPG game. The architecture follows strict design principles documented in [docs/lumen_law.md](docs/lumen_law.md) - **all code must comply with LUMEN LAW**.
 
 **Stack:** Python 3.11+, discord.py, PostgreSQL (SQLAlchemy/SQLModel), Redis (optional caching)
 
@@ -36,9 +36,9 @@ pip install -r requirements.txt
 
 ## Architecture Overview
 
-### RIKI LAW Compliance
+### LUMEN LAW Compliance
 
-This codebase follows **RIKI LAW** (see [docs/riki_law.md](docs/riki_law.md)) - a strict architectural constitution. Key principles:
+This codebase follows **LUMEN LAW** (see [docs/lumen_law.md](docs/lumen_law.md)) - a strict architectural constitution. Key principles:
 
 1. **Pessimistic Locking**: ALL commands that modify player state MUST use `with_for_update=True`
 2. **Transaction Logging**: ALL state changes MUST be logged via `TransactionLogger`
@@ -54,7 +54,7 @@ This codebase follows **RIKI LAW** (see [docs/riki_law.md](docs/riki_law.md)) - 
 src/
 ├── core/                      # Core infrastructure
 │   ├── bot/                  # Bot initialization, cog loading, base classes
-│   │   ├── riki_bot.py      # Main bot class with health monitoring
+│   │   ├── lumen_bot.py      # Main bot class with health monitoring
 │   │   ├── base_cog.py      # Base class for all cogs (use this!)
 │   │   └── loader.py        # Dynamic cog discovery (finds *_cog.py files)
 │   ├── config/               # Configuration management
@@ -84,7 +84,7 @@ src/
 │   ├── leaderboard/          # Player rankings
 │   ├── maiden/               # Maiden collection
 │   ├── player/               # Player profile & stats
-│   ├── prayer/               # Prayer charge system
+│   ├── drop/               # DROP charge system
 │   ├── resource/             # Resource management
 │   ├── shrines/              # Shrine interactions
 │   ├── summon/               # Gacha summoning
@@ -230,7 +230,7 @@ class ConfirmActionView(discord.ui.View):
         try:
             async with RedisService.acquire_lock(lock_key, timeout=5):
                 async with DatabaseService.get_transaction() as session:
-                    # 4. Pessimistic locking (RIKI LAW Article I.1)
+                    # 4. Pessimistic locking (LUMEN LAW Article I.1)
                     player = await PlayerService.get_player_with_regen(
                         session, self.user_id, lock=True
                     )
@@ -238,7 +238,7 @@ class ConfirmActionView(discord.ui.View):
                     # 5. Call service (ALL business logic here)
                     result = await MyService.execute_action(session, player)
 
-                    # 6. Transaction logging (RIKI LAW Article II)
+                    # 6. Transaction logging (LUMEN LAW Article II)
                     await TransactionLogger.log_transaction(
                         session=session,
                         player_id=self.user_id,
@@ -290,9 +290,9 @@ class ConfirmActionView(discord.ui.View):
 1. **Timeout**: Set appropriate timeout (120s for quick actions, 300s for extended interactions)
 2. **User Validation**: EVERY button/modal callback MUST validate `interaction.user.id == self.user_id`
 3. **Defer Response**: Use `await interaction.response.defer()` for operations >3 seconds
-4. **Redis Locks**: Use `RedisService.acquire_lock()` for state-modifying operations (RIKI LAW Article I.3)
-5. **Pessimistic Locking**: Use `lock=True` in database transactions (RIKI LAW Article I.1)
-6. **Transaction Logging**: Log within database session (RIKI LAW Article II)
+4. **Redis Locks**: Use `RedisService.acquire_lock()` for state-modifying operations (LUMEN LAW Article I.3)
+5. **Pessimistic Locking**: Use `lock=True` in database transactions (LUMEN LAW Article I.1)
+6. **Transaction Logging**: Log within database session (LUMEN LAW Article II)
 7. **Service Delegation**: ALL business logic in services, NEVER in views
 8. **Error Handling**: Catch domain exceptions and convert to user-friendly embeds
 9. **Disable After Use**: Disable buttons after successful action or on timeout
@@ -428,7 +428,7 @@ class ChoiceDropdown(discord.ui.Select):
 **Redis Lock Patterns in Views:**
 - Combat actions: `f"combat:{user_id}:{floor}"`
 - Fusion: `f"fusion:{user_id}"`
-- Prayer: `f"pray:{user_id}"`
+- DROP: `f"drop:{user_id}"`
 - Summon: `f"summon:{user_id}"`
 - General pattern: `f"{feature}:{user_id}"`
 
@@ -542,10 +542,10 @@ Redis is **optional** - the bot gracefully degrades if Redis is unavailable:
 
 ## Discord Command Prefixes
 
-The bot supports flexible prefixes defined in [src/core/bot/riki_bot.py](src/core/bot/riki_bot.py):
+The bot supports flexible prefixes defined in [src/core/bot/lumen_bot.py](src/core/bot/lumen_bot.py):
 - `r`, `r `, `r  `, `r   ` (with 0-3 spaces)
-- `riki`, `riki `, `riki  `, `riki   `
-- Mention-based (`@RIKI`)
+- `lumen`, `lumen `, `lumen  `, `lumen   `
+- Mention-based (`@LUMEN`)
 
 ## Rate Limiting
 
@@ -600,7 +600,7 @@ The bot includes health monitoring, startup metrics, and service degradation det
 - **Always use `EmbedBuilder`** for consistent Discord UI
 - **Always validate users in view interactions** - check `interaction.user.id`
 - **Always use Redis locks for button handlers** that modify state
-- **Read RIKI LAW** ([docs/riki_law.md](docs/riki_law.md)) before making architectural changes
+- **Read LUMEN LAW** ([docs/lumen_law.md](docs/lumen_law.md)) before making architectural changes
 
 ## Configuration Files
 
@@ -612,7 +612,7 @@ The bot includes health monitoring, startup metrics, and service degradation det
 ## Documentation Reference
 
 ### Core Standards
-- **[docs/riki_law.md](docs/riki_law.md)** - Architectural constitution (13 commandments)
+- **[docs/lumen_law.md](docs/lumen_law.md)** - Architectural constitution (13 commandments)
 - **[docs/ERROR_HANDLING_STANDARD.md](docs/ERROR_HANDLING_STANDARD.md)** - Error handling patterns (100% compliance)
 - **[docs/TYPE_HINTS_DOCSTRINGS_STANDARD.md](docs/TYPE_HINTS_DOCSTRINGS_STANDARD.md)** - Type hints & docstrings guide
 - **[docs/DEVELOPER_GUIDE_NEW_FEATURES.md](docs/DEVELOPER_GUIDE_NEW_FEATURES.md)** - Quick reference for common patterns

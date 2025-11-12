@@ -1,5 +1,5 @@
 # Combat Mechanics Configuration
-# RIKI LAW I.6: All tunable game balance parameters in ConfigManager
+# LUMEN LAW I.6: All tunable game balance parameters in ConfigManager
 #
 # These values control combat calculations and can be hot-reloaded
 # for live balance tuning without code deployment.

@@ -9,7 +9,7 @@ Features:
 - Performance metrics tracking
 - Structured logging with context propagation
 
-RIKI LAW Compliance:
+LUMEN LAW Compliance:
 - Complete audit trails for all state changes (Article II)
 - Discord context in all transaction logs (Article II)
 - Graceful error handling (Article IX)
@@ -32,17 +32,17 @@ logger = get_logger(__name__)
 
 class TransactionLogger:
     """
-    Centralized audit logging for all game transactions (RIKI LAW Article II).
+    Centralized audit logging for all game transactions (LUMEN LAW Article II).
     
     Records every significant player action for debugging, support tickets,
     anti-cheat, and compliance. All logs stored in database for long-term retention.
     
     Transaction Types:
-        - resource_change_* (rikis, grace, energy, etc.)
+        - resource_change_* (lumees, auric coin, energy, etc.)
         - maiden_* (acquired, fused, consumed)
         - fusion_attempt
         - summon_attempt
-        - prayer_performed
+        - drop_performed
         - level_up
         - quest_completed
     """
@@ -155,12 +155,12 @@ class TransactionLogger:
         context: Optional[str] = None
     ) -> None:
         """
-        Log a resource change (rikis, grace, energy, stamina, etc.).
+        Log a resource change (lumees, auric coin, energy, stamina, etc.).
         
         Args:
             session: Database session
             player_id: Discord ID
-            resource_type: Type of resource (rikis, grace, energy, etc.)
+            resource_type: Type of resource (lumees, auric coin, energy, etc.)
             old_value: Value before change
             new_value: Value after change
             reason: Why the change occurred
@@ -238,7 +238,7 @@ class TransactionLogger:
             player_id: Discord ID
             success: Whether fusion succeeded
             tier: Input maiden tier
-            cost: Rikis cost
+            cost: Lumees cost
             result_tier: Output maiden tier (if successful)
             context: Command that triggered fusion
         """
@@ -284,13 +284,13 @@ class TransactionLogger:
             >>> await TransactionLogger.batch_log(session, [
             ...     {
             ...         "player_id": 123,
-            ...         "transaction_type": "resource_change_rikis",
+            ...         "transaction_type": "resource_change_lumees",
             ...         "details": {"delta": 100},
             ...         "context": "daily_reward"
             ...     },
             ...     {
             ...         "player_id": 456,
-            ...         "transaction_type": "resource_change_rikis",
+            ...         "transaction_type": "resource_change_lumees",
             ...         "details": {"delta": 100},
             ...         "context": "daily_reward"
             ...     }

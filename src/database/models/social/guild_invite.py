@@ -13,7 +13,7 @@ class GuildInvite(SQLModel, table=True):
     """
     Persistent guild invitation model.
 
-    RIKI LAW Compliance:
+    LUMEN LAW Compliance:
         - De-duplication via unique (guild_id, target_player_id)
         - Lifecycle control via `active` flag
         - Expiry timestamps for auto-clean tasks

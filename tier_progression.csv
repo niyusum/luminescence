@@ -1,0 +1,61 @@
+Tier,Name,Fusion Cost (Lumees),Success Rate (%),Expected Attempts,Expected Total Cost,Cumulative Cost,Shards Per Failure (Range),Base Power (Assumed),First Access Method,Level Requirement,Weeks to First T12 (F2P Estimate)
+1,Common,1000,75,1.33,1333,1333,3-15,20,Tutorial Summon,1,0
+2,Uncommon,2200,70,1.43,3143,4476,3-15,40,Fusion T1 or Summon,1,1
+3,Rare,4840,65,1.54,7454,11930,3-15,60,Fusion T2 or Summon,1,2
+4,Epic,10648,60,1.67,17748,29678,3-15,80,Fusion T3 or Summon L10+,10,3
+5,Mythic,23425,55,1.82,42638,72316,3-15,100,Fusion T4 or Summon L20+,20,5
+6,Divine,51536,50,2.00,103072,175388,3-15,120,Fusion T5 or Summon L30+,30,8
+7,Legendary,113379,45,2.22,252118,427506,3-15,140,Fusion T6 or Summon L30+,30,12
+8,Ethereal,249433,40,2.50,623583,1051089,3-15,160,Fusion T7 or Summon L40+,40,16
+9,Genesis,548753,35,2.86,1569433,2620522,3-15,180,Fusion T8 or Summon L40+,40,20
+10,Empyrean,1207256,30,3.33,4024183,6644705,3-15,200,Fusion T9 or Summon L40+,40,24
+11,Void,2655963,25,4.00,10623852,17268557,3-15,220,Fusion T10 or Summon L45+,45,28
+12,Singularity,N/A (Terminal),N/A,N/A,N/A,N/A,N/A,240,Fusion T11 or Summon L50+ or Exploration S7,50,30-35
+
+"Notes:"
+"- **Expected Attempts**: 1 / (Success Rate / 100)"
+"- **Expected Total Cost**: Fusion Cost × Expected Attempts"
+"- **Cumulative Cost**: Sum of all expected costs from T1 to current tier"
+"- **Shards Per Failure**: Random range (3-15 with avg ~9)"
+"- **Base Power**: Assumed linear scaling (20 per tier) for ATK+DEF total"
+"- **F2P Weeks Estimate**: Time to reach first maiden of each tier via fusion path, assuming:"
+"  - 2 hours active playtime per day"
+"  - 3 fusion attempts per day (when resources allow)"
+"  - 100 energy/day for exploration (~2.5k lumees)"
+"  - 50 stamina/day for ascension (~40k lumees)"
+"  - 3 Lesser Shrines at Level 6 by mid-game (~232k lumees/day)"
+"  - Daily/weekly rewards (~10-15k lumees/day)"
+""
+"**Total Lumees to T12 via Fusion Path: ~17.27 Million**"
+""
+"**Alternative Paths:**"
+"- **Exploration Capture (T12)**: Sector 7 encounters, 2% capture rate → ~25,000 energy investment OR 25k lumenite guaranteed purification"
+"- **Direct Summon (L50)**: Unlock T12 summons at level 50, subject to gacha rates (~4.5% if all tiers unlocked)"
+""
+"**Tier 12 Power Projection:**"
+"- Full T12 Team (6 maidens): 240 × 6 = 1,440 strategic power"
+"- Realistic Mixed Team (L50): 1x T12 + 2x T10 + 3x T8 = 1,120 power"
+"- Stat Allocation Impact (Level 50, 250 points): +800 energy OR +400 stamina OR +25,000 HP"
+""
+"**Diminishing Returns:**"
+"- T1-T5: High success rates (75-55%), fast progression, low cost"
+"- T6-T9: Moderate success (50-35%), shard accumulation phase, exponential cost"
+"- T10-T11: Low success (30-25%), heavy shard dependency, massive lumees sink"
+"- T12: Terminal tier, cannot fuse further, requires alternative progression (awakenin system not yet implemented)"
+""
+"**Shard Redemption Analysis:**"
+"- 100 shards required for guaranteed fusion"
+"- Average 9 shards per failure → ~11 failures to reach 100 shards"
+"- T11 Example: 11 failures × 2.66M lumees = 29.2M lumees (vs 10.6M expected via RNG)"
+"- **Verdict**: Shards are LESS efficient than repeated RNG attempts for all tiers"
+""
+"**Time-to-Endgame:**"
+"- First T12 Maiden: 30-35 weeks (7-8 months) F2P"
+"- Full T12 Team (6 maidens): 50-70 weeks (12-18 months) F2P"
+"- Level 100: 80+ weeks (18+ months) active play"
+""
+"**Grind Intensity Comparison:**"
+"- F2P (1 hr/day): 35-40 weeks to first T12"
+"- Active (2 hr/day): 30-35 weeks to first T12"
+"- Heavy (4+ hr/day + shrine optimization): 20-25 weeks to first T12"
+"- Whale (lumenite for guaranteed purifications): 1-2 weeks to first T12 (requires 25k lumenite)"

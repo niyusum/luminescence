@@ -189,7 +189,7 @@ class CombatUtils:
             "abyssal": "💧",
             "tempest": "🌪️",
             "earth": "🌿",
-            "radiant": "✨",
+            "Radiant": "✨",
             "umbral": "🌑",
         }
         return emojis.get(element, "⚪")
@@ -292,11 +292,11 @@ class ProgressUtils:
             Formatted string with emoji
         """
         emojis = {
-            "energy": "⚡",
+            "energy": "🪙",
             "stamina": "💪",
-            "gems": "💎",
-            "rikis": "💰",
-            "grace": "🙏",
+            "lumenite": "💎",
+            "lumees": "💰",
+            "auric_coin": "💎",
         }
         
         emoji = emojis.get(resource, "•")
@@ -311,11 +311,11 @@ class ProgressUtils:
             Formatted reward string
         """
         emojis = {
-            "rikis": "💰",
+            "lumees": "💰",
             "xp": "⭐",
-            "gems": "💎",
-            "grace": "🙏",
-            "prayer_charges": "🙏",
+            "lumenite": "💎",
+            "auric_coin": "💎",
+            "DROP_CHARGES": "💎",
             "fusion_catalyst": "🔮",
         }
         
