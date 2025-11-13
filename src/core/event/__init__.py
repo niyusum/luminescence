@@ -1,5 +1,17 @@
-"""
-Event bus and pub/sub system.
+from .bus import EventBus
+from .types import EventPayload, ListenerPriority, EventListener, CallbackType
+from .context import apply_event_log_context
 
-Provides event-driven architecture for decoupled feature communication.
-"""
+# Optional singleton
+event_bus = EventBus()
+
+__all__ = [
+    "event_bus",
+    "EventBus",
+    "EventPayload",
+    "ListenerPriority",
+    "EventListener",
+    "CallbackType",
+    "apply_event_log_context",
+]
+

@@ -32,7 +32,7 @@ from src.database.models.core.player import Player
 from src.database.models.economy.transaction_log import TransactionLog
 from src.core.config.config_manager import ConfigManager
 from src.core.infra.transaction_logger import TransactionLogger
-from src.core.event.event_bus import EventBus
+from core.event.bus.event_bus import EventBus
 from src.core.exceptions import (
     PlayerNotFoundError,
     ValidationError,

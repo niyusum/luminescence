@@ -1,38 +1,74 @@
 """
-Dynamic game configuration management with database backing and caching.
+ConfigManager: dynamic, cache-backed game configuration access for Lumen (2025).
 
-Features:
-- Hierarchical config access with dot notation (e.g., 'fusion_costs.base')
-- In-memory caching with TTL and background refresh
-- Hot-reload support for live balance changes
-- Config validation and type checking
-- Audit trail for all config changes
-- Performance metrics tracking
+Purpose
+-------
+- Provide hierarchical, dot-notation access to tunable game configuration values.
+- Back configuration with YAML defaults plus database overrides.
+- Maintain a warm in-memory cache with periodic background refresh.
+- Enable hot balance changes without redeploys, with full audit + optional events.
 
-LUMEN LAW Compliance:
-- Live config changes without redeploy (Article IV)
-- Audit trails for all modifications (Article II)
-- Graceful degradation to defaults (Article IX)
-- Performance metrics and monitoring (Article X)
+Responsibilities
+----------------
+- Load and merge infrastructure + balance defaults from the `config/` directory.
+- Overlay database-backed overrides on top of YAML defaults.
+- Serve configuration reads from an in-memory cache with metrics and stale detection.
+- Apply atomic, transactional updates to configuration values with pessimistic locking.
+- Validate configuration structures using recursive schema objects.
+- Emit transaction logs and optionally publish EventBus events on changes.
 
-Security:
-- All queries use parameterized SQLAlchemy statements
-- No string interpolation in SQL queries
-- User input treated as untrusted
+Lumen 2025 Compliance
+---------------------
+- **Separation of concerns**: Pure infra; no Discord or game-domain logic.
+- **Transaction discipline**:
+  - All writes use `DatabaseService.get_transaction()`; no manual commits/rollbacks.
+  - Writes lock the relevant `GameConfig` row via `SELECT ... FOR UPDATE`.
+- **Config-driven balance**:
+  - No hard-coded game parameters; tunables live in YAML or DB.
+  - TTL for config cache is itself configurable via YAML *and* DB.
+- **Observability**:
+  - Structured logs for init, refresh, reads, writes, validation, and errors.
+  - Metrics for hits, misses, stale reads, latencies, and error counts.
+  - Health and metrics snapshots for infra dashboards.
+- **Transaction logging & events**:
+  - Every mutation logs a transaction via `TransactionLogger`.
+  - Optional EventBus publish for config change events.
+- **Graceful degradation**:
+  - Falls back to YAML/defaults if DB is unavailable or config is invalid.
+  - Background refresh errors are logged but do not crash the loop.
 
-Note:
-- Element fusion combinations moved to maiden_constants.py (single source of truth)
-- ConfigManager handles only tunable game balance values
+Key Design Decisions
+--------------------
+- YAML is the single source for **defaults**; the database stores **overrides**.
+- Top-level config keys map to rows in `GameConfig`; nested config keys are
+  stored as nested dictionaries in `config_value`.
+- Cache refresh uses a configurable TTL. TTL can come from:
+  1. Hardcoded infra fallback (300s) – last resort.
+  2. YAML (`core.config_cache_ttl_seconds`).
+  3. Database (`core.config_cache_ttl_seconds`) – highest precedence.
+- A custom recursive `ConfigSchema` type enforces nested structure and types
+  per top-level key without external dependencies.
+- Reads include time-aware stale detection relative to TTL, tracked in metrics.
+
+Dependencies
+------------
+- `src.database.models.core.game_config.GameConfig` – DB model for persisted config.
+- `src.core.infra.database_service.DatabaseService` – async DB sessions and transactions.
+- `src.core.infra.transaction_logger.TransactionLogger` – audit logging for mutations.
+- `src.core.event.event_bus.EventBus` – optional EventBus publishing on config changes.
+- `src.core.logging.logger.get_logger` – structured logging interface.
 """
 
-from typing import Any, Dict, Optional, List
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from datetime import datetime
+from __future__ import annotations
+
 import asyncio
 import time
+from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
 from pathlib import Path
-import yaml
+from typing import Any, Dict, List, MutableMapping, Optional, Callable, Mapping, Union
+
+from sqlalchemy import select
 
 from src.database.models.core.game_config import GameConfig
 from src.core.logging.logger import get_logger
@@ -40,472 +76,1150 @@ from src.core.logging.logger import get_logger
 logger = get_logger(__name__)
 
 
+# ============================================================================
+# Exceptions
+# ============================================================================
+
+
+class ConfigManagerError(RuntimeError):
+    """Base error type for ConfigManager-related failures."""
+
+
+class ConfigInitializationError(ConfigManagerError):
+    """Raised when ConfigManager cannot initialize correctly."""
+
+
+class ConfigWriteError(ConfigManagerError):
+    """Raised when a configuration value cannot be persisted or validated."""
+
+
+# ============================================================================
+# Recursive Schema Objects
+# ============================================================================
+
+
+SchemaField = Union[type, "ConfigSchema"]
+
+
+@dataclass(slots=True)
+class ConfigSchema:
+    """
+    Recursive schema for nested configuration validation.
+
+    Each schema describes the expected shape of a configuration subtree:
+
+    - Keys map to:
+        - Python types (`int`, `float`, `str`, etc.), or
+        - Nested `ConfigSchema` instances.
+    - Unknown keys are allowed by default but can be forbidden via `allow_extra`.
+    """
+
+    fields: Mapping[str, SchemaField]
+    allow_extra: bool = True
+
+    def validate(self, value: Any, path: str = "") -> Any:
+        """
+        Validate `value` against this schema.
+
+        Parameters
+        ----------
+        value:
+            The value to validate (typically a dict subtree).
+        path:
+            Dot-notation path for error messages, e.g. "fusion_costs.curve.a".
+
+        Returns
+        -------
+        Any
+            The original value, if valid.
+
+        Raises
+        ------
+        ConfigWriteError
+            If validation fails.
+        """
+        if not isinstance(value, Mapping):
+            raise ConfigWriteError(
+                f"Config value at '{path or '<root>'}' must be a mapping; "
+                f"got {type(value).__name__}"
+            )
+
+        # Validate known fields.
+        for key, expected in self.fields.items():
+            full_path = f"{path}.{key}" if path else key
+            if key not in value:
+                # Missing keys are allowed; configs may be sparse.
+                continue
+
+            raw = value[key]
+
+            if isinstance(expected, ConfigSchema):
+                expected.validate(raw, path=full_path)
+            else:
+                # Simple type check; allow ints where float is expected.
+                if expected is float and isinstance(raw, int):
+                    continue
+                if not isinstance(raw, expected):
+                    raise ConfigWriteError(
+                        f"Config value at '{full_path}' must be {expected.__name__}; "
+                        f"got {type(raw).__name__}"
+                    )
+
+        # Optionally reject unknown fields.
+        if not self.allow_extra:
+            unknown_keys = set(value.keys()) - set(self.fields.keys())
+            if unknown_keys:
+                raise ConfigWriteError(
+                    f"Unexpected config keys at '{path or '<root>'}': "
+                    f"{', '.join(sorted(str(k) for k in unknown_keys))}"
+                )
+
+        return value
+
+
+# Structured schema definitions per top-level key.
+# NOTE: This is intentionally conservative; only well-understood fields are
+# specified. Unknown keys still pass validation when `allow_extra=True`.
+_SCHEMAS: Dict[str, ConfigSchema] = {
+    "fusion_costs": ConfigSchema(
+        fields={
+            "base": int,
+            "curve": ConfigSchema(
+                fields={
+                    "a": float,
+                    "b": float,
+                },
+                allow_extra=True,
+            ),
+        },
+        allow_extra=True,
+    ),
+    "event_modifiers": ConfigSchema(
+        fields={
+            "fusion_rate_boost": float,
+        },
+        allow_extra=True,
+    ),
+    "exploration": ConfigSchema(
+        fields={
+            "energy_costs": ConfigSchema(
+                fields={
+                    # Zone keys are typically ints but represented as numbers.
+                    "zone1": int,
+                    "zone2": int,
+                },
+                allow_extra=True,
+            )
+        },
+        allow_extra=True,
+    ),
+    "core": ConfigSchema(
+        fields={
+            "config_cache_ttl_seconds": int,
+        },
+        allow_extra=True,
+    ),
+}
+
+
+def _get_schema_for_top_key(top_key: str) -> Optional[ConfigSchema]:
+    """Return the schema for a given top-level key, if any."""
+    return _SCHEMAS.get(top_key)
+
+
+# ============================================================================
+# Metrics
+# ============================================================================
+
+
+@dataclass(slots=True)
+class ConfigMetrics:
+    """Typed metrics container for ConfigManager observability."""
+
+    gets: int = 0
+    sets: int = 0
+    cache_hits: int = 0
+    cache_misses: int = 0
+    fallback_to_defaults: int = 0
+    refresh_count: int = 0
+    errors: int = 0
+    total_get_time_ms: float = 0.0
+    total_set_time_ms: float = 0.0
+    stale_reads: int = 0
+
+
+# ============================================================================
+# ConfigManager
+# ============================================================================
+
+
 class ConfigManager:
     """
     Dynamic game configuration management with database backing and caching.
 
-    Provides hierarchical config access using dot notation (e.g., 'fusion_costs.base').
-    Cached in memory with TTL and periodically refreshed.
-    Allows live balance changes without redeploy (LUMEN LAW Article IV).
+    Features
+    --------
+    - Hierarchical config access with dot notation (e.g. `"fusion_costs.base"`).
+    - In-memory caching with periodic background refresh.
+    - Hot-reload support for live balance changes.
+    - Recursive schema-based validation for nested configuration structures.
+    - Audit trail via `TransactionLogger` and optional EventBus events.
+    - Performance metrics, stale-read detection, and health snapshots.
     """
 
+    # In-memory cache of fully materialized configuration values.
     _cache: Dict[str, Any] = {}
     _cache_timestamps: Dict[str, datetime] = {}
+
+    # Initialization & lifecycle state.
     _initialized: bool = False
-    _cache_ttl: int = 300
-    _refresh_task: Optional[asyncio.Task] = None
-    
-    # Metrics tracking
-    _metrics = {
-        "gets": 0,
-        "sets": 0,
-        "cache_hits": 0,
-        "cache_misses": 0,
-        "fallback_to_defaults": 0,
-        "refresh_count": 0,
-        "errors": 0,
-        "total_get_time_ms": 0.0,
-        "total_set_time_ms": 0.0,
-    }
+    _refresh_task: Optional[asyncio.Task[None]] = None
+
+    # Locks.
+    _init_lock: asyncio.Lock = asyncio.Lock()
+    _cache_lock: asyncio.Lock = asyncio.Lock()
+
+    # Cache refresh interval (seconds).
+    # Precedence: hardcoded default < YAML < DB.
+    _cache_ttl_seconds: int = 300
+
+    # Metrics container.
+    _metrics: ConfigMetrics = ConfigMetrics()
+
+    # YAML + infra defaults (non-gameplay fallbacks only).
+    _defaults: Dict[str, Any] = {}
+
+    # Optional validators: full dot key -> callable(value) -> value
+    _validators: Dict[str, Callable[[Any], Any]] = {}
+
+    # Event emission control (global toggle).
+    _emit_events: bool = True
 
     # =========================================================================
-    # DEFAULT CONFIGURATIONS
+    # YAML LOADING & DEFAULTS
     # =========================================================================
-    # LUMEN LAW I.6: All game parameters MUST be externalized to YAML files.
-    # This dict contains ONLY infrastructure defaults (fallback values).
-    # Game balance parameters are loaded from config/ directory YAML files.
-    _defaults: Dict[str, Any] = {}
+
+    @staticmethod
+    def _deep_merge_dict(
+        target: MutableMapping[str, Any],
+        source: MutableMapping[str, Any],
+    ) -> None:
+        """Recursively merge `source` into `target` (in-place)."""
+        for key, value in source.items():
+            if (
+                isinstance(value, dict)
+                and isinstance(target.get(key), dict)
+            ):
+                ConfigManager._deep_merge_dict(
+                    target[key], value  # type: ignore[index]
+                )
+            else:
+                target[key] = value
+
+    @classmethod
+    def _load_yaml_configs(cls) -> None:
+        """
+        Recursively load all YAML config files from `config/` into `_defaults`.
+
+        - Deep-merges all YAML dictionaries to allow modular composition.
+        - Only infra defaults and balance defaults belong here; no secrets.
+        - Gracefully handles missing `config/` directory or missing PyYAML.
+        """
+        try:
+            import yaml  # type: ignore[import]
+        except ImportError:
+            logger.warning(
+                "PyYAML not installed; skipping YAML config loading. "
+                "Install with: pip install pyyaml"
+            )
+            return
+
+        config_dir = Path("config")
+        if not config_dir.exists():
+            logger.warning(
+                "Config directory not found; using built-in defaults only",
+                extra={"config_dir": str(config_dir)},
+            )
+            return
+
+        yaml_files = list(config_dir.rglob("*.yaml")) + list(config_dir.rglob("*.yml"))
+        if not yaml_files:
+            logger.info(
+                "No YAML config files discovered; using built-in defaults only",
+                extra={"config_dir": str(config_dir)},
+            )
+            return
+
+        loaded_count = 0
+
+        for yaml_file in yaml_files:
+            try:
+                with yaml_file.open("r", encoding="utf-8") as handle:
+                    data = yaml.safe_load(handle)
+                if isinstance(data, dict):
+                    cls._deep_merge_dict(cls._defaults, data)
+                    loaded_count += 1
+                    logger.debug(
+                        "Loaded YAML config",
+                        extra={
+                            "file": str(yaml_file.relative_to(config_dir)),
+                            "absolute_path": str(yaml_file),
+                        },
+                    )
+                elif data is not None:
+                    logger.warning(
+                        "Ignoring non-dict YAML root object",
+                        extra={
+                            "file": str(yaml_file.relative_to(config_dir)),
+                            "root_type": type(data).__name__,
+                        },
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to load YAML config",
+                    extra={
+                        "file": str(yaml_file.relative_to(config_dir)),
+                        "absolute_path": str(yaml_file),
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                    },
+                    exc_info=True,
+                )
+
+        # Copy defaults into cache as initial in-memory state.
+        cls._cache = dict(cls._defaults)
+
+        logger.info(
+            "YAML configs loaded",
+            extra={
+                "yaml_file_count": loaded_count,
+                "total_cache_keys": len(cls._cache),
+            },
+        )
+
+        # Allow YAML to define cache TTL; DB can override later.
+        cls._refresh_cache_ttl_from_cache_locked()
+
+    @classmethod
+    def _refresh_cache_ttl_from_cache_locked(cls) -> None:
+        """
+        Inspect current cache for TTL configuration and update `_cache_ttl_seconds`.
+
+        Precedence:
+        - `core.config_cache_ttl_seconds` in cache (DB overrides YAML).
+        - Leaves existing value unchanged if no valid override present.
+
+        NOTE: Must be called only when `_cache_lock` is already held OR in
+        single-threaded initialization scenarios.
+        """
+        core_cfg = cls._cache.get("core")
+        ttl_candidate: Optional[int] = None
+
+        if isinstance(core_cfg, Mapping):
+            raw = core_cfg.get("config_cache_ttl_seconds")
+            if isinstance(raw, int) and raw > 0:
+                ttl_candidate = raw
+
+        if ttl_candidate is not None and ttl_candidate != cls._cache_ttl_seconds:
+            old_ttl = cls._cache_ttl_seconds
+            cls._cache_ttl_seconds = ttl_candidate
+            logger.info(
+                "Config cache TTL updated from cache",
+                extra={
+                    "old_cache_ttl_seconds": old_ttl,
+                    "new_cache_ttl_seconds": cls._cache_ttl_seconds,
+                },
+            )
 
     # =========================================================================
     # INITIALIZATION / REFRESH
     # =========================================================================
 
     @classmethod
-    def _load_yaml_configs(cls) -> None:
-        """
-        Recursively load all YAML config files from config/ directory into cache.
-
-        LUMEN LAW I.6: All game parameters externalized to YAML files.
-        Files are merged into _defaults first, then copied to _cache.
-        Supports nested directory structure (e.g., config/fusion/rates.yaml).
-        Gracefully handles missing yaml library or config files.
-        """
-        try:
-            config_dir = Path("config")
-            if not config_dir.exists():
-                logger.warning("config/ directory not found, skipping YAML loading")
-                return
-
-            # Recursively find all YAML files in config/ and subdirectories
-            yaml_files = list(config_dir.rglob("*.yaml")) + list(config_dir.rglob("*.yml"))
-            if not yaml_files:
-                logger.info("No YAML config files found in config/")
-                return
-
-            loaded_count = 0
-            for yaml_file in yaml_files:
-                try:
-                    with open(yaml_file, 'r', encoding='utf-8') as f:
-                        data = yaml.safe_load(f)
-                        if data:
-                            # Merge into defaults (preserves existing defaults)
-                            cls._defaults.update(data)
-                            loaded_count += 1
-                            logger.debug(f"Loaded YAML config: {yaml_file.relative_to(config_dir)}")
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to load YAML config {yaml_file.relative_to(config_dir)}: {e}",
-                        extra={"file": str(yaml_file), "error": str(e)}
-                    )
-
-            # Copy merged defaults to cache
-            cls._cache = cls._defaults.copy()
-
-            logger.info(
-                f"Loaded {loaded_count} YAML config files from config/",
-                extra={"yaml_count": loaded_count, "total_keys": len(cls._cache)}
-            )
-
-        except ImportError:
-            logger.warning(
-                "PyYAML not installed, skipping YAML config loading. "
-                "Install with: pip install pyyaml"
-            )
-        except Exception as e:
-            logger.error(
-                f"Error loading YAML configs: {e}",
-                extra={"error_type": type(e).__name__},
-                exc_info=True
-            )
-
-    @classmethod
     async def initialize(cls) -> None:
         """
-        Load configs from YAML files and database into cache.
+        Initialize ConfigManager from YAML and the database (idempotent).
 
-        YAML files in config/ directory are loaded first, then merged with database configs.
-        Database configs take precedence over YAML configs.
+        Steps
+        -----
+        - Load YAML defaults from the `config/` directory.
+        - Materialize DB-backed overrides onto the in-memory cache.
+        - Validate DB overrides against schemas where available.
+        - Start the background refresh task if not already running.
 
-        Raises:
-            Exception: If initialization fails critically
+        Raises
+        ------
+        ConfigInitializationError
+            If initialization fails in a way that should abort startup.
         """
-        from src.core.infra.database_service import DatabaseService
+        from src.core.database.service import DatabaseService
 
-        try:
-            # Step 1: Load YAML configs from config/ directory
+        # Double-checked locking to avoid racing initializers.
+        if cls._initialized:
+            return
+
+        async with cls._init_lock:
+            if cls._initialized:
+                return
+
+            init_start = time.perf_counter()
+
+            # Step 1: always (re)load YAML defaults into `_defaults` and `_cache`.
             cls._load_yaml_configs()
 
-            # Step 2: Load database configs (overrides YAML)
-            async with DatabaseService.get_session() as session:
-                result = await session.execute(select(GameConfig))
-                configs = result.scalars().all()
+            try:
+                async with DatabaseService.get_session() as session:
+                    result = await session.execute(select(GameConfig))
+                    configs: List[GameConfig] = list(result.scalars().all())
 
-                if configs:
-                    for cfg in configs:
-                        cls._cache[cfg.config_key] = cfg.config_value
-                        cls._cache_timestamps[cfg.config_key] = datetime.utcnow()
-                    logger.info(
-                        f"ConfigManager initialized: loaded {len(configs)} configs from database",
-                        extra={"config_count": len(configs), "source": "database"}
-                    )
-                else:
-                    # No DB configs, use defaults + YAML
-                    if not cls._cache:
-                        cls._cache = cls._defaults.copy()
-                    logger.info(
-                        "ConfigManager initialized: using defaults + YAML (no DB configs)",
-                        extra={"config_count": len(cls._cache), "source": "defaults+yaml"}
-                    )
+                    async with cls._cache_lock:
+                        if configs:
+                            for cfg in configs:
+                                # Validate with schema if available.
+                                schema = _get_schema_for_top_key(cfg.config_key)
+                                if schema:
+                                    try:
+                                        schema.validate(
+                                            cfg.config_value,
+                                            path=cfg.config_key,
+                                        )
+                                    except ConfigWriteError as validation_exc:
+                                        cls._metrics.errors += 1
+                                        logger.error(
+                                            "Invalid config in database; "
+                                            "skipping override and using defaults",
+                                            extra={
+                                                "config_key": cfg.config_key,
+                                                "error": str(validation_exc),
+                                                "error_type": type(validation_exc).__name__,
+                                            },
+                                            exc_info=True,
+                                        )
+                                        # Do not override YAML/defaults for this key.
+                                        continue
+
+                                cls._cache[cfg.config_key] = cfg.config_value
+                                cls._cache_timestamps[cfg.config_key] = datetime.now(
+                                    timezone.utc
+                                )
+
+                            logger.info(
+                                "ConfigManager initialized from database",
+                                extra={
+                                    "config_count": len(configs),
+                                    "source": "database+yaml",
+                                },
+                            )
+                        else:
+                            # No DB overrides; rely on YAML + built-in defaults.
+                            if not cls._cache:
+                                cls._cache = dict(cls._defaults)
+                            logger.info(
+                                "ConfigManager initialized without DB overrides; "
+                                "using defaults",
+                                extra={
+                                    "config_count": len(cls._cache),
+                                    "source": "yaml+defaults",
+                                },
+                            )
+
+                        # Allow DB overrides to set cache TTL.
+                        cls._refresh_cache_ttl_from_cache_locked()
 
                 cls._initialized = True
 
-                # Start background refresh task
-                if cls._refresh_task is None:
+                if cls._refresh_task is None or cls._refresh_task.done():
                     cls._refresh_task = asyncio.create_task(cls._background_refresh())
-                    logger.info(f"ConfigManager background refresh started (ttl={cls._cache_ttl}s)")
+                    logger.info(
+                        "ConfigManager background refresh started",
+                        extra={"cache_ttl_seconds": cls._cache_ttl_seconds},
+                    )
 
-        except Exception as e:
-            cls._metrics["errors"] += 1
-            logger.error(
-                f"Failed to initialize ConfigManager: {e}",
-                extra={"error_type": type(e).__name__},
-                exc_info=True
-            )
-            # Fallback to defaults to keep system running
-            cls._cache = cls._defaults.copy()
-            cls._initialized = True
-            raise
+                elapsed_ms = (time.perf_counter() - init_start) * 1000
+                logger.info(
+                    "ConfigManager initialization completed",
+                    extra={"latency_ms": round(elapsed_ms, 2)},
+                )
+
+            except Exception as exc:
+                cls._metrics.errors += 1
+                # Keep the system limping along with defaults where possible.
+                async with cls._cache_lock:
+                    if not cls._cache:
+                        cls._cache = dict(cls._defaults)
+
+                cls._initialized = True  # Mark as initialized in degraded mode.
+
+                logger.error(
+                    "ConfigManager initialization failed; falling back to defaults",
+                    extra={
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                        "cache_keys_after_fallback": len(cls._cache),
+                    },
+                    exc_info=True,
+                )
+                raise ConfigInitializationError("Failed to initialize ConfigManager") from exc
 
     @classmethod
     async def _background_refresh(cls) -> None:
-        """Periodically refresh configs from database."""
-        from src.core.infra.database_service import DatabaseService
-        
-        while True:
-            try:
-                await asyncio.sleep(cls._cache_ttl)
-                
-                async with DatabaseService.get_session() as session:
-                    result = await session.execute(select(GameConfig))
-                    configs = result.scalars().all()
-                    
-                    for cfg in configs:
-                        cls._cache[cfg.config_key] = cfg.config_value
-                        cls._cache_timestamps[cfg.config_key] = datetime.utcnow()
-                    
-                    cls._metrics["refresh_count"] += 1
-                    
-                    logger.debug(
-                        f"ConfigManager cache refreshed ({len(configs)} configs)",
-                        extra={"config_count": len(configs), "refresh_count": cls._metrics["refresh_count"]}
+        """
+        Periodically refresh configuration overrides from the database.
+
+        - Runs forever until cancelled via `shutdown()`.
+        - Uses `_cache_ttl_seconds` as the sleep interval (TTL from YAML/DB).
+        - Validates incoming configs against schemas where available.
+        - Never raises to the task loop; all errors are logged and counted.
+        """
+        from src.core.database.service import DatabaseService
+
+        logger.debug(
+            "ConfigManager background refresh loop starting",
+            extra={"cache_ttl_seconds": cls._cache_ttl_seconds},
+        )
+
+        try:
+            while True:
+                try:
+                    await asyncio.sleep(cls._cache_ttl_seconds)
+
+                    async with DatabaseService.get_session() as session:
+                        result = await session.execute(select(GameConfig))
+                        configs: List[GameConfig] = list(result.scalars().all())
+
+                        async with cls._cache_lock:
+                            for cfg in configs:
+                                schema = _get_schema_for_top_key(cfg.config_key)
+                                if schema:
+                                    try:
+                                        schema.validate(
+                                            cfg.config_value,
+                                            path=cfg.config_key,
+                                        )
+                                    except ConfigWriteError as validation_exc:
+                                        cls._metrics.errors += 1
+                                        logger.error(
+                                            "Invalid config in database during refresh; "
+                                            "skipping update and preserving existing cache",
+                                            extra={
+                                                "config_key": cfg.config_key,
+                                                "error": str(validation_exc),
+                                                "error_type": type(validation_exc).__name__,
+                                            },
+                                            exc_info=True,
+                                        )
+                                        continue
+
+                                cls._cache[cfg.config_key] = cfg.config_value
+                                cls._cache_timestamps[cfg.config_key] = datetime.now(
+                                    timezone.utc
+                                )
+
+                            cls._metrics.refresh_count += 1
+
+                            # DB overrides can update TTL.
+                            cls._refresh_cache_ttl_from_cache_locked()
+
+                        logger.debug(
+                            "ConfigManager cache refreshed from database",
+                            extra={
+                                "config_count": len(configs),
+                                "refresh_count": cls._metrics.refresh_count,
+                            },
+                        )
+                except asyncio.CancelledError:
+                    logger.info("ConfigManager background refresh task cancelled")
+                    raise
+                except Exception as exc:
+                    cls._metrics.errors += 1
+                    logger.error(
+                        "ConfigManager background refresh error",
+                        extra={
+                            "error": str(exc),
+                            "error_type": type(exc).__name__,
+                        },
+                        exc_info=True,
                     )
-                    
-            except asyncio.CancelledError:
-                logger.info("ConfigManager background refresh cancelled")
-                break
-            except Exception as e:
-                cls._metrics["errors"] += 1
-                logger.error(f"ConfigManager background refresh error: {e}", exc_info=True)
+        except asyncio.CancelledError:
+            logger.info("ConfigManager background refresh loop terminated")
 
     @classmethod
     async def shutdown(cls) -> None:
-        """Stop background refresh task and cleanup resources."""
-        if cls._refresh_task:
-            cls._refresh_task.cancel()
-            try:
-                await cls._refresh_task
-            except asyncio.CancelledError:
-                pass
+        """
+        Stop the background refresh task and clean up resources.
+
+        Safe to call multiple times.
+        """
+        task = cls._refresh_task
+        if task is None:
+            return
+
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        finally:
             cls._refresh_task = None
             logger.info("ConfigManager shutdown complete")
 
     # =========================================================================
-    # PUBLIC METHODS
+    # EVENT EMISSION CONTROL
     # =========================================================================
-    
+
     @classmethod
-    def get(cls, key: str, default: Any = None) -> Any:
+    def set_event_emission(cls, enabled: bool) -> None:
+        """Globally enable or disable EventBus publishing on config changes."""
+        cls._emit_events = enabled
+        logger.info(
+            "ConfigManager event emission updated",
+            extra={"emit_events": enabled},
+        )
+
+    @classmethod
+    def enable_events(cls) -> None:
+        """Enable EventBus publishing on config changes."""
+        cls.set_event_emission(True)
+
+    @classmethod
+    def disable_events(cls) -> None:
+        """Disable EventBus publishing on config changes."""
+        cls.set_event_emission(False)
+
+    # =========================================================================
+    # VALIDATION HOOKS
+    # =========================================================================
+
+    @classmethod
+    def register_validator(cls, key: str, validator: Callable[[Any], Any]) -> None:
         """
-        Retrieve config value by dot notation path.
-        
-        Args:
-            key: Dot-notation config path (e.g., 'fusion_costs.base')
-            default: Default value if key not found
-        
-        Returns:
-            Config value or default
-        
-        Example:
-            >>> base_cost = ConfigManager.get('fusion_costs.base')
-            >>> # 1000
-            >>> 
-            >>> event_boost = ConfigManager.get('event_modifiers.fusion_rate_boost', 0.0)
-            >>> # 0.0
+        Register a validator for a specific configuration key path.
+
+        Validators are invoked on write and must either:
+        - return a (possibly transformed) value, or
+        - raise an exception to block the write.
+
+        Parameters
+        ----------
+        key:
+            Exact dot-notation key to validate (e.g. `"fusion_costs.base"`).
+        validator:
+            Callable that accepts the proposed value and returns the value to persist.
         """
-        start_time = time.perf_counter()
-        cls._metrics["gets"] += 1
-        
-        if not cls._initialized:
-            logger.warning("ConfigManager not initialized, using defaults")
-            cls._cache = cls._defaults.copy()
-            cls._initialized = True
-            cls._metrics["fallback_to_defaults"] += 1
-        
+        cls._validators[key] = validator
+        logger.info(
+            "ConfigManager validator registered",
+            extra={
+                "config_key": key,
+                "validator": getattr(validator, "__name__", "anonymous"),
+            },
+        )
+
+    @classmethod
+    def _apply_validator(cls, key: str, value: Any) -> Any:
+        """
+        Apply a validator for the key if registered; otherwise, return the value.
+
+        Validators are best-effort: any exception is logged and counted, but will
+        be re-raised as a `ConfigWriteError` to keep semantics explicit.
+        """
+        validator = cls._validators.get(key)
+        if not validator:
+            return value
+
         try:
-            keys = key.split(".")
-            value = cls._cache
-            
-            for k in keys:
-                if isinstance(value, dict):
-                    value = value.get(k)
-                    if value is None:
-                        cls._metrics["cache_misses"] += 1
-                        fallback = cls._get_from_defaults(key)
-                        if fallback is not None:
-                            cls._metrics["fallback_to_defaults"] += 1
-                        return fallback or default
-                else:
-                    cls._metrics["cache_misses"] += 1
-                    fallback = cls._get_from_defaults(key)
-                    if fallback is not None:
-                        cls._metrics["fallback_to_defaults"] += 1
-                    return fallback or default
-            
-            cls._metrics["cache_hits"] += 1
-            
-            elapsed_ms = (time.perf_counter() - start_time) * 1000
-            cls._metrics["total_get_time_ms"] += elapsed_ms
-            
-            return value if value is not None else default
-            
-        except Exception as e:
-            cls._metrics["errors"] += 1
+            return validator(value)
+        except Exception as exc:
+            cls._metrics.errors += 1
             logger.error(
-                f"Error getting config: key={key} error={e}",
-                extra={"config_key": key},
-                exc_info=True
+                "Config validation failed",
+                extra={
+                    "config_key": key,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+                exc_info=True,
             )
-            return cls._get_from_defaults(key) or default
+            raise ConfigWriteError(f"Validation failed for config key '{key}'") from exc
+
+    @classmethod
+    def _apply_schema_validation_for_write(
+        cls,
+        top_key: str,
+        final_value: Any,
+    ) -> Any:
+        """
+        Validate a top-level configuration payload against its schema (if any).
+
+        Intended for writes: failure results in `ConfigWriteError` and blocks
+        the write operation.
+        """
+        schema = _get_schema_for_top_key(top_key)
+        if not schema:
+            return final_value
+
+        return schema.validate(final_value, path=top_key)
+
+    # =========================================================================
+    # READ API
+    # =========================================================================
 
     @classmethod
     def _get_from_defaults(cls, key: str) -> Any:
-        """Traverse default dict using dot notation."""
-        try:
-            value = cls._defaults
-            for k in key.split("."):
-                if isinstance(value, dict):
-                    value = value.get(k)
-                    if value is None:
-                        return None
-                else:
+        """Traverse default config using dot notation; returns `None` if missing."""
+        value: Any = cls._defaults
+        for k in key.split("."):
+            if isinstance(value, dict):
+                value = value.get(k)
+                if value is None:
                     return None
-            return value
-        except Exception:
+            else:
+                return None
+        return value
+
+    @classmethod
+    def is_stale(cls, key: str) -> bool:
+        """
+        Check whether a cached top-level configuration entry is stale.
+
+        Staleness is defined as cache age strictly greater than the current TTL.
+
+        Parameters
+        ----------
+        key:
+            Either a full dot key or a top-level key. Only the top-level segment is used.
+
+        Returns
+        -------
+        bool
+            True if the cache age exceeds TTL; False if fresh or unknown.
+        """
+        top_key = key.split(".")[0]
+        timestamp = cls._cache_timestamps.get(top_key)
+        if not timestamp:
+            return False
+
+        age_seconds = (datetime.now(timezone.utc) - timestamp).total_seconds()
+        return age_seconds > cls._cache_ttl_seconds
+
+    @classmethod
+    def get(cls, key: str, default: Any = None) -> Any:
+        """
+        Retrieve a configuration value by dot-notation path.
+
+        Parameters
+        ----------
+        key:
+            Dot-notation config path (e.g. `"fusion_costs.base"`).
+        default:
+            Value to return if the key is not found in cache or defaults.
+
+        Returns
+        -------
+        Any
+            The resolved configuration value, or `default` if not present.
+
+        Notes
+        -----
+        - This method is **read-only** and never touches the database.
+        - Time-aware stale detection is performed per read; stale reads are
+          counted in metrics and may be inspected via `get_metrics()`.
+
+        Examples
+        --------
+        >>> base_cost = ConfigManager.get("fusion_costs.base")
+        >>> event_boost = ConfigManager.get("event_modifiers.fusion_rate_boost", 0.0)
+        """
+        start_time = time.perf_counter()
+        cls._metrics.gets += 1
+
+        if not cls._initialized:
+            # Lazily bootstrap from defaults if we haven't been explicitly initialized.
+            logger.warning(
+                "ConfigManager accessed before explicit initialization; "
+                "falling back to defaults only"
+            )
+            cls._cache = dict(cls._defaults)
+            cls._initialized = True
+            cls._metrics.fallback_to_defaults += 1
+
+        try:
+            parts = key.split(".")
+            value: Any = cls._cache
+
+            for part in parts:
+                if isinstance(value, dict):
+                    value = value.get(part)
+                    if value is None:
+                        cls._metrics.cache_misses += 1
+                        fallback = cls._get_from_defaults(key)
+                        if fallback is not None:
+                            cls._metrics.fallback_to_defaults += 1
+                            return fallback
+                        return default
+                else:
+                    cls._metrics.cache_misses += 1
+                    fallback = cls._get_from_defaults(key)
+                    if fallback is not None:
+                        cls._metrics.fallback_to_defaults += 1
+                        return fallback
+                    return default
+
+            cls._metrics.cache_hits += 1
+
+            # Time-aware stale detection.
+            if cls.is_stale(key):
+                cls._metrics.stale_reads += 1
+                logger.debug(
+                    "Stale configuration read detected",
+                    extra={
+                        "config_key": key,
+                        "cache_ttl_seconds": cls._cache_ttl_seconds,
+                        "cache_age_seconds": cls.get_cache_age(key.split(".")[0]),
+                    },
+                )
+
+            return value if value is not None else default
+
+        except Exception as exc:
+            cls._metrics.errors += 1
+            logger.error(
+                "Error resolving configuration value",
+                extra={
+                    "config_key": key,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+                exc_info=True,
+            )
+            fallback = cls._get_from_defaults(key)
+            if fallback is not None:
+                cls._metrics.fallback_to_defaults += 1
+                return fallback
+            return default
+        finally:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            cls._metrics.total_get_time_ms += elapsed_ms
+
+    @classmethod
+    def get_all_keys(cls) -> List[str]:
+        """Return a list of all top-level configuration keys currently in cache."""
+        return list(cls._cache.keys())
+
+    @classmethod
+    def get_cache_age(cls, key: str) -> Optional[int]:
+        """
+        Get age of a cached top-level configuration in seconds.
+
+        Parameters
+        ----------
+        key:
+            Top-level configuration key.
+
+        Returns
+        -------
+        Optional[int]
+            Age in seconds, or `None` if the key has never been cached.
+        """
+        timestamp = cls._cache_timestamps.get(key)
+        if not timestamp:
             return None
+        return int((datetime.now(timezone.utc) - timestamp).total_seconds())
+
+    # =========================================================================
+    # WRITE API
+    # =========================================================================
 
     @classmethod
     async def set(
         cls,
-        session: AsyncSession,
         key: str,
         value: Any,
-        modified_by: str = "system"
+        modified_by: str = "system",
+        emit_event: bool = True,
     ) -> None:
         """
-        Update config in database and cache.
-        
-        Args:
-            session: Database session (must be in transaction)
-            key: Dot-notation config path
-            value: New value to set
-            modified_by: Identifier of who made the change
-        
-        Raises:
-            Exception: If update fails
-        
-        Example:
-            >>> async with DatabaseService.get_transaction() as session:
-            ...     await ConfigManager.set(
-            ...         session,
-            ...         'event_modifiers.fusion_rate_boost',
-            ...         0.25,
-            ...         modified_by='admin_123'
-            ...     )
+        Atomically update a configuration value in the database and cache.
+
+        This method:
+        - Runs inside `DatabaseService.get_transaction()` (no manual commit).
+        - Applies pessimistic locking on the underlying `GameConfig` row.
+        - Validates nested structure via schemas (top-level) where defined.
+        - Applies registered per-key validators for the exact key, if any.
+        - Updates the in-memory cache and cache timestamps.
+        - Emits a transaction log entry via `TransactionLogger`.
+        - Optionally publishes an EventBus event on change.
+
+        Parameters
+        ----------
+        key:
+            Dot-notation configuration path (e.g. `"event_modifiers.fusion_rate_boost"`).
+        value:
+            New value to persist.
+        modified_by:
+            Identifier for the actor making the change (e.g. admin id, system).
+        emit_event:
+            Whether to attempt to publish an EventBus event for this change.
+            Subject to the global `_emit_events` flag.
+
+        Raises
+        ------
+        ConfigWriteError
+            If the write fails or validation fails.
+
+        Examples
+        --------
+        >>> await ConfigManager.set(
+        ...     "event_modifiers.fusion_rate_boost",
+        ...     0.25,
+        ...     modified_by="admin_123",
+        ... )
         """
+        from src.core.database.service import DatabaseService
+        from src.core.infra.transaction_logger import TransactionLogger
+
         start_time = time.perf_counter()
-        cls._metrics["sets"] += 1
-        
+        cls._metrics.sets += 1
+
+        # Apply per-key validator (for full dot key).
+        value_to_persist = cls._apply_validator(key, value)
+
+        parts = key.split(".")
+        top_key = parts[0]
+
+        previous_value: Any = None
+        final_value: Any
+
         try:
-            keys = key.split(".")
-            top_key = keys[0]
-            
-            # Query using parameterized SQLAlchemy (SQL injection safe)
-            result = await session.execute(
-                select(GameConfig).where(GameConfig.config_key == top_key)
-            )
-            cfg = result.scalar_one_or_none()
-
-            # Build nested value if dot notation used
-            if len(keys) > 1:
-                data = cfg.config_value.copy() if cfg else {}
-                current = data
-                for k in keys[1:-1]:
-                    current = current.setdefault(k, {})
-                current[keys[-1]] = value
-                final_value = data
-            else:
-                final_value = value
-
-            # Update or create config entry
-            if cfg:
-                cfg.config_value = final_value
-                cfg.modified_by = modified_by
-                cfg.last_modified = datetime.utcnow()
-            else:
-                cfg = GameConfig(
-                    config_key=top_key,
-                    config_value=final_value,
-                    modified_by=modified_by
+            # Atomic, pessimistic-locking write.
+            async with DatabaseService.get_transaction() as session:
+                stmt = (
+                    select(GameConfig)
+                    .where(GameConfig.config_key == top_key)
+                    .with_for_update()
                 )
-                session.add(cfg)
+                result = await session.execute(stmt)
+                cfg: Optional[GameConfig] = result.scalar_one_or_none()
 
-            await session.commit()
-            
-            # Update cache
-            cls._cache[top_key] = final_value
-            cls._cache_timestamps[top_key] = datetime.utcnow()
-            
+                previous_value = cfg.config_value if cfg is not None else None
+
+                # Build nested value if dot-notation is used.
+                if len(parts) > 1:
+                    base: Dict[str, Any]
+                    if isinstance(previous_value, dict):
+                        base = dict(previous_value)
+                    else:
+                        base = {}
+
+                    current: Dict[str, Any] = base
+                    for segment in parts[1:-1]:
+                        nested = current.get(segment)
+                        if not isinstance(nested, dict):
+                            nested = {}
+                            current[segment] = nested
+                        current = nested  # type: ignore[assignment]
+
+                    current[parts[-1]] = value_to_persist
+                    final_value = base
+                else:
+                    final_value = value_to_persist
+
+                # Schema validation for the full top-level payload.
+                final_value = cls._apply_schema_validation_for_write(
+                    top_key=top_key,
+                    final_value=final_value,
+                )
+
+                if cfg is None:
+                    cfg = GameConfig(
+                        config_key=top_key,
+                        config_value=final_value,
+                        modified_by=modified_by,
+                    )
+                    session.add(cfg)
+                else:
+                    cfg.config_value = final_value
+                    cfg.modified_by = modified_by
+                    cfg.last_modified = datetime.now(timezone.utc)
+
+            # Transaction committed successfully at this point.
+
+            # Update in-memory cache outside of the DB transaction.
+            async with cls._cache_lock:
+                cls._cache[top_key] = final_value
+                cls._cache_timestamps[top_key] = datetime.now(timezone.utc)
+                # DB-level TTL override might have changed.
+                if top_key == "core":
+                    cls._refresh_cache_ttl_from_cache_locked()
+
             elapsed_ms = (time.perf_counter() - start_time) * 1000
-            cls._metrics["total_set_time_ms"] += elapsed_ms
-            
+            cls._metrics.total_set_time_ms += elapsed_ms
+
             logger.info(
-                f"ConfigManager updated: key={key} by={modified_by}",
+                "Configuration updated",
+                extra={
+                    "config_key": key,
+                    "top_level_key": top_key,
+                    "modified_by": modified_by,
+                    "latency_ms": round(elapsed_ms, 2),
+                },
+            )
+
+            # Best-effort transaction log; failure here must not break writes.
+            try:
+                await TransactionLogger.log_config_change(
+                    config_key=key,
+                    top_level_key=top_key,
+                    previous_value=previous_value,
+                    new_value=final_value,
+                    modified_by=modified_by,
+                    latency_ms=round(elapsed_ms, 2),
+                    source="ConfigManager",
+                )
+            except Exception as log_exc:
+                cls._metrics.errors += 1
+                logger.error(
+                    "Failed to emit config change transaction log",
+                    extra={
+                        "config_key": key,
+                        "error": str(log_exc),
+                        "error_type": type(log_exc).__name__,
+                    },
+                    exc_info=True,
+                )
+
+            # Optional EventBus publish.
+            if emit_event and cls._emit_events:
+                try:
+                    from core.event.bus import EventBus
+
+                    await EventBus.publish(
+                        "config.changed",
+                        {
+                            "config_key": key,
+                            "top_level_key": top_key,
+                            "previous_value": previous_value,
+                            "new_value": final_value,
+                            "modified_by": modified_by,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "latency_ms": round(elapsed_ms, 2),
+                        },
+                    )
+                except Exception as event_exc:
+                    cls._metrics.errors += 1
+                    logger.error(
+                        "Failed to publish config change event",
+                        extra={
+                            "config_key": key,
+                            "error": str(event_exc),
+                            "error_type": type(event_exc).__name__,
+                        },
+                        exc_info=True,
+                    )
+
+        except ConfigWriteError:
+            # Validation failures already logged and wrapped.
+            raise
+        except Exception as exc:
+            cls._metrics.errors += 1
+            logger.error(
+                "Config update failed",
                 extra={
                     "config_key": key,
                     "modified_by": modified_by,
-                    "set_time_ms": round(elapsed_ms, 2)
-                }
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+                exc_info=True,
             )
+            raise ConfigWriteError(f"Failed to update config '{key}'") from exc
 
-        except Exception as e:
-            cls._metrics["errors"] += 1
-            logger.error(
-                f"Failed to update config: key={key} error={e}",
-                extra={"config_key": key, "modified_by": modified_by},
-                exc_info=True
-            )
-            await session.rollback()
-            raise
+    # =========================================================================
+    # CACHE CONTROL & METRICS
+    # =========================================================================
 
     @classmethod
     def clear_cache(cls) -> None:
-        """Clear memory cache and reset initialization state."""
+        """
+        Clear the in-memory cache and reset initialization status.
+
+        Intended for testing and controlled maintenance operations.
+        """
         cls._cache.clear()
         cls._cache_timestamps.clear()
         cls._initialized = False
         logger.info("ConfigManager cache cleared")
 
     @classmethod
-    def get_all_keys(cls) -> List[str]:
-        """Get list of all top-level config keys."""
-        return list(cls._cache.keys())
-
-    @classmethod
-    def get_cache_age(cls, key: str) -> Optional[int]:
-        """
-        Get age of cached config in seconds.
-        
-        Args:
-            key: Top-level config key
-        
-        Returns:
-            Age in seconds, or None if not cached
-        """
-        timestamp = cls._cache_timestamps.get(key)
-        if timestamp:
-            return int((datetime.utcnow() - timestamp).total_seconds())
-        return None
-
-    # =========================================================================
-    # METRICS & MONITORING
-    # =========================================================================
-    
-    @classmethod
     def get_metrics(cls) -> Dict[str, Any]:
         """
-        Get ConfigManager performance metrics.
-        
-        Returns:
-            Dictionary with operation counts, cache stats, timing
-        
-        Example:
-            >>> metrics = ConfigManager.get_metrics()
-            >>> print(f"Cache hit rate: {metrics['cache_hit_rate']:.1f}%")
-            >>> print(f"Avg get time: {metrics['avg_get_time_ms']:.2f}ms")
+        Return a snapshot of ConfigManager performance metrics.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Metrics including cache hit rate, stale reads, and average latencies.
+
+        Examples
+        --------
+        >>> metrics = ConfigManager.get_metrics()
+        >>> metrics["cache_hit_rate"]
+        >>> metrics["avg_get_time_ms"]
+        >>> metrics["stale_reads"]
         """
-        total_gets = cls._metrics["gets"]
+        metrics_dict = asdict(cls._metrics)
+
+        total_gets = cls._metrics.gets
         cache_hit_rate = (
-            (cls._metrics["cache_hits"] / total_gets * 100)
-            if total_gets > 0 else 0.0
+            (cls._metrics.cache_hits / total_gets * 100.0) if total_gets > 0 else 0.0
         )
-        
-        avg_get_time = (
-            cls._metrics["total_get_time_ms"] / total_gets
-            if total_gets > 0 else 0.0
+
+        avg_get_time_ms = (
+            cls._metrics.total_get_time_ms / total_gets if total_gets > 0 else 0.0
         )
-        
-        avg_set_time = (
-            cls._metrics["total_set_time_ms"] / cls._metrics["sets"]
-            if cls._metrics["sets"] > 0 else 0.0
+        avg_set_time_ms = (
+            cls._metrics.total_set_time_ms / cls._metrics.sets
+            if cls._metrics.sets > 0
+            else 0.0
         )
-        
-        return {
-            "gets": cls._metrics["gets"],
-            "sets": cls._metrics["sets"],
-            "cache_hits": cls._metrics["cache_hits"],
-            "cache_misses": cls._metrics["cache_misses"],
-            "cache_hit_rate": round(cache_hit_rate, 2),
-            "fallback_to_defaults": cls._metrics["fallback_to_defaults"],
-            "refresh_count": cls._metrics["refresh_count"],
-            "errors": cls._metrics["errors"],
-            "avg_get_time_ms": round(avg_get_time, 2),
-            "avg_set_time_ms": round(avg_set_time, 2),
-            "initialized": cls._initialized,
-            "cached_configs": len(cls._cache),
-        }
-    
+
+        metrics_dict.update(
+            {
+                "cache_hit_rate": round(cache_hit_rate, 2),
+                "avg_get_time_ms": round(avg_get_time_ms, 2),
+                "avg_set_time_ms": round(avg_set_time_ms, 2),
+                "initialized": cls._initialized,
+                "cached_configs": len(cls._cache),
+                "cache_ttl_seconds": cls._cache_ttl_seconds,
+            }
+        )
+        return metrics_dict
+
     @classmethod
     def reset_metrics(cls) -> None:
-        """Reset all metrics counters."""
-        cls._metrics = {
-            "gets": 0,
-            "sets": 0,
-            "cache_hits": 0,
-            "cache_misses": 0,
-            "fallback_to_defaults": 0,
-            "refresh_count": 0,
-            "errors": 0,
-            "total_get_time_ms": 0.0,
-            "total_set_time_ms": 0.0,
-        }
+        """Reset all metrics counters to zero."""
+        cls._metrics = ConfigMetrics()
         logger.info("ConfigManager metrics reset")
+
+    @classmethod
+    def health_snapshot(cls) -> Dict[str, Any]:
+        """
+        Return a compact health snapshot suitable for infra dashboards.
+
+        Includes:
+        - initialization status
+        - background task status
+        - cache size
+        - recent error count
+        - refresh count
+        - current TTL
+        """
+        refresh_running = cls._refresh_task is not None and not cls._refresh_task.done()
+        return {
+            "initialized": cls._initialized,
+            "background_refresh_running": refresh_running,
+            "cached_configs": len(cls._cache),
+            "errors": cls._metrics.errors,
+            "refresh_count": cls._metrics.refresh_count,
+            "cache_ttl_seconds": cls._cache_ttl_seconds,
+        }

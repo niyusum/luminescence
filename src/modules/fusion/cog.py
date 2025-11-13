@@ -8,7 +8,7 @@ from src.core.infra.database_service import DatabaseService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.infra.redis_service import RedisService
 from src.core.config.config_manager import ConfigManager
-from src.core.event.event_bus import EventBus
+from core.event.bus.event_bus import EventBus
 from src.modules.player.service import PlayerService
 from src.modules.fusion.service import FusionService
 from src.core.exceptions import InsufficientResourcesError, InvalidFusionError, NotFoundError

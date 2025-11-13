@@ -22,7 +22,7 @@ from src.core.infra.database_service import DatabaseService
 from src.modules.player.service import PlayerService
 from src.modules.daily.service import DailyService
 from src.core.infra.transaction_logger import TransactionLogger
-from src.core.event.event_bus import EventBus
+from core.event.bus.event_bus import EventBus
 from src.core.config.config_manager import ConfigManager
 from src.core.exceptions import CooldownError
 from src.core.logging.logger import get_logger, LogContext

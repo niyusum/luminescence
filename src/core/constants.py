@@ -60,9 +60,9 @@ MAX_SHARDS_PER_FAILURE = 12  # Maximum shards from failed fusion
 # DROP SYSTEM
 # ============================================================================
 
-drop_CHARGES_MAX = 1  # Single charge system
-drop_REGEN_SECONDS = 300  # 5 minutes
-drop_REGEN_MINUTES = 5  # Alternative representation
+DROP_CHARGES_MAX = 1
+DROP_REGEN_SECONDS = 300
+DROP_REGEN_MINUTES = 5
 
 # ============================================================================
 # COMBAT & POWER

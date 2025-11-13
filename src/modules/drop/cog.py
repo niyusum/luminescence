@@ -10,7 +10,7 @@ from src.modules.drop.service import DropService
 from src.core.infra.redis_service import RedisService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.config.config_manager import ConfigManager
-from src.core.event.event_bus import EventBus
+from core.event.bus.event_bus import EventBus
 from src.core.exceptions import InsufficientResourcesError, ValidationError
 from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit

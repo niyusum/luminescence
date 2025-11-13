@@ -25,7 +25,7 @@ import time
 import asyncio
 from contextlib import asynccontextmanager
 
-from src.core.infra.redis_service import RedisService
+from src.core.redis.service import RedisService
 from src.core.config.config_manager import ConfigManager
 from src.core.logging.logger import get_logger
 

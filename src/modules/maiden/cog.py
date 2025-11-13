@@ -9,7 +9,7 @@ from src.modules.maiden.service import MaidenService
 from src.modules.maiden.leader_service import LeaderService
 from src.modules.combat.service import CombatService
 from src.core.config.config_manager import ConfigManager
-from src.core.event.event_bus import EventBus
+from core.event.bus.event_bus import EventBus
 from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
 

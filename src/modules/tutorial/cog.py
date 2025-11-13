@@ -9,7 +9,7 @@ from src.core.infra.transaction_logger import TransactionLogger
 from src.modules.player.service import PlayerService
 from src.modules.tutorial.service import TutorialService, TRIGGER_INDEX, TUTORIAL_STEPS
 from src.core.config.config_manager import ConfigManager
-from src.core.event.event_bus import EventBus
+from core.event.bus.event_bus import EventBus
 from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
 from utils.embed_builder import EmbedBuilder
