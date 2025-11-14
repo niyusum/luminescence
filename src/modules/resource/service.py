@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import time
 
 from src.database.models.core.player import Player
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.core.infra.transaction_logger import TransactionLogger
 from src.modules.maiden.leader_service import LeaderService
 from src.core.exceptions import InsufficientResourcesError

@@ -32,7 +32,7 @@ import math
 
 from src.database.models.core.player import Player
 from src.database.models.progression.ascension_progress import AscensionProgress
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.modules.resource.service import ResourceService
 from src.modules.combat.service import CombatService
 from src.core.infra.transaction_logger import TransactionLogger

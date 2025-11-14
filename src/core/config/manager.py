@@ -53,25 +53,32 @@ Key Design Decisions
 Dependencies
 ------------
 - `src.database.models.core.game_config.GameConfig` – DB model for persisted config.
-- `src.core.infra.database_service.DatabaseService` – async DB sessions and transactions.
+- `src.core.database.service.DatabaseService` – async DB sessions and transactions.
 - `src.core.infra.transaction_logger.TransactionLogger` – audit logging for mutations.
-- `src.core.event.event_bus.EventBus` – optional EventBus publishing on config changes.
+- `src.core.event.bus.EventBus` – optional EventBus publishing on config changes.
 - `src.core.logging.logger.get_logger` – structured logging interface.
+- `src.core.config.validator` – configuration validation and schema management.
+- `src.core.config.metrics` – metrics tracking and health snapshots.
 """
 
 from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, MutableMapping, Optional, Callable, Mapping, Union
+from typing import Any, Callable, Dict, List, Mapping, MutableMapping, Optional
 
 from sqlalchemy import select
 
-from src.database.models.core.game_config import GameConfig
+from src.core.config.metrics import (
+    ConfigMetrics,
+    get_health_snapshot,
+    get_metrics_snapshot,
+)
+from src.core.config.validator import ConfigWriteError, get_schema_for_top_key
 from src.core.logging.logger import get_logger
+from src.database.models.core.game_config import GameConfig
 
 logger = get_logger(__name__)
 
@@ -89,163 +96,8 @@ class ConfigInitializationError(ConfigManagerError):
     """Raised when ConfigManager cannot initialize correctly."""
 
 
-class ConfigWriteError(ConfigManagerError):
-    """Raised when a configuration value cannot be persisted or validated."""
-
-
-# ============================================================================
-# Recursive Schema Objects
-# ============================================================================
-
-
-SchemaField = Union[type, "ConfigSchema"]
-
-
-@dataclass(slots=True)
-class ConfigSchema:
-    """
-    Recursive schema for nested configuration validation.
-
-    Each schema describes the expected shape of a configuration subtree:
-
-    - Keys map to:
-        - Python types (`int`, `float`, `str`, etc.), or
-        - Nested `ConfigSchema` instances.
-    - Unknown keys are allowed by default but can be forbidden via `allow_extra`.
-    """
-
-    fields: Mapping[str, SchemaField]
-    allow_extra: bool = True
-
-    def validate(self, value: Any, path: str = "") -> Any:
-        """
-        Validate `value` against this schema.
-
-        Parameters
-        ----------
-        value:
-            The value to validate (typically a dict subtree).
-        path:
-            Dot-notation path for error messages, e.g. "fusion_costs.curve.a".
-
-        Returns
-        -------
-        Any
-            The original value, if valid.
-
-        Raises
-        ------
-        ConfigWriteError
-            If validation fails.
-        """
-        if not isinstance(value, Mapping):
-            raise ConfigWriteError(
-                f"Config value at '{path or '<root>'}' must be a mapping; "
-                f"got {type(value).__name__}"
-            )
-
-        # Validate known fields.
-        for key, expected in self.fields.items():
-            full_path = f"{path}.{key}" if path else key
-            if key not in value:
-                # Missing keys are allowed; configs may be sparse.
-                continue
-
-            raw = value[key]
-
-            if isinstance(expected, ConfigSchema):
-                expected.validate(raw, path=full_path)
-            else:
-                # Simple type check; allow ints where float is expected.
-                if expected is float and isinstance(raw, int):
-                    continue
-                if not isinstance(raw, expected):
-                    raise ConfigWriteError(
-                        f"Config value at '{full_path}' must be {expected.__name__}; "
-                        f"got {type(raw).__name__}"
-                    )
-
-        # Optionally reject unknown fields.
-        if not self.allow_extra:
-            unknown_keys = set(value.keys()) - set(self.fields.keys())
-            if unknown_keys:
-                raise ConfigWriteError(
-                    f"Unexpected config keys at '{path or '<root>'}': "
-                    f"{', '.join(sorted(str(k) for k in unknown_keys))}"
-                )
-
-        return value
-
-
-# Structured schema definitions per top-level key.
-# NOTE: This is intentionally conservative; only well-understood fields are
-# specified. Unknown keys still pass validation when `allow_extra=True`.
-_SCHEMAS: Dict[str, ConfigSchema] = {
-    "fusion_costs": ConfigSchema(
-        fields={
-            "base": int,
-            "curve": ConfigSchema(
-                fields={
-                    "a": float,
-                    "b": float,
-                },
-                allow_extra=True,
-            ),
-        },
-        allow_extra=True,
-    ),
-    "event_modifiers": ConfigSchema(
-        fields={
-            "fusion_rate_boost": float,
-        },
-        allow_extra=True,
-    ),
-    "exploration": ConfigSchema(
-        fields={
-            "energy_costs": ConfigSchema(
-                fields={
-                    # Zone keys are typically ints but represented as numbers.
-                    "zone1": int,
-                    "zone2": int,
-                },
-                allow_extra=True,
-            )
-        },
-        allow_extra=True,
-    ),
-    "core": ConfigSchema(
-        fields={
-            "config_cache_ttl_seconds": int,
-        },
-        allow_extra=True,
-    ),
-}
-
-
-def _get_schema_for_top_key(top_key: str) -> Optional[ConfigSchema]:
-    """Return the schema for a given top-level key, if any."""
-    return _SCHEMAS.get(top_key)
-
-
-# ============================================================================
-# Metrics
-# ============================================================================
-
-
-@dataclass(slots=True)
-class ConfigMetrics:
-    """Typed metrics container for ConfigManager observability."""
-
-    gets: int = 0
-    sets: int = 0
-    cache_hits: int = 0
-    cache_misses: int = 0
-    fallback_to_defaults: int = 0
-    refresh_count: int = 0
-    errors: int = 0
-    total_get_time_ms: float = 0.0
-    total_set_time_ms: float = 0.0
-    stale_reads: int = 0
+# Export ConfigWriteError from validator for backward compatibility
+__all__ = ["ConfigManager", "ConfigManagerError", "ConfigInitializationError", "ConfigWriteError"]
 
 
 # ============================================================================
@@ -476,7 +328,7 @@ class ConfigManager:
                         if configs:
                             for cfg in configs:
                                 # Validate with schema if available.
-                                schema = _get_schema_for_top_key(cfg.config_key)
+                                schema = get_schema_for_top_key(cfg.config_key)
                                 if schema:
                                     try:
                                         schema.validate(
@@ -589,7 +441,7 @@ class ConfigManager:
 
                         async with cls._cache_lock:
                             for cfg in configs:
-                                schema = _get_schema_for_top_key(cfg.config_key)
+                                schema = get_schema_for_top_key(cfg.config_key)
                                 if schema:
                                     try:
                                         schema.validate(
@@ -754,11 +606,9 @@ class ConfigManager:
         Intended for writes: failure results in `ConfigWriteError` and blocks
         the write operation.
         """
-        schema = _get_schema_for_top_key(top_key)
-        if not schema:
-            return final_value
+        from src.core.config.validator import validate_config_value
 
-        return schema.validate(final_value, path=top_key)
+        return validate_config_value(top_key, final_value)
 
     # =========================================================================
     # READ API
@@ -1091,7 +941,7 @@ class ConfigManager:
             # Optional EventBus publish.
             if emit_event and cls._emit_events:
                 try:
-                    from core.event.bus import EventBus
+                    from src.core.event.bus import EventBus
 
                     await EventBus.publish(
                         "config.changed",
@@ -1167,38 +1017,17 @@ class ConfigManager:
         >>> metrics["avg_get_time_ms"]
         >>> metrics["stale_reads"]
         """
-        metrics_dict = asdict(cls._metrics)
-
-        total_gets = cls._metrics.gets
-        cache_hit_rate = (
-            (cls._metrics.cache_hits / total_gets * 100.0) if total_gets > 0 else 0.0
+        return get_metrics_snapshot(
+            metrics=cls._metrics,
+            initialized=cls._initialized,
+            cached_configs=len(cls._cache),
+            cache_ttl_seconds=cls._cache_ttl_seconds,
         )
-
-        avg_get_time_ms = (
-            cls._metrics.total_get_time_ms / total_gets if total_gets > 0 else 0.0
-        )
-        avg_set_time_ms = (
-            cls._metrics.total_set_time_ms / cls._metrics.sets
-            if cls._metrics.sets > 0
-            else 0.0
-        )
-
-        metrics_dict.update(
-            {
-                "cache_hit_rate": round(cache_hit_rate, 2),
-                "avg_get_time_ms": round(avg_get_time_ms, 2),
-                "avg_set_time_ms": round(avg_set_time_ms, 2),
-                "initialized": cls._initialized,
-                "cached_configs": len(cls._cache),
-                "cache_ttl_seconds": cls._cache_ttl_seconds,
-            }
-        )
-        return metrics_dict
 
     @classmethod
     def reset_metrics(cls) -> None:
         """Reset all metrics counters to zero."""
-        cls._metrics = ConfigMetrics()
+        cls._metrics.reset()
         logger.info("ConfigManager metrics reset")
 
     @classmethod
@@ -1215,11 +1044,11 @@ class ConfigManager:
         - current TTL
         """
         refresh_running = cls._refresh_task is not None and not cls._refresh_task.done()
-        return {
-            "initialized": cls._initialized,
-            "background_refresh_running": refresh_running,
-            "cached_configs": len(cls._cache),
-            "errors": cls._metrics.errors,
-            "refresh_count": cls._metrics.refresh_count,
-            "cache_ttl_seconds": cls._cache_ttl_seconds,
-        }
+        return get_health_snapshot(
+            initialized=cls._initialized,
+            background_refresh_running=refresh_running,
+            cached_configs=len(cls._cache),
+            errors=cls._metrics.errors,
+            refresh_count=cls._metrics.refresh_count,
+            cache_ttl_seconds=cls._cache_ttl_seconds,
+        )

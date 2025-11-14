@@ -15,9 +15,10 @@ from typing import Dict, Optional
 import time
 
 from src.core.bot.base_cog import BaseCog
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
+from src.ui.emojis import Emojis
+from src.ui import EmbedFactory, BaseView
 from src.utils.decorators import ratelimit
-from utils.embed_builder import EmbedBuilder
 
 
 class HelpCog(BaseCog):
@@ -31,73 +32,73 @@ class HelpCog(BaseCog):
     # Module display names and descriptions
     MODULE_INFO = {
         "PlayerCog": {
-            "name": "👤 Account & Profile",
-            "icon": "👤",
+            "name": f"{Emojis.PLAYER} Account & Profile",
+            "icon": Emojis.PLAYER,
             "description": "Player registration, profiles, and account management"
         },
         "DailyCog": {
-            "name": "🎁 Daily Rewards",
-            "icon": "🎁",
+            "name": f"{Emojis.DAILY} Daily Rewards",
+            "icon": Emojis.DAILY,
             "description": "Daily login rewards and streaks"
         },
         "DropCog": {
-            "name": "🪙 Resources",
-            "icon": "🪙",
+            "name": f"{Emojis.ENERGY} Resources",
+            "icon": Emojis.ENERGY,
             "description": "Drop auric coin and manage resources"
         },
         "SummonCog": {
-            "name": "✨ Summoning",
-            "icon": "✨",
+            "name": f"{Emojis.SUMMON} Summoning",
+            "icon": Emojis.SUMMON,
             "description": "Summon maidens using auric coin"
         },
         "MaidenCog": {
-            "name": "🎴 Maiden Collection",
-            "icon": "🎴",
+            "name": f"{Emojis.MAIDEN} Maiden Collection",
+            "icon": Emojis.MAIDEN,
             "description": "View and manage your maiden collection"
         },
         "FusionCog": {
-            "name": "⚗️ Fusion",
-            "icon": "⚗️",
+            "name": f"{Emojis.FUSION} Fusion",
+            "icon": Emojis.FUSION,
             "description": "Fuse maidens to increase their tier"
         },
         "GuildCog": {
-            "name": "🏰 Guilds",
-            "icon": "🏰",
+            "name": f"{Emojis.GUILD} Guilds",
+            "icon": Emojis.GUILD,
             "description": "Create and manage guilds with other players"
         },
         "ExplorationCog": {
-            "name": "🗺️ Exploration",
-            "icon": "🗺️",
+            "name": f"{Emojis.EXPLORATION} Exploration",
+            "icon": Emojis.EXPLORATION,
             "description": "Explore sectors and gain mastery rewards"
         },
         "AscensionCog": {
-            "name": "🗼 Ascension Tower",
-            "icon": "🗼",
+            "name": f"{Emojis.ASCENSION} Ascension Tower",
+            "icon": Emojis.ASCENSION,
             "description": "Climb the infinite tower and collect tokens"
         },
         "ShrineCog": {
-            "name": "⛩️ Shrines",
-            "icon": "⛩️",
+            "name": f"{Emojis.SHRINES} Shrines",
+            "icon": Emojis.SHRINES,
             "description": "Manage personal shrines for passive income"
         },
         "LeaderboardCog": {
-            "name": "🏆 Leaderboards",
-            "icon": "🏆",
+            "name": f"{Emojis.LEADERBOARD} Leaderboards",
+            "icon": Emojis.LEADERBOARD,
             "description": "View global rankings and your position"
         },
         "TutorialCog": {
-            "name": "📚 Tutorial",
-            "icon": "📚",
+            "name": f"{Emojis.TUTORIAL} Tutorial",
+            "icon": Emojis.TUTORIAL,
             "description": "View tutorial progress and earn rewards"
         },
         "SystemTasksCog": {
-            "name": "🔧 System",
-            "icon": "🔧",
+            "name": f"{Emojis.SYSTEM} System",
+            "icon": Emojis.SYSTEM,
             "description": "System administration and maintenance (Admin only)"
         },
         "HelpCog": {
-            "name": "❓ Help",
-            "icon": "❓",
+            "name": f"{Emojis.HELP} Help",
+            "icon": Emojis.HELP,
             "description": "This help system"
         }
     }
@@ -174,13 +175,13 @@ class HelpCog(BaseCog):
         )
 
         embed.add_field(
-            name="📊 Available Commands",
+            name=f"{Emojis.INFO} Available Commands",
             value=f"**{len(visible_cmds)}** commands across **{len(self.bot.cogs)}** modules",
             inline=False,
         )
 
         embed.add_field(
-            name="💡 Quick Start",
+            name=f"{Emojis.TIP} Quick Start",
             value=(
                 "1️⃣ `;register` to create your account\n"
                 "2️⃣ `;drop` to gain auric coin\n"
@@ -235,7 +236,7 @@ class HelpCog(BaseCog):
                 matches.append(command)
 
         if not matches:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Command Not Found",
                 description=f"No command matching `{query}` was found.",
                 help_text="Use `;help` to see all available commands."
@@ -344,29 +345,16 @@ class HelpCog(BaseCog):
         await ctx.send(embed=embed, ephemeral=True)
 
 
-class ModuleSelectorView(discord.ui.View):
+class ModuleSelectorView(BaseView):
     """Dropdown view for selecting a module to view its commands."""
 
     def __init__(self, user_id: int, bot: commands.Bot, module_info: Dict):
-        super().__init__(timeout=300)
-        self.user_id = user_id
+        super().__init__(user_id, timeout=300, logger_name="help.module_selector")
         self.bot = bot
         self.module_info = module_info
-        self.message: Optional[discord.Message] = None
 
         # Add the dropdown
         self.add_item(ModuleSelectDropdown(user_id, bot, module_info))
-
-    async def on_timeout(self):
-        """Disable all buttons visually when the view expires."""
-        for item in self.children:
-            item.disabled = True
-
-        try:
-            if self.message:
-                await self.message.edit(view=self)
-        except discord.HTTPException:
-            pass
 
 
 class ModuleSelectDropdown(discord.ui.Select):
@@ -413,6 +401,8 @@ class ModuleSelectDropdown(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         """Handle module selection."""
+        # Note: User validation handled by parent view's check_user if needed
+        # For dropdown, we still do manual check since it's not a button
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
                 "This menu is not for you!",

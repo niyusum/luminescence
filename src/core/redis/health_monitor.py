@@ -63,7 +63,7 @@ from enum import Enum
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from src.core.logging.logger import get_logger
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 
 if TYPE_CHECKING:
     from src.core.redis.service import RedisService

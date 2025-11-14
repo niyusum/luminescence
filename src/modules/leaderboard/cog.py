@@ -18,11 +18,12 @@ import time
 from src.core.infra.database_service import DatabaseService
 from src.modules.player.service import PlayerService
 from src.modules.leaderboard.service import LeaderboardService
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.core.exceptions import InvalidOperationError
 from src.core.logging.logger import get_logger
+from src.ui.emojis import Emojis
+from src.ui import EmbedFactory, BaseView
 from src.utils.decorators import ratelimit
-from src.utils.embed_builder import EmbedBuilder
 
 logger = get_logger(__name__)
 
@@ -62,7 +63,7 @@ class LeaderboardCog(BaseCog):
 
         try:
             embed = discord.Embed(
-                title="🏆 Leaderboards",
+                title=f"{Emojis.LEADERBOARD} Leaderboards",
                 description="Choose a category to view rankings:",
                 color=0xFFD700,  # Gold
                 timestamp=discord.utils.utcnow()
@@ -203,7 +204,7 @@ class LeaderboardCog(BaseCog):
                 # Get player
                 player = await PlayerService.get_player(session, ctx.author.id)
                 if not player:
-                    embed = EmbedBuilder.error(
+                    embed = EmbedFactory.error(
                         title="Not Registered",
                         description="You need to register first!",
                         help_text="Use `/register` to start your journey."
@@ -212,7 +213,7 @@ class LeaderboardCog(BaseCog):
                     return
 
                 embed = discord.Embed(
-                    title=f"🏆 {ctx.author.display_name}'s Rankings",
+                    title=f"{Emojis.LEADERBOARD} {ctx.author.display_name}'s Rankings",
                     description="Your position across all leaderboards:",
                     color=0xFFD700,  # Gold
                     timestamp=discord.utils.utcnow()
@@ -244,11 +245,11 @@ class LeaderboardCog(BaseCog):
 
                     # Format rank display
                     if rank == 1:
-                        rank_display = "🥇 #1"
+                        rank_display = f"{Emojis.GOLD} #1"
                     elif rank == 2:
-                        rank_display = "🥈 #2"
+                        rank_display = f"{Emojis.SILVER} #2"
                     elif rank == 3:
-                        rank_display = "🥉 #3"
+                        rank_display = f"{Emojis.BRONZE} #3"
                     else:
                         rank_display = f"#{rank:,}"
 
@@ -346,7 +347,7 @@ class LeaderboardCog(BaseCog):
                 page_rankings = all_rankings[offset:offset + per_page]
 
                 if not page_rankings:
-                    embed = EmbedBuilder.error(
+                    embed = EmbedFactory.error(
                         title="No Data",
                         description=f"Page {page} has no rankings.",
                         help_text="Try a lower page number."
@@ -371,11 +372,11 @@ class LeaderboardCog(BaseCog):
 
                     # Rank display
                     if rank == 1:
-                        rank_display = "🥇"
+                        rank_display = Emojis.GOLD
                     elif rank == 2:
-                        rank_display = "🥈"
+                        rank_display = Emojis.SILVER
                     elif rank == 3:
-                        rank_display = "🥉"
+                        rank_display = Emojis.BRONZE
                     else:
                         rank_display = f"`#{rank:2}`"
 
@@ -438,14 +439,12 @@ class LeaderboardCog(BaseCog):
                 )
 
 
-class LeaderboardCategoryView(discord.ui.View):
+class LeaderboardCategoryView(BaseView):
     """Interactive dropdown for selecting leaderboard categories."""
 
     def __init__(self, user_id: int, cog: LeaderboardCog):
-        super().__init__(timeout=180)
-        self.user_id = user_id
+        super().__init__(user_id, timeout=180, logger_name="leaderboard.category_select")
         self.cog = cog
-        self.message: Optional[discord.Message] = None
 
         # Create dropdown options
         options = []
@@ -499,7 +498,7 @@ class LeaderboardCategoryView(discord.ui.View):
                     )
 
                 if not all_rankings:
-                    embed = EmbedBuilder.warning(
+                    embed = EmbedFactory.warning(
                         title="No Data",
                         description=f"No rankings available for {name}."
                     )
@@ -523,11 +522,11 @@ class LeaderboardCategoryView(discord.ui.View):
 
                     # Rank display
                     if rank == 1:
-                        rank_display = "🥇"
+                        rank_display = Emojis.GOLD
                     elif rank == 2:
-                        rank_display = "🥈"
+                        rank_display = Emojis.SILVER
                     elif rank == 3:
-                        rank_display = "🥉"
+                        rank_display = Emojis.BRONZE
                     else:
                         rank_display = f"`#{rank:2}`"
 
@@ -556,22 +555,13 @@ class LeaderboardCategoryView(discord.ui.View):
 
         except Exception as e:
             logger.error(f"Leaderboard dropdown error for {category}: {e}", exc_info=True)
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Error",
                 description="Failed to load leaderboard data."
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
-    async def on_timeout(self):
-        """Disable all buttons visually when the view expires."""
-        for item in self.children:
-            item.disabled = True
-
-        try:
-            if self.message:
-                await self.message.edit(view=self)
-        except discord.HTTPException:
-            pass
+    # on_timeout inherited from BaseView
 
 
 async def setup(bot: commands.Bot):

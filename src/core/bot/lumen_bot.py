@@ -10,35 +10,38 @@ LUMEN LAW Compliance:
 - Audit logging with Discord context (Article II)
 
 Production Features:
-- Startup timing metrics
-- Health monitoring
+- Startup timing metrics (delegated to BotLifecycle)
+- Health monitoring (delegated to BotLifecycle)
 - Context injection for all errors
 - Slash command error handling
-- Startup validation
+- Startup validation (delegated to BotLifecycle)
 - Graceful degradation
 - Metrics tracking
 - Reconnection handling
+
+Architecture:
+- Discord integration and command handling in LumenBot
+- Lifecycle management delegated to BotLifecycle module
+- Clear separation: Discord vs Infrastructure concerns
 """
 
-import asyncio
 import time
-from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 
 import discord
 from discord.ext import commands
 
+from src.core.bot.lifecycle import BotLifecycle, StartupMetrics
+from src.core.bot.loader import load_all_features
+from src.core.config import ConfigManager
 from src.core.config.config import Config
-from src.core.config.config_manager import ConfigManager
 from src.core.database.service import DatabaseService
 from src.core.exceptions import (
-    ConfigurationError,
     InsufficientResourcesError,
-    RateLimitError,
     LumenException,
+    RateLimitError,
 )
-from src.core.bot.loader import load_all_features
-from src.core.logging.logger import LogContext, get_logger, set_log_context
+from src.core.logging.logger import LogContext, get_logger
 from src.core.redis.service import RedisService
 from src.modules.tutorial.listener import register_tutorial_listeners
 from src.utils.embed_builder import EmbedBuilder
@@ -46,76 +49,12 @@ from src.utils.embed_builder import EmbedBuilder
 logger = get_logger(__name__)
 
 
-@dataclass
-class ServiceHealth:
-    """Health status for a service."""
-    name: str
-    healthy: bool
-    degraded: bool
-    error: Optional[str] = None
-    latency_ms: Optional[float] = None
-
-
-@dataclass
-class StartupMetrics:
-    """Metrics collected during bot startup."""
-    total_time_ms: float
-    database_time_ms: float
-    redis_time_ms: float
-    config_time_ms: float
-    cogs_time_ms: float
-    sync_time_ms: float
-    cogs_loaded: int
-    cogs_failed: int
-
-
-class BotMetrics:
-    """In-memory metrics for monitoring."""
-
-    def __init__(self):
-        self.commands_executed = 0
-        self.commands_failed = 0
-        self.errors_by_type = {}
-        self.startup_time = None
-        self.last_health_check = None
-        self.service_health = {}
-
-    def increment_command(self, success: bool = True):
-        """Increment command counter."""
-        if success:
-            self.commands_executed += 1
-        else:
-            self.commands_failed += 1
-
-    def increment_error(self, error_type: str):
-        """Track error by type."""
-        self.errors_by_type[error_type] = self.errors_by_type.get(error_type, 0) + 1
-
-    def get_stats(self) -> dict:
-        """Get current metrics as dictionary."""
-        total_commands = self.commands_executed + self.commands_failed
-
-        return {
-            "total_commands": total_commands,
-            "commands_succeeded": self.commands_executed,
-            "commands_failed": self.commands_failed,
-            "success_rate": (
-                ((total_commands - self.commands_failed) / total_commands * 100)
-                if total_commands > 0 else 100.0
-            ),
-            "errors_by_type": self.errors_by_type,
-            "uptime_seconds": (
-                (time.time() - self.startup_time) if self.startup_time else 0
-            ),
-        }
-
-
 class LumenBot(commands.Bot):
     """
     Lumen RPG Discord Bot - Production-Grade Implementation
 
-    Handles startup, service orchestration, cog loading, error management,
-    health monitoring, and comprehensive observability.
+    Handles Discord integration, cog loading, command execution, and error management.
+    Delegates lifecycle management (startup, health monitoring, shutdown) to BotLifecycle.
 
     LUMEN LAW Compliance:
         - Business logic confined to services
@@ -140,12 +79,15 @@ class LumenBot(commands.Bot):
             strip_after_prefix=True,
             description=Config.BOT_DESCRIPTION,
         )
-        
-        # Metrics and health tracking
-        self.metrics = BotMetrics()
-        self.startup_metrics: Optional[StartupMetrics] = None
+
+        # Lifecycle management (delegated)
+        self.lifecycle = BotLifecycle(self)
+
+        # Discord-specific state
+        self.startup_metrics: StartupMetrics | None = None
         self.is_ready = False
         self.degraded_mode = False
+        self.errors_by_type: dict[str, int] = {}
 
     # --------------------------------------------------------------- #
     # Prefix Handling
@@ -158,17 +100,21 @@ class LumenBot(commands.Bot):
         )(bot, message)
 
     # --------------------------------------------------------------- #
-    # Startup and Initialization
+    # Startup and Initialization (Delegates to BotLifecycle)
     # --------------------------------------------------------------- #
     async def setup_hook(self):
         """
         Initialize all core systems and load all features.
-        
-        Production features:
-        - Timing metrics for each stage
+
+        Delegates lifecycle management to BotLifecycle module:
         - Startup validation
-        - Graceful degradation if services fail
-        - Comprehensive logging
+        - Service initialization with timing
+        - Health monitoring
+        - Startup metrics collection
+
+        This method handles Discord-specific concerns:
+        - Cog loading
+        - Event listener registration
         """
         startup_start = time.perf_counter()
         logger.info("=" * 60)
@@ -176,20 +122,33 @@ class LumenBot(commands.Bot):
         logger.info("=" * 60)
 
         try:
-            # Validate configuration before proceeding
-            await self._validate_startup()
-            
-            # Initialize core services with individual timing
-            db_time = await self._init_service("Database", DatabaseService.initialize)
-            redis_time = await self._init_service("Redis", RedisService.initialize, required=False)
-            config_time = await self._init_service("ConfigManager", ConfigManager.initialize)
-            
-            # Load feature cogs
+            # Validate configuration (delegated to lifecycle)
+            await self.lifecycle.validate_startup()
+
+            # Initialize core services with individual timing (delegated to lifecycle)
+            db_time = await self.lifecycle.initialize_service(
+                "Database", DatabaseService.initialize()
+            )
+            redis_time = await self.lifecycle.initialize_service(
+                "Redis", RedisService.initialize(), required=False
+            )
+            config_time = await self.lifecycle.initialize_service(
+                "ConfigManager", ConfigManager.initialize()
+            )
+
+            # Track degraded mode from lifecycle
+            if (
+                self.lifecycle.metrics.services_unhealthy > 0
+                or self.lifecycle.metrics.services_degraded > 0
+            ):
+                self.degraded_mode = True
+
+            # Load feature cogs (Discord-specific)
             cogs_start = time.perf_counter()
             cog_stats = await load_all_features(self)
             cogs_time = (time.perf_counter() - cogs_start) * 1000
-            
-            # Register event listeners
+
+            # Register event listeners (Discord-specific)
             await register_tutorial_listeners(self)
             logger.info("✅ Tutorial listeners registered")
 
@@ -208,206 +167,22 @@ class LumenBot(commands.Bot):
                 cogs_loaded=cog_stats.get("loaded", 0),
                 cogs_failed=cog_stats.get("failed", 0),
             )
-            
-            self._log_startup_summary()
-            
-            # Start background health monitoring
-            self.loop.create_task(self._health_monitor_loop())
-            
+
+            # Log startup summary (delegated to lifecycle)
+            self.lifecycle.log_startup_summary(self.startup_metrics)
+
+            # Start background health monitoring (delegated to lifecycle)
+            self.lifecycle.start_health_monitoring()
+
         except Exception as e:
             logger.critical(f"❌ FATAL: Setup failed: {e}", exc_info=True)
             raise
 
-    async def _validate_startup(self):
-        """
-        Validate configuration and environment before startup.
-        
-        Fails fast if critical configuration is missing or invalid.
-        """
-        logger.info("🔍 Validating startup configuration...")
-        
-        validations = []
-        
-        # Check required environment variables
-        if not Config.DISCORD_TOKEN:
-            validations.append("DISCORD_TOKEN not set")
-        
-        if not Config.DATABASE_URL:
-            validations.append("DATABASE_URL not set")
-        
-        # Check optional but recommended configs
-        if not Config.REDIS_URL:
-            logger.warning("⚠️  REDIS_URL not set - caching disabled")
-        
-        if Config.is_development() and not Config.DISCORD_GUILD_ID:
-            logger.warning("⚠️  DISCORD_GUILD_ID not set - commands will sync globally")
-        
-        # Fail if critical validation errors
-        if validations:
-            error_msg = f"Configuration validation failed: {', '.join(validations)}"
-            logger.critical(f"❌ {error_msg}")
-            raise ConfigurationError("startup", error_msg)
-        
-        logger.info("✅ Configuration valid")
-
-    async def _init_service(
-        self, 
-        name: str, 
-        init_coro, 
-        required: bool = True
-    ) -> float:
-        """
-        Initialize a service with timing and error handling.
-        
-        Args:
-            name: Service name for logging
-            init_coro: Coroutine to initialize service
-            required: Whether service is required (non-required services enable degraded mode)
-            
-        Returns:
-            Initialization time in milliseconds
-            
-        Raises:
-            Exception if required service fails
-        """
-        start_time = time.perf_counter()
-        
-        try:
-            await init_coro()
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            logger.info(f"✅ {name} initialized ({duration_ms:.0f}ms)")
-            return duration_ms
-            
-        except Exception as e:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            
-            if required:
-                logger.critical(
-                    f"❌ {name} initialization failed ({duration_ms:.0f}ms): {e}",
-                    exc_info=True
-                )
-                raise
-            else:
-                logger.warning(
-                    f"⚠️  {name} initialization failed ({duration_ms:.0f}ms): {e}. "
-                    f"Continuing in degraded mode.",
-                    exc_info=True
-                )
-                self.degraded_mode = True
-                return duration_ms
-
-    def _log_startup_summary(self):
-        """Log comprehensive startup summary with metrics."""
-        m = self.startup_metrics
-        
-        logger.info("=" * 60)
-        logger.info("🎯 STARTUP COMPLETE")
-        logger.info("=" * 60)
-        logger.info(f"Total Time:      {m.total_time_ms:.0f}ms")
-        logger.info(f"Database:        {m.database_time_ms:.0f}ms")
-        logger.info(f"Redis:           {m.redis_time_ms:.0f}ms")
-        logger.info(f"ConfigManager:   {m.config_time_ms:.0f}ms")
-        logger.info(f"Cogs:            {m.cogs_time_ms:.0f}ms ({m.cogs_loaded} loaded, {m.cogs_failed} failed)")
-        logger.info(f"Command Sync:    {m.sync_time_ms:.0f}ms")
-        logger.info(f"Mode:            {'🟡 DEGRADED' if self.degraded_mode else '🟢 NORMAL'}")
-        logger.info("=" * 60)
-
     # --------------------------------------------------------------- #
-    # Health Monitoring
+    # Health Monitoring (Delegated to BotLifecycle)
     # --------------------------------------------------------------- #
-    async def _health_monitor_loop(self):
-        """
-        Background task to monitor service health.
-        
-        Runs every 60 seconds, checking connectivity to critical services.
-        Updates metrics for observability.
-        """
-        await self.wait_until_ready()
-        
-        while not self.is_closed():
-            try:
-                await self._check_service_health()
-                await asyncio.sleep(60)  # Check every minute
-            except Exception as e:
-                logger.error(f"Health monitor error: {e}", exc_info=True)
-                await asyncio.sleep(60)
-
-    async def _check_service_health(self):
-        """Check health of all services and update metrics."""
-        health_checks = {
-            "database": self._check_database_health(),
-            "redis": self._check_redis_health(),
-        }
-        
-        results = await asyncio.gather(*health_checks.values(), return_exceptions=True)
-        
-        for (name, _), result in zip(health_checks.items(), results):
-            if isinstance(result, Exception):
-                self.metrics.service_health[name] = ServiceHealth(
-                    name=name,
-                    healthy=False,
-                    degraded=False,
-                    error=str(result)
-                )
-            else:
-                self.metrics.service_health[name] = result
-        
-        self.metrics.last_health_check = time.time()
-        
-        # Log if any services are unhealthy
-        unhealthy = [h for h in self.metrics.service_health.values() if not h.healthy]
-        if unhealthy:
-            logger.warning(
-                f"⚠️  Unhealthy services: {', '.join(h.name for h in unhealthy)}"
-            )
-
-    async def _check_database_health(self) -> ServiceHealth:
-        """Check database connectivity and latency."""
-        start = time.perf_counter()
-        
-        try:
-            # Simple health check query
-            async with DatabaseService.get_session() as session:
-                await session.execute("SELECT 1")
-            
-            latency_ms = (time.perf_counter() - start) * 1000
-            
-            return ServiceHealth(
-                name="database",
-                healthy=True,
-                degraded=latency_ms > 100,  # Degraded if >100ms
-                latency_ms=latency_ms
-            )
-        except Exception as e:
-            return ServiceHealth(
-                name="database",
-                healthy=False,
-                degraded=False,
-                error=str(e)
-            )
-
-    async def _check_redis_health(self) -> ServiceHealth:
-        """Check Redis connectivity and latency."""
-        start = time.perf_counter()
-        
-        try:
-            await RedisService.ping()
-            latency_ms = (time.perf_counter() - start) * 1000
-            
-            return ServiceHealth(
-                name="redis",
-                healthy=True,
-                degraded=latency_ms > 50,  # Degraded if >50ms
-                latency_ms=latency_ms
-            )
-        except Exception as e:
-            # Redis is optional - degraded mode, not unhealthy
-            return ServiceHealth(
-                name="redis",
-                healthy=False,
-                degraded=True,
-                error=str(e)
-            )
+    # Health monitoring is fully delegated to BotLifecycle.
+    # Access health status via self.lifecycle.get_metrics_snapshot()
 
     # --------------------------------------------------------------- #
     # Events
@@ -415,8 +190,7 @@ class LumenBot(commands.Bot):
     async def on_ready(self):
         """Bot is connected and ready to receive events."""
         self.is_ready = True
-        self.metrics.startup_time = time.time()
-        
+
         total_users = sum(g.member_count for g in self.guilds)
         logger.info("=" * 60)
         logger.info(f"✅ {self.user} is ONLINE")
@@ -482,18 +256,19 @@ class LumenBot(commands.Bot):
         async with LogContext(
             user_id=ctx.author.id,
             guild_id=ctx.guild.id if ctx.guild else None,
-            command=f"prefix:{ctx.command}" if ctx.command else "unknown"
+            command=f"prefix:{ctx.command}" if ctx.command else "unknown",
         ):
-            # Track metrics
-            self.metrics.increment_command(success=False)
-            
+            # Track metrics in lifecycle
+            self.lifecycle.metrics.commands_failed += 1
+
             # Ignore command not found
             if isinstance(error, commands.CommandNotFound):
                 return
 
             original = getattr(error, "original", error)
             error_type = type(original).__name__
-            self.metrics.increment_error(error_type)
+            self.lifecycle.metrics.errors_handled += 1
+            self.errors_by_type[error_type] = self.errors_by_type.get(error_type, 0) + 1
 
             # Handle domain exceptions
             if isinstance(original, RateLimitError):
@@ -562,45 +337,37 @@ class LumenBot(commands.Bot):
     # --------------------------------------------------------------- #
     async def on_command_completion(self, ctx: commands.Context):
         """Track successful command execution."""
-        self.metrics.increment_command(success=True)
+        self.lifecycle.metrics.commands_executed += 1
 
     # --------------------------------------------------------------- #
-    # Graceful Shutdown
+    # Graceful Shutdown (Delegates to BotLifecycle)
     # --------------------------------------------------------------- #
     async def close(self):
         """
         Gracefully close services before bot shutdown.
-        
-        Features:
-        - Individual service closure with error handling
-        - Metrics logging before shutdown
-        - Comprehensive shutdown logging
+
+        Delegates service cleanup to BotLifecycle:
+        - Health monitoring shutdown
+        - Service closure with error handling
+        - Comprehensive logging
         """
         logger.info("=" * 60)
         logger.info("🛑 LUMEN RPG BOT SHUTDOWN")
         logger.info("=" * 60)
-        
+
         # Log final metrics
-        if self.metrics.startup_time:
-            stats = self.metrics.get_stats()
+        metrics = self.lifecycle.get_metrics_snapshot()
+        total_commands = metrics["commands_executed"] + metrics["commands_failed"]
+        if total_commands > 0:
+            success_rate = (metrics["commands_executed"] / total_commands) * 100
             logger.info(f"Final Stats:")
-            logger.info(f"  Uptime:          {stats['uptime_seconds']:.0f}s")
-            logger.info(f"  Commands:        {stats['total_commands']}")
-            logger.info(f"  Success Rate:    {stats['success_rate']:.1f}%")
+            logger.info(f"  Commands Executed: {metrics['commands_executed']}")
+            logger.info(f"  Commands Failed:   {metrics['commands_failed']}")
+            logger.info(f"  Success Rate:      {success_rate:.1f}%")
+            logger.info(f"  Errors Handled:    {metrics['errors_handled']}")
 
-        async def safe_close(name: str, coro):
-            """Close a service safely with error handling."""
-            try:
-                await coro()
-                logger.info(f"✅ {name} closed")
-            except Exception as e:
-                logger.error(f"⚠️  Error closing {name}: {e}", exc_info=True)
-
-        # Close all services
-        await asyncio.gather(
-            safe_close("Database", DatabaseService.close),
-            safe_close("Redis", RedisService.close),
-        )
+        # Delegate shutdown to lifecycle
+        await self.lifecycle.shutdown()
 
         await super().close()
         logger.info("=" * 60)

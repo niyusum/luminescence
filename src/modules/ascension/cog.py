@@ -30,7 +30,8 @@ from src.core.infra.transaction_logger import TransactionLogger
 from src.core.infra.redis_service import RedisService
 from src.core.exceptions import InsufficientResourcesError, InvalidOperationError
 from src.utils.decorators import ratelimit
-from utils.embed_builder import EmbedBuilder
+from src.ui import EmbedFactory, BaseView
+from src.ui.emojis import Emojis
 
 logger = get_logger(__name__)
 
@@ -143,14 +144,14 @@ class AscensionCog(BaseCog):
         color = self._get_floor_color(floor)
 
         embed = discord.Embed(
-            title=f"🗼 FLOOR {floor} APPROACH",
+            title=f"{Emojis.ASCENSION} FLOOR {floor} APPROACH",
             color=color
         )
 
         # Monster info
         element_emoji = CombatService.get_element_emoji(monster["element"])
         embed.add_field(
-            name=f"⚔️ {monster['name']}",
+            name=f"{Emojis.ATTACK} {monster['name']}",
             value=(
                 f"{element_emoji} **Element:** {monster['element'].title()}\n"
                 f"**ATK:** {monster['atk']:,}\n"
@@ -164,7 +165,7 @@ class AscensionCog(BaseCog):
             player_stats["hp"], player_stats["max_hp"], width=10
         )
         embed.add_field(
-            name="💪 Your Stats",
+            name=f"{Emojis.STAMINA} Your Stats",
             value=(
                 f"**Power:** {player_stats['power']:,}\n"
                 f"**Defense:** {player_stats['defense']:,}\n"
@@ -180,14 +181,14 @@ class AscensionCog(BaseCog):
                 for b in strategic["element_bonuses"]
             )
             embed.add_field(
-                name="✨ Active Generals",
+                name=f"{Emojis.RADIANT} Active Generals",
                 value=bonus_text,
                 inline=False
             )
 
         # Combat gauges
         embed.add_field(
-            name="🪙 Combat Status",
+            name=f"{Emojis.TEMPEST} Combat Status",
             value=(
                 f"**Critical Gauge:** ░░░░░░░░░░ 0%\n"
                 f"**Momentum:** ░░░░░░░░░░ 0%"
@@ -198,7 +199,7 @@ class AscensionCog(BaseCog):
         # Milestone indicator
         if monster.get("is_milestone"):
             embed.add_field(
-                name="🏆 MILESTONE BOSS",
+                name=f"{Emojis.VICTORY} MILESTONE BOSS",
                 value=(
                     f"Special mechanics active!\n"
                     f"Extra rewards on victory!"
@@ -245,7 +246,7 @@ class AscensionCog(BaseCog):
 
             # Build inventory embed
             embed = discord.Embed(
-                title="🎫 Token Inventory",
+                title=f"{Emojis.TOKEN} Token Inventory",
                 description=(
                     "Redeem tokens for random maidens!\n"
                     "Higher tier tokens = Higher tier maidens"
@@ -264,10 +265,10 @@ class AscensionCog(BaseCog):
                 if quantity > 0:
                     has_tokens = True
 
-                status = "✅" if quantity > 0 else "❌"
+                status = Emojis.SUCCESS if quantity > 0 else Emojis.ERROR
 
                 embed.add_field(
-                    name=f"{status} {token_data.get('emoji', '❓')} {token_data.get('name', token_type.title())}",
+                    name=f"{status} {token_data.get('emoji', Emojis.HELP)} {token_data.get('name', token_type.title())}",
                     value=(
                         f"**Quantity:** {quantity}\n"
                         f"**Tier Range:** T{tier_range[0]}-T{tier_range[1]}\n"
@@ -277,7 +278,7 @@ class AscensionCog(BaseCog):
                 )
 
             embed.add_field(
-                name="📊 Summary",
+                name=f"{Emojis.INFO} Summary",
                 value=f"**Total Tokens:** {total_tokens}",
                 inline=False
             )
@@ -285,7 +286,7 @@ class AscensionCog(BaseCog):
             if has_tokens:
                 first_token = next(iter(TOKEN_TIERS), 'bronze')
                 embed.add_field(
-                    name="💡 How to Redeem",
+                    name=f"{Emojis.TIP} How to Redeem",
                     value=(
                         "Use `/redeem <token_type>` to redeem!\n"
                         f"Example: `/redeem {first_token}`"
@@ -294,7 +295,7 @@ class AscensionCog(BaseCog):
                 )
             else:
                 embed.add_field(
-                    name="💡 How to Earn Tokens",
+                    name=f"{Emojis.TIP} How to Earn Tokens",
                     value=(
                         "Clear ascension tower floors to earn tokens!\n"
                         "• Floors 1-10: Bronze tokens\n"
@@ -370,7 +371,7 @@ class AscensionCog(BaseCog):
             await self.send_error(
                 ctx,
                 "Invalid Token Type",
-                f"❌ `{token_type}` is not a valid token type.",
+                f"{Emojis.ERROR} `{token_type}` is not a valid token type.",
                 help_text=f"Valid types: **{valid_types}**\nExample: `/redeem {first_token}`"
             )
             return
@@ -393,25 +394,25 @@ class AscensionCog(BaseCog):
             # Build success embed
             token_info = TOKEN_TIERS.get(
                 token_type,
-                {"name": token_type.title(), "emoji": "❓", "color": 0x808080}
+                {"name": token_type.title(), "emoji": Emojis.HELP, "color": 0x808080}
             )
             maiden_base = result["maiden_base"]
             tier = result["tier"]
             tokens_remaining = result["tokens_remaining"]
 
             element_obj = Element.from_string(maiden_base.element)
-            element_emoji = element_obj.emoji if element_obj else "❓"
+            element_emoji = element_obj.emoji if element_obj else Emojis.HELP
             element_name = element_obj.display_name if element_obj else maiden_base.element
 
             embed = discord.Embed(
-                title="✨ Token Redeemed Successfully!",
+                title=f"{Emojis.RADIANT} Token Redeemed Successfully!",
                 description=f"You used a **{token_info['name']}** {token_info['emoji']}",
                 color=token_info["color"]
             )
 
             # Maiden info
             embed.add_field(
-                name="🎴 Maiden Summoned",
+                name=f"{Emojis.MAIDEN} Maiden Summoned",
                 value=(
                     f"**{maiden_base.name}**\n"
                     f"{element_emoji} {element_name}\n"
@@ -422,7 +423,7 @@ class AscensionCog(BaseCog):
 
             # Stats
             embed.add_field(
-                name="📊 Base Stats",
+                name=f"{Emojis.INFO} Base Stats",
                 value=(
                     f"**ATK:** {maiden_base.base_atk:,}\n"
                     f"**DEF:** {maiden_base.base_def:,}"
@@ -432,7 +433,7 @@ class AscensionCog(BaseCog):
 
             # Remaining tokens
             embed.add_field(
-                name="🎫 Tokens Remaining",
+                name=f"{Emojis.TOKEN} Tokens Remaining",
                 value=(
                     f"{token_info['emoji']} **{token_info['name']}:** {tokens_remaining}"
                 ),
@@ -458,7 +459,7 @@ class AscensionCog(BaseCog):
         except InsufficientResourcesError as e:
             token_info = TOKEN_TIERS.get(
                 token_type,
-                {"name": token_type.title(), "emoji": "❓"}
+                {"name": token_type.title(), "emoji": Emojis.HELP}
             )
             await self.send_error(
                 ctx,
@@ -516,7 +517,7 @@ class AscensionCombatView(discord.ui.View):
         self.message = message
 
     @discord.ui.button(
-        label="⚔️ Attack x1",
+        label=f"{Emojis.ATTACK} Attack x1",
         style=discord.ButtonStyle.secondary,
         custom_id="ascension_x1"
     )
@@ -529,7 +530,7 @@ class AscensionCombatView(discord.ui.View):
         await self._execute_attack(interaction, "x1")
 
     @discord.ui.button(
-        label="⚔️⚔️ Attack x3",
+        label=f"{Emojis.ATTACK}{Emojis.ATTACK} Attack x3",
         style=discord.ButtonStyle.primary,
         custom_id="ascension_x3"
     )
@@ -542,7 +543,7 @@ class AscensionCombatView(discord.ui.View):
         await self._execute_attack(interaction, "x3")
 
     @discord.ui.button(
-        label="💥 Attack x10",
+        label=f"{Emojis.CRITICAL} Attack x10",
         style=discord.ButtonStyle.danger,
         custom_id="ascension_x10"
     )
@@ -555,7 +556,7 @@ class AscensionCombatView(discord.ui.View):
         await self._execute_attack(interaction, "x10")
 
     @discord.ui.button(
-        label="🚪 Retreat",
+        label=f"{Emojis.RETREAT} Retreat",
         style=discord.ButtonStyle.secondary,
         custom_id="ascension_retreat"
     )
@@ -573,7 +574,7 @@ class AscensionCombatView(discord.ui.View):
             return
 
         embed = discord.Embed(
-            title="🚪 Retreated",
+            title=f"{Emojis.RETREAT} Retreated",
             description="You have retreated from the tower.",
             color=0x808080
         )
@@ -704,7 +705,7 @@ class AscensionCombatView(discord.ui.View):
 
         # LUMEN LAW Article I.5 & Article VII: Specific Exception Handling
         except InsufficientResourcesError as e:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Insufficient Resources",
                 description=str(e),
                 help_text="You don't have enough resources for this attack."
@@ -721,7 +722,7 @@ class AscensionCombatView(discord.ui.View):
                 floor_number=floor,
                 lock_key=lock_key
             )
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Combat Error",
                 description="Failed to execute attack.",
                 help_text="Please try again. Your action has been logged for audit."
@@ -735,7 +736,7 @@ class AscensionCombatView(discord.ui.View):
         monster = self.combat_data["monster"]
 
         embed = discord.Embed(
-            title=f"⚔️ TURN {result['turns_taken']}",
+            title=f"{Emojis.ATTACK} TURN {result['turns_taken']}",
             color=0x00FF00 if result["critical"] else 0x0099FF
         )
 
@@ -777,14 +778,14 @@ class AscensionCombatView(discord.ui.View):
 
         momentum_status = ""
         if momentum >= 80:
-            momentum_status = " 💥 MAXIMUM!"
+            momentum_status = f" {Emojis.CRITICAL} MAXIMUM!"
         elif momentum >= 50:
-            momentum_status = " 🔥 BLAZING!"
+            momentum_status = f" {Emojis.INFERNAL} BLAZING!"
         elif momentum >= 30:
-            momentum_status = " 🪙 RISING!"
+            momentum_status = f" {Emojis.TEMPEST} RISING!"
 
         embed.add_field(
-            name="🪙 Combat Status",
+            name=f"{Emojis.TEMPEST} Combat Status",
             value=(
                 f"**Critical Gauge:** {crit_bar} {crit_gauge}%\n"
                 f"**Momentum:** {momentum_bar} {momentum}%{momentum_status}"
@@ -806,14 +807,14 @@ class AscensionCombatView(discord.ui.View):
         rewards = victory_result["rewards"]
 
         embed = discord.Embed(
-            title="🏆 VICTORY!",
+            title=f"{Emojis.VICTORY} VICTORY!",
             description=f"**Floor {floor} Cleared!**",
             color=0x00FF00
         )
 
         # Combat stats
         embed.add_field(
-            name="⚔️ Combat Stats",
+            name=f"{Emojis.ATTACK} Combat Stats",
             value=(
                 f"**Damage Dealt:** {combat_result['player_damage']:,}\n"
                 f"**Damage Taken:** {combat_result['boss_damage']:,}\n"
@@ -831,12 +832,12 @@ class AscensionCombatView(discord.ui.View):
             token_data = rewards["token"]
             token_info = TOKEN_TIERS.get(
                 token_data["type"],
-                {"emoji": "❓", "name": token_data["type"].title()}
+                {"emoji": Emojis.HELP, "name": token_data["type"].title()}
             )
             reward_text += f"\n{token_info['emoji']} **{token_info['name']}** x{token_data['quantity']}"
 
         embed.add_field(
-            name="💰 Rewards",
+            name=f"{Emojis.LUMEES} Rewards",
             value=reward_text,
             inline=True
         )
@@ -844,7 +845,7 @@ class AscensionCombatView(discord.ui.View):
         # Record indicator
         if victory_result["is_record"]:
             embed.add_field(
-                name="🎉 NEW RECORD!",
+                name=f"{Emojis.CELEBRATION} NEW RECORD!",
                 value=f"Highest floor reached: **{floor}**",
                 inline=False
             )
@@ -855,7 +856,7 @@ class AscensionCombatView(discord.ui.View):
                 f"**{k}:** {v}" for k, v in rewards["milestone_bonus"].items()
             )
             embed.add_field(
-                name="🏆 Milestone Bonus",
+                name=f"{Emojis.VICTORY} Milestone Bonus",
                 value=bonus_text,
                 inline=False
             )

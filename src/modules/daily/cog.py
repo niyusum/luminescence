@@ -23,11 +23,12 @@ from src.modules.player.service import PlayerService
 from src.modules.daily.service import DailyService
 from src.core.infra.transaction_logger import TransactionLogger
 from core.event.bus.event_bus import EventBus
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.core.exceptions import CooldownError
 from src.core.logging.logger import get_logger, LogContext
+from src.ui.emojis import Emojis
 from src.utils.decorators import ratelimit
-from utils.embed_builder import EmbedBuilder
+from src.ui import EmbedFactory, BaseView
 
 logger = get_logger(__name__)
 
@@ -95,24 +96,24 @@ class DailyCog(BaseCog):
                 )
 
             # --- Embed Construction ---
-            embed = EmbedBuilder.success(
-                title="🎁 Daily Rewards Claimed!",
+            embed = EmbedFactory.success(
+                title=f"{Emojis.DAILY} Daily Rewards Claimed!",
                 description=(
                     f"You've successfully claimed your daily rewards!\n\n"
-                    f"**Day {result['streak']} Streak** 🔥"
+                    f"**Day {result['streak']} Streak** {Emojis.INFERNAL}"
                 ),
                 footer="Come back tomorrow for more rewards!",
             )
 
             embed.add_field(
-                name="💰 Rewards Received",
-                value=f"**+{result['lumees_gained']:,}** Lumees\n**+{result['auric_coin_gained']}** AuricCoin", 
+                name=f"{Emojis.LUMEES} Rewards Received",
+                value=f"**+{result['lumees_gained']:,}** Lumees\n**+{result['auric_coin_gained']}** AuricCoin",
                 inline=True,
             )
 
             if result.get("bonus_applied"):
                 embed.add_field(
-                    name="🎉 Streak Bonus",
+                    name=f"{Emojis.VICTORY} Streak Bonus",
                     value=f"**+{result.get('bonus_amount', 0):,}** extra lumees!\nKeep your streak going!",
                     inline=True,
                 )
@@ -125,17 +126,17 @@ class DailyCog(BaseCog):
             if income_boost > 1.0 or xp_boost > 1.0:
                 lines = []
                 if income_boost > 1.0:
-                    lines.append(f"💰 **Income Boost:** +{(income_boost - 1.0) * 100:.0f}%")
+                    lines.append(f"{Emojis.LUMEES} **Income Boost:** +{(income_boost - 1.0) * 100:.0f}%")
                 if xp_boost > 1.0:
-                    lines.append(f"📈 **XP Boost:** +{(xp_boost - 1.0) * 100:.0f}%")
+                    lines.append(f"{Emojis.EXPERIENCE} **XP Boost:** +{(xp_boost - 1.0) * 100:.0f}%")
                 embed.add_field(
-                    name="✨ Modifier Bonus",
+                    name=f"{Emojis.RADIANT} Modifier Bonus",
                     value="\n".join(lines),
                     inline=False,
                 )
 
             embed.add_field(
-                name="⏰ Next Daily",
+                name=f"{Emojis.REGENERATING} Next Daily",
                 value="Available in 24 hours\nDon't break your streak!",
                 inline=False,
             )

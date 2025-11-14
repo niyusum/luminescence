@@ -1,18 +1,158 @@
 """
-Dynamic feature cog loader for Lumen RPG Bot.
+Dynamic Feature Cog Loader for Lumen (2025)
 
-LUMEN LAW Compliance:
-- Dynamic discovery (Article I.8)
-- Service modularity (Article I.2)
-- Zero hardcoded paths
-- Graceful degradation on failures
+Purpose
+-------
+Automatically discover and load all feature cogs from the features directory
+with production-grade observability, error handling, and performance tracking.
 
-Production Enhancements:
-- Load timing metrics per cog
-- Timeout protection (30s per cog)
-- Validation before loading
-- Rich error context with suggestions
-- Load performance tracking
+This loader eliminates hardcoded cog lists, enabling plug-and-play feature
+development. Simply drop a `*_cog.py` file in `src/features/` and it will
+be automatically discovered and loaded on bot startup.
+
+Responsibilities
+----------------
+- Discover all *_cog.py files in src/features/ directory
+- Validate cog modules before loading (check for setup() function)
+- Load cogs in parallel with timeout protection (30s per cog)
+- Track load timing and performance metrics per cog
+- Provide detailed error context with actionable suggestions
+- Log comprehensive loading summary with statistics
+- Maintain backward-compatible API
+
+Non-Responsibilities
+--------------------
+- Cog implementation (handled by individual feature cogs)
+- Cog lifecycle management (handled by discord.py)
+- Bot initialization (handled by BotLifecycle)
+- Error handling within cogs (handled by BaseCog)
+
+LUMEN LAW Compliance
+--------------------
+- Article I.8: Dynamic discovery, zero hardcoded paths
+- Article I.2: Service modularity and separation
+- Article IX: Graceful degradation on loading failures
+- Article X: Comprehensive observability with structured logging
+
+Production Features
+-------------------
+**Parallel Loading**:
+- All cogs loaded concurrently via asyncio.gather()
+- Significantly faster startup than sequential loading
+
+**Timeout Protection**:
+- 30-second timeout per cog prevents hanging on slow/broken cogs
+- Continues loading other cogs even if one times out
+
+**Pre-load Validation**:
+- Checks for required setup() function before loading
+- Validates module can be imported
+- Provides clear error messages for common issues
+
+**Rich Error Context**:
+- Captures error type, duration, and stack traces
+- Provides actionable suggestions based on error type
+- Error breakdown by type in summary
+
+**Performance Metrics**:
+- Total load time
+- Per-cog load timing
+- Fastest/slowest/average cog load times
+- Success rate percentage
+
+Architecture Notes
+------------------
+- **Discovery**: Uses pkgutil.walk_packages() for filesystem scanning
+- **Naming Convention**: Only loads files ending with `_cog.py`
+- **Package Structure**: Expects `src/features/<module>/<name>_cog.py`
+- **Load Results**: Returns dataclass with success, timing, and error info
+- **Backward Compatible**: Maintains legacy `load_all_features()` function
+
+Configuration
+-------------
+- `LOAD_TIMEOUT`: 30 seconds per cog
+- `BASE_PATH`: src/features/
+- `BASE_PACKAGE`: "features"
+- `COG_SUFFIX`: "_cog"
+
+Usage Example
+-------------
+Direct usage with FeatureLoader (recommended for access to stats):
+
+>>> loader = FeatureLoader(bot)
+>>> stats = await loader.load_all_features()
+>>> print(f"Loaded {stats['loaded']}/{stats['discovered']} cogs")
+>>> print(f"Total time: {stats['total_time_ms']:.0f}ms")
+>>> print(f"Success rate: {stats['success_rate']:.1f}%")
+>>>
+>>> # Access timing details
+>>> if 'timing' in stats:
+>>>     timing = stats['timing']
+>>>     print(f"Slowest: {timing['slowest_cog']} ({timing['slowest_time_ms']:.0f}ms)")
+
+Backward-compatible API (legacy):
+
+>>> # In bot setup_hook():
+>>> stats = await load_all_features(bot)
+>>> logger.info(f"Loaded {stats['loaded']} cogs")
+
+Return Value Structure
+----------------------
+Stats dictionary returned by load_all_features():
+
+>>> {
+>>>     "total_time_ms": 1234.5,
+>>>     "discovered": 10,
+>>>     "loaded": 9,
+>>>     "failed": 1,
+>>>     "success_rate": 90.0,
+>>>     "results": [LoadResult(...), ...],
+>>>     "timing": {
+>>>         "slowest_cog": "features.fusion.fusion_cog",
+>>>         "slowest_time_ms": 234.5,
+>>>         "fastest_cog": "features.help.help_cog",
+>>>         "fastest_time_ms": 12.3,
+>>>         "average_time_ms": 123.4
+>>>     },
+>>>     "error_breakdown": {
+>>>         "ImportError": 1
+>>>     }
+>>> }
+
+Error Suggestions
+-----------------
+The loader provides context-aware suggestions based on error types:
+
+- **ImportError**: Check dependencies and module paths
+- **AttributeError**: Verify required attributes/methods exist
+- **SyntaxError**: Fix syntax errors in cog file
+- **TimeoutError**: Check for blocking operations in setup()
+- **ValueError**: Check configuration and function arguments
+
+Example: Creating a Feature Cog
+--------------------------------
+To create a new feature cog that will be auto-discovered:
+
+1. Create file: `src/features/myfeature/myfeature_cog.py`
+2. Implement cog class extending BaseCog
+3. Add required setup() function:
+
+>>> # src/features/myfeature/myfeature_cog.py
+>>> from discord.ext import commands
+>>> from src.core.bot.base_cog import BaseCog
+>>>
+>>> class MyFeatureCog(BaseCog):
+>>>     def __init__(self, bot: commands.Bot):
+>>>         super().__init__(bot, "MyFeatureCog")
+>>>
+>>>     @commands.command(name="mycommand")
+>>>     async def my_command(self, ctx: commands.Context):
+>>>         await self.send_info(ctx, "Hello!", "Feature working!")
+>>>
+>>> async def setup(bot: commands.Bot):
+>>>     await bot.add_cog(MyFeatureCog(bot))
+
+4. Restart bot - cog will be automatically discovered and loaded
 """
 
 import asyncio

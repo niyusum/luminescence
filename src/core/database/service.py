@@ -20,6 +20,7 @@ Responsibilities
 - Support pessimistic locking via SQLAlchemy's `with_for_update=True` pattern.
 - Emit structured logs and database metrics for key lifecycle events.
 - Expose a fast health check for readiness/liveness probes.
+- Provide connection pool metrics for monitoring and capacity planning.
 
 Non-Responsibilities
 --------------------
@@ -137,6 +138,8 @@ class DatabaseService:
     - get_session() -> Async context manager for read-only or manual control.
     - get_transaction() -> Async context manager for atomic write transactions.
     - health_check() -> bool indicating DB reachability.
+    - get_pool_metrics() -> dict with current connection pool metrics.
+    - record_pool_metrics() -> Record pool metrics to monitoring backend.
     - get_locked_entity() -> helper for pessimistic row locking.
 
     Usage
@@ -395,6 +398,103 @@ class DatabaseService:
                 exc_info=True,
             )
             return False
+
+    # --------------------------------------------------------------------- #
+    # Connection Pool Metrics
+    # --------------------------------------------------------------------- #
+
+    @classmethod
+    def get_pool_metrics(cls) -> Optional[dict[str, int]]:
+        """
+        Get current connection pool metrics.
+
+        Returns
+        -------
+        Optional[dict[str, int]]
+            Dictionary with pool metrics:
+            - pool_size: Configured pool size
+            - checked_out: Connections currently in use
+            - checked_in: Connections available
+            - overflow: Overflow connections beyond pool_size
+            - total_connections: Total connections
+            Returns None if engine not initialized or using NullPool.
+        """
+        engine = cls._engine
+        config = cls._config_snapshot
+
+        if engine is None or config is None:
+            logger.warning("Pool metrics requested but engine not initialized")
+            return None
+
+        # NullPool doesn't have pool metrics
+        if config.pool_class.__name__ == "NullPool":
+            return None
+
+        try:
+            pool = engine.pool
+            # QueuePool provides size(), checkedout(), overflow()
+            pool_size = pool.size()
+            checked_out = pool.checkedout()
+            overflow_count = pool.overflow()
+            total = pool_size + overflow_count
+            checked_in = pool_size - checked_out
+
+            return {
+                "pool_size": config.pool_size,
+                "checked_out": checked_out,
+                "checked_in": checked_in,
+                "overflow": overflow_count,
+                "total_connections": total,
+            }
+
+        except Exception as exc:
+            logger.error(
+                "Failed to retrieve pool metrics",
+                extra={
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+                exc_info=True,
+            )
+            return None
+
+    @classmethod
+    def record_pool_metrics(cls) -> None:
+        """
+        Retrieve and record current connection pool metrics.
+
+        This method queries the connection pool status and emits metrics
+        for monitoring and capacity planning. Safe to call periodically.
+
+        Notes
+        -----
+        - Does nothing if engine not initialized or using NullPool
+        - Emits metrics via DatabaseMetrics.record_pool_metrics()
+        - Logs warning if metrics retrieval fails
+        """
+        metrics = cls.get_pool_metrics()
+
+        if metrics is None:
+            return
+
+        DatabaseMetrics.record_pool_metrics(
+            pool_size=metrics["pool_size"],
+            checked_out=metrics["checked_out"],
+            checked_in=metrics["checked_in"],
+            overflow=metrics["overflow"],
+            total_connections=metrics["total_connections"],
+        )
+
+        logger.debug(
+            "Pool metrics recorded",
+            extra={
+                "pool_size": metrics["pool_size"],
+                "checked_out": metrics["checked_out"],
+                "checked_in": metrics["checked_in"],
+                "overflow": metrics["overflow"],
+                "total_connections": metrics["total_connections"],
+            },
+        )
 
     # --------------------------------------------------------------------- #
     # Session & Transaction Context Managers

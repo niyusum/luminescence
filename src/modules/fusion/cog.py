@@ -7,14 +7,15 @@ from src.core.bot.base_cog import BaseCog
 from src.core.infra.database_service import DatabaseService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.infra.redis_service import RedisService
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from core.event.bus.event_bus import EventBus
 from src.modules.player.service import PlayerService
 from src.modules.fusion.service import FusionService
 from src.core.exceptions import InsufficientResourcesError, InvalidFusionError, NotFoundError
 from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
-from src.utils.embed_builder import EmbedBuilder
+from src.ui import EmbedFactory, BaseView
+from src.ui.emojis import Emojis
 
 if TYPE_CHECKING:
     from typing import Callable
@@ -74,8 +75,8 @@ class FusionCog(BaseCog):
                     )
                     return
 
-                embed = EmbedBuilder.primary(
-                    title="⚗️ Fusion System",
+                embed = EmbedFactory.primary(
+                    title=f"{Emojis.FUSION} Fusion System",
                     description="Select maidens to fuse into a higher tier!\n\n**Choose carefully:** Fusion has a chance of failure at higher tiers.",
                     footer=f"{len(fusable_maidens)} fusable maidens available",
                 )
@@ -95,7 +96,7 @@ class FusionCog(BaseCog):
                 )
 
                 embed.add_field(
-                    name="💡 Fusion Tips",
+                    name=f"{Emojis.TIP} Fusion Tips",
                     value=(
                         "• Higher tiers have lower success rates\n"
                         "• Failed fusions grant fusion shards\n"
@@ -161,7 +162,7 @@ class FusionSelectionView(discord.ui.View):
         self.add_item(TierSelectDropdown(user_id, fusable_maidens, cog_logger))
 
     @discord.ui.button(
-        label="📖 View Fusion Rates",
+        label=f"{Emojis.INFO} View Fusion Rates",
         style=discord.ButtonStyle.secondary,
         custom_id="view_fusion_rates",
     )
@@ -182,7 +183,7 @@ class FusionSelectionView(discord.ui.View):
             7: 0.45, 8: 0.35, 9: 0.25, 10: 0.15, 11: 0.10
         })
 
-        rates_embed = EmbedBuilder.info(
+        rates_embed = EmbedFactory.info(
             title="Fusion Success Rates",
             description="Higher tiers have lower success rates. Failed fusions grant shards!",
             footer="Rates may be boosted during events",
@@ -195,7 +196,7 @@ class FusionSelectionView(discord.ui.View):
 
         rates_embed.add_field(name="Base Rates", value=rates_text, inline=False)
         rates_embed.add_field(
-            name="🔷 Fusion Shards",
+            name=f"{Emojis.LUMENITE} Fusion Shards",
             value=(
                 f"Failed fusions grant shards. Collect **{ConfigManager.get('fusion.shard_guarantee_count', default=10)}** shards of a tier to "
                 "guarantee a fusion to the next tier!"
@@ -265,7 +266,7 @@ class TierSelectDropdown(discord.ui.Select):
         selected_tier = int(self.values[0])
         tier_maidens = [m for m in self.fusable_maidens if m["tier"] == selected_tier]
 
-        embed = EmbedBuilder.primary(
+        embed = EmbedFactory.primary(
             title=f"Tier {selected_tier} Fusion",
             description=(
                 f"Select which Tier {selected_tier} maiden to fuse.\n\n"
@@ -290,7 +291,7 @@ class MaidenSelectView(discord.ui.View):
         self.add_item(MaidenSelectDropdown(user_id, tier_maidens, cog_logger))
 
     @discord.ui.button(
-        label="« Back",
+        label=f"{Emojis.BACK} Back",
         style=discord.ButtonStyle.secondary,
         custom_id="back_to_tier_select",
     )
@@ -402,8 +403,8 @@ class MaidenSelectDropdown(discord.ui.Select):
 
                 # Fusion outcome embeds
                 if result["success"]:
-                    embed = EmbedBuilder.success(
-                        title="⚗️ Fusion Successful!",
+                    embed = EmbedFactory.success(
+                        title=f"{Emojis.FUSION} Fusion Successful!",
                         description=(
                             f"**{result['maiden_name']}** has been upgraded!\n\n"
                             f"**Tier {result['tier_from']} → Tier {result['tier_to']}**"
@@ -416,7 +417,7 @@ class MaidenSelectDropdown(discord.ui.Select):
                         inline=True,
                     )
                 else:
-                    embed = EmbedBuilder.warning(
+                    embed = EmbedFactory.warning(
                         title="Fusion Failed",
                         description=(
                             f"The fusion did not succeed.\n\n"
@@ -426,7 +427,7 @@ class MaidenSelectDropdown(discord.ui.Select):
                     )
                     # LUMEN LAW POSITIONAL MARKER: CONFIGMANAGER USE
                     embed.add_field(
-                        name="🔷 Consolation",
+                        name=f"{Emojis.LUMENITE} Consolation",
                         value=(
                             f"+1 Tier {result['tier_from']} Fusion Shard\n\nCollect "
                             f"{ConfigManager.get('fusion.shard_guarantee_count', default=10)} shards for a guaranteed fusion!"
@@ -462,7 +463,7 @@ class MaidenSelectDropdown(discord.ui.Select):
                 **log_context
             )
             # Send friendly response for domain error
-            embed = EmbedBuilder.error(title="Fusion Error", description=str(e))
+            embed = EmbedFactory.error(title="Fusion Error", description=str(e))
             await interaction.followup.send(embed=embed, ephemeral=True)
             # Disable view after failure to prevent re-try
             await interaction.edit_original_response(view=None)
@@ -479,7 +480,7 @@ class MaidenSelectDropdown(discord.ui.Select):
                 error_type=type(e).__name__,
                 **log_context
             )
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="System Error", description="An unexpected error occurred during fusion. The team has been notified."
             )
             await interaction.followup.send(embed=embed, ephemeral=True)

@@ -6,7 +6,8 @@
       "Bash(dir:*)",
       "Bash(nul)",
       "Bash(tree:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

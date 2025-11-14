@@ -8,11 +8,12 @@ from src.core.infra.database_service import DatabaseService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.modules.player.service import PlayerService
 from src.modules.tutorial.service import TutorialService, TRIGGER_INDEX, TUTORIAL_STEPS
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from core.event.bus.event_bus import EventBus
 from src.core.logging.logger import get_logger
+from src.ui.emojis import Emojis
 from src.utils.decorators import ratelimit
-from utils.embed_builder import EmbedBuilder
+from src.ui import EmbedFactory, BaseView
 
 logger = get_logger(__name__)
 
@@ -55,7 +56,7 @@ class TutorialCog(BaseCog):
                 )
 
                 if not player:
-                    embed = EmbedBuilder.error(
+                    embed = EmbedFactory.error(
                         title="Not Registered",
                         description="You need to register first!",
                         help_text="Use `/register` to create your account."
@@ -69,7 +70,7 @@ class TutorialCog(BaseCog):
 
                 # Build progress embed
                 embed = discord.Embed(
-                    title="📚 Tutorial Progress",
+                    title=f"{Emojis.TUTORIAL} Tutorial Progress",
                     description="Complete tutorial steps to earn rewards and learn the game!",
                     color=0x3498db,
                     timestamp=discord.utils.utcnow()
@@ -81,7 +82,7 @@ class TutorialCog(BaseCog):
                 progress_pct = (completed_count / total_steps * 100) if total_steps > 0 else 0
 
                 embed.add_field(
-                    name="📊 Overall Progress",
+                    name=f"{Emojis.INFO} Overall Progress",
                     value=f"{completed_count}/{total_steps} steps completed ({progress_pct:.0f}%)",
                     inline=False
                 )
@@ -97,7 +98,7 @@ class TutorialCog(BaseCog):
 
                     # Check if completed
                     if key in completed_steps:
-                        status = "✅"
+                        status = Emojis.SUCCESS
                     else:
                         status = "⬜"
                         # Mark first incomplete step
@@ -130,13 +131,13 @@ class TutorialCog(BaseCog):
                 # Add next step hint
                 if next_step_hint:
                     embed.add_field(
-                        name="💡 Next Step Hint",
+                        name=f"{Emojis.TIP} Next Step Hint",
                         value=next_step_hint,
                         inline=False
                     )
                 else:
                     embed.add_field(
-                        name="🎉 Congratulations!",
+                        name=f"{Emojis.VICTORY} Congratulations!",
                         value="You've completed all tutorial steps!",
                         inline=False
                     )
@@ -261,8 +262,8 @@ class TutorialCog(BaseCog):
                 return
 
             # Public congrats embed
-            embed = EmbedBuilder.success(
-                title=f"🎉 Tutorial Complete: {done['title']}",
+            embed = EmbedFactory.success(
+                title=f"{Emojis.VICTORY} Tutorial Complete: {done['title']}",
                 description=done["congrats"],
                 footer="Keep going — complete all steps for starter boosts!"
             )

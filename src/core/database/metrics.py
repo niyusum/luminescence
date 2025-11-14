@@ -11,6 +11,7 @@ telemetry:
 - Transactions (start / commit / rollback).
 - Queries (latency, errors).
 - Retries (attempts, give-ups).
+- Connection pool (size, checked out/in, overflow).
 
 Responsibilities
 ----------------
@@ -20,6 +21,7 @@ Responsibilities
   `AbstractDatabaseMetricsBackend`.
 - Emit structured logs whenever no backend is configured to ensure some
   observability in all environments.
+- Track connection pool utilization for capacity planning.
 
 Non-Responsibilities
 --------------------
@@ -32,6 +34,7 @@ Design Notes
 ------------
 - Uses an optional backend to avoid hard-coupling to Prometheus/StatsD/etc.
 - When no backend is configured, falls back to debug-level logging only.
+- Connection pool metrics support capacity planning and connection leak detection.
 """
 
 from __future__ import annotations
@@ -138,6 +141,38 @@ class AbstractDatabaseMetricsBackend(ABC):
         attempt: int,
         error_type: str,
     ) -> None:
+        ...
+
+    # ------------------------------------------------------------------ #
+    # Connection Pool
+    # ------------------------------------------------------------------ #
+
+    @abstractmethod
+    def record_pool_metrics(
+        self,
+        *,
+        pool_size: int,
+        checked_out: int,
+        checked_in: int,
+        overflow: int,
+        total_connections: int,
+    ) -> None:
+        """
+        Record current connection pool metrics.
+
+        Parameters
+        ----------
+        pool_size : int
+            Configured pool size
+        checked_out : int
+            Number of connections currently checked out (in use)
+        checked_in : int
+            Number of connections checked in (available)
+        overflow : int
+            Number of overflow connections (beyond pool_size)
+        total_connections : int
+            Total connections (checked_out + checked_in + overflow)
+        """
         ...
 
 
@@ -353,4 +388,52 @@ class DatabaseMetrics:
                 operation=operation,
                 attempt=attempt,
                 error_type=error_type,
+            )
+
+    # ------------------------------------------------------------------ #
+    # Connection Pool
+    # ------------------------------------------------------------------ #
+
+    @classmethod
+    def record_pool_metrics(
+        cls,
+        *,
+        pool_size: int,
+        checked_out: int,
+        checked_in: int,
+        overflow: int,
+        total_connections: int,
+    ) -> None:
+        """
+        Record current connection pool metrics.
+
+        Parameters
+        ----------
+        pool_size : int
+            Configured pool size
+        checked_out : int
+            Number of connections currently checked out (in use)
+        checked_in : int
+            Number of connections checked in (available)
+        overflow : int
+            Number of overflow connections (beyond pool_size)
+        total_connections : int
+            Total connections (checked_out + checked_in + overflow)
+        """
+        if cls._backend:
+            cls._backend.record_pool_metrics(
+                pool_size=pool_size,
+                checked_out=checked_out,
+                checked_in=checked_in,
+                overflow=overflow,
+                total_connections=total_connections,
+            )
+        else:
+            cls._log_fallback(
+                "pool_metrics",
+                pool_size=pool_size,
+                checked_out=checked_out,
+                checked_in=checked_in,
+                overflow=overflow,
+                total_connections=total_connections,
             )

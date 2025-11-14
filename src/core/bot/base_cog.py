@@ -1,13 +1,132 @@
 """
-Base Discord Cog for LUMEN LAW–compliant prefix-only command modules.
+Base Discord Cog for Lumen (2025)
 
-Enforces architectural patterns for all feature cogs
-in the Lumen RPG Bot (post-slash-removal architecture).
+Purpose
+-------
+Provide foundational infrastructure for all feature cogs in the Lumen RPG bot.
+Enforces architectural patterns, standardized error handling, and consistent
+user feedback while maintaining LUMEN LAW compliance across the Discord layer.
 
-LUMEN LAW Compliance:
+This base class serves as the parent for all feature cogs (Fusion, Ascension,
+Collection, etc.), providing common utilities and enforcing separation between
+Discord UI concerns and business logic.
+
+Responsibilities
+----------------
+- Provide database session management utilities
+- Standardize user feedback (success/error/info embeds)
+- Handle domain exceptions with user-friendly messages
+- Enforce player validation and registration checks
+- Provide structured logging with Discord context
+- Support Discord View error handling
+- Create user validation checks for interactive components
+
+Non-Responsibilities
+--------------------
+- Business logic (delegated to service layer)
+- Database operations (delegated to service layer)
+- Event handling (handled by dedicated listeners)
+- Bot lifecycle management (handled by BotLifecycle)
+
+LUMEN LAW Compliance
+--------------------
 - Article VI: Cogs handle Discord layer only (UI and context)
 - Article VII: Standardized error handling and user feedback
-- Article II: Enforces transaction logging and audit integrity
+- Article II: Transaction logging and audit integrity
+- Article I: Transaction-safe operations via DatabaseService
+- Article IX: Graceful error handling with fallbacks
+- Article X: Structured logging for observability
+
+Architecture Notes
+------------------
+- **Prefix-only architecture**: Post-slash-command removal, all commands use prefix
+- **Error boundaries**: Converts domain exceptions to Discord embeds
+- **Context injection**: All operations include Discord context for audit trails
+- **Layered design**: Cog → Service → Repository → Database
+- **Reusable utilities**: Common patterns extracted for DRY compliance
+
+Key Features
+------------
+**Database Access**:
+- `get_session()`: Returns async transaction context from DatabaseService
+
+**User Feedback**:
+- `send_success()`: Standardized success embed
+- `send_error()`: Standardized error embed
+- `send_info()`: Standardized informational embed
+- `defer()`: Typing indicator for long operations
+
+**Error Handling**:
+- `handle_standard_errors()`: Converts domain exceptions to user-friendly messages
+- `handle_view_error()`: Error handling for Discord View interactions
+
+**Validation**:
+- `require_player()`: Player existence check with registration prompt
+- `create_user_validation_check()`: User authorization for interactive components
+
+**Logging**:
+- `log_command_use()`: Command execution logging with context
+- `log_cog_error()`: Cog-level error logging with context
+
+Usage Example
+-------------
+Creating a feature cog:
+
+>>> from src.core.bot.base_cog import BaseCog
+>>> from discord.ext import commands
+>>>
+>>> class FusionCog(BaseCog):
+>>>     def __init__(self, bot: commands.Bot):
+>>>         super().__init__(bot, "FusionCog")
+>>>
+>>>     @commands.command(name="fuse")
+>>>     async def fuse(self, ctx: commands.Context, tier: int):
+>>>         '''Fuse two maidens to create a higher tier maiden.'''
+>>>         await self.defer(ctx)  # Show typing indicator
+>>>
+>>>         async with self.get_session() as session:
+>>>             # Validate player exists
+>>>             player = await self.require_player(ctx, session, ctx.author.id, lock=True)
+>>>             if not player:
+>>>                 return
+>>>
+>>>             try:
+>>>                 # Business logic in service layer
+>>>                 result = await FusionService.fuse_maidens(session, player.id, tier)
+>>>
+>>>                 # Success feedback
+>>>                 await self.send_success(
+>>>                     ctx,
+>>>                     "Fusion Complete!",
+>>>                     f"Created a Tier {result.tier} maiden!"
+>>>                 )
+>>>
+>>>             except InsufficientResourcesError as e:
+>>>                 await self.send_error(ctx, "Insufficient Resources", str(e))
+
+Discord View Integration Example
+---------------------------------
+Using BaseCog utilities in Discord Views:
+
+>>> class FusionView(discord.ui.View):
+>>>     def __init__(self, user_id: int, cog: BaseCog):
+>>>         super().__init__(timeout=120)
+>>>         self.user_id = user_id
+>>>         self.cog = cog
+>>>         self.validate_user = cog.create_user_validation_check(user_id)
+>>>
+>>>     @discord.ui.button(label="Confirm Fusion")
+>>>     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+>>>         # Validate user authorization
+>>>         if not await self.validate_user(interaction):
+>>>             return
+>>>
+>>>         try:
+>>>             await interaction.response.defer()
+>>>             # Execute fusion logic...
+>>>             await self.cog.send_success(interaction, "Success!", "Fusion complete!")
+>>>         except Exception as e:
+>>>             await self.cog.handle_view_error(interaction, e, "fusion_confirm")
 """
 
 import discord
@@ -15,7 +134,7 @@ from discord.ext import commands
 from typing import Optional
 from datetime import datetime
 
-from src.core.infra.database_service import DatabaseService
+from src.core.database.service import DatabaseService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.logging.logger import get_logger, LogContext
 from src.core.exceptions import (

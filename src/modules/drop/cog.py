@@ -9,12 +9,13 @@ from src.modules.player.service import PlayerService
 from src.modules.drop.service import DropService
 from src.core.infra.redis_service import RedisService
 from src.core.infra.transaction_logger import TransactionLogger
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from core.event.bus.event_bus import EventBus
 from src.core.exceptions import InsufficientResourcesError, ValidationError
 from src.core.logging.logger import get_logger
+from src.ui.emojis import Emojis
 from src.utils.decorators import ratelimit
-from utils.embed_builder import EmbedBuilder
+from src.ui import EmbedFactory, BaseView
 
 logger = get_logger(__name__)
 
@@ -98,10 +99,10 @@ class DropCog(BaseCog):
                     )
 
                     # --- Embed Construction ---
-                    status_text = "✅ Ready!" if result['has_charge'] else f"⏳ {result['next_available']}"
+                    status_text = f"{Emojis.SUCCESS} Ready!" if result['has_charge'] else f"{Emojis.REGENERATING} {result['next_available']}"
 
-                    embed = EmbedBuilder.success(
-                        title="💎 DROP Complete",
+                    embed = EmbedFactory.success(
+                        title=f"{Emojis.DROP} DROP Complete",
                         description=(
                             f"+**{result['auric_coin_gained']} AuricCoin**\n"
                             f"**Total AuricCoin:** {result['total_auric_coin']}"
@@ -159,7 +160,7 @@ class DropActionView(discord.ui.View):
         self.message = message
 
     @discord.ui.button(
-        label="✨ Summon Now",
+        label=f"{Emojis.SUMMON} Summon Now",
         style=discord.ButtonStyle.primary,
         custom_id="quick_summon_after_drop",
     )
@@ -174,7 +175,7 @@ class DropActionView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="🔁 Drop Again",
+        label=f"{Emojis.REPEAT} Drop Again",
         style=discord.ButtonStyle.success,
         custom_id="drop_again",
     )
@@ -188,7 +189,7 @@ class DropActionView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="📊 View Profile",
+        label=f"{Emojis.INFO} View Profile",
         style=discord.ButtonStyle.secondary,
         custom_id="view_profile_after_drop",
     )

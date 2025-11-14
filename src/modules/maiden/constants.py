@@ -18,6 +18,8 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
+from src.ui.emojis import Emojis
+
 
 # ============================================================================
 # ELEMENTS
@@ -26,16 +28,16 @@ from enum import Enum
 class Element(Enum):
     """
     Maiden element enumeration.
-    
+
     Each element has display name, emoji, and Discord embed color.
     Business logic (bonuses, scaling) lives in LeaderService.
     """
-    INFERNAL = ("infernal", "Infernal", "🔥", 0xEE4B2B)
-    UMBRAL = ("umbral", "Umbral", "🌑", 0x36454F)
-    EARTH = ("earth", "Earth", "🌍", 0x355E3B)
-    TEMPEST = ("tempest", "Tempest", "🪙", 0x818589)
-    RADFIANT = ("radiant", "Radiant", "✨", 0xFFF8DC)
-    ABYSSAL = ("abyssal", "Abyssal", "🌊", 0x191970)
+    INFERNAL = ("infernal", "Infernal", Emojis.INFERNAL, 0xEE4B2B)
+    UMBRAL = ("umbral", "Umbral", Emojis.UMBRAL, 0x36454F)
+    EARTH = ("earth", "Earth", Emojis.EARTH, 0x355E3B)
+    TEMPEST = ("tempest", "Tempest", Emojis.ENERGY, 0x818589)
+    RADFIANT = ("radiant", "Radiant", Emojis.RADIANT, 0xFFF8DC)
+    ABYSSAL = ("abyssal", "Abyssal", Emojis.ABYSSAL, 0x191970)
     
     def __init__(self, key: str, display_name: str, emoji: str, color: int):
         self.key = key

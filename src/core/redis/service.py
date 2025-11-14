@@ -6,7 +6,7 @@ Purpose
 Provide a robust, observable, connection-pooled Redis abstraction with:
 - Singleton async client with automatic reconnection
 - Health monitoring with degradation detection
-- Distributed locking with token-based safety
+- Distributed locking with token-based safety and ownership tracking
 - KV operations with built-in observability
 - Graceful failure handling and circuit breaking integration
 
@@ -14,6 +14,7 @@ Responsibilities
 ----------------
 - Initialize and manage singleton Redis connection pool
 - Provide atomic distributed locking via SET NX + Lua unlock
+- Track lock ownership for debugging (lock holders, durations, metadata)
 - Expose simple KV operations (get/set/delete/expire/incr)
 - JSON serialization helpers
 - Health check integration
@@ -73,7 +74,7 @@ from redis.exceptions import RedisError, ConnectionError as RedisConnectionError
 
 from src.core.logging.logger import get_logger
 from src.core.config.config import Config
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 
 logger = get_logger(__name__)
 
@@ -612,6 +613,195 @@ class RedisService:
     # ═══════════════════════════════════════════════════════════════════════
 
     @classmethod
+    async def _track_lock_ownership(
+        cls,
+        lock_key: str,
+        token: str,
+        timeout: int,
+        operation: Optional[str] = None,
+        owner_id: Optional[str] = None,
+    ) -> None:
+        """
+        Record lock ownership metadata for debugging.
+
+        Stores lock metadata in Redis hash for monitoring and debugging:
+        - lock:tracking:{lock_key} hash with token, acquired_at, expires_at, etc.
+
+        Parameters
+        ----------
+        lock_key : str
+            The lock key
+        token : str
+            Unique lock token (UUID)
+        timeout : int
+            Lock timeout in seconds
+        operation : Optional[str]
+            Optional operation name (e.g., "fusion", "summon")
+        owner_id : Optional[str]
+            Optional owner identifier (e.g., player_id, user_id)
+        """
+        client = cls.client()
+        tracking_key = f"lock:tracking:{lock_key}"
+
+        try:
+            now = time.time()
+            expires_at = now + timeout
+
+            tracking_data = {
+                "token": token,
+                "acquired_at": str(now),
+                "expires_at": str(expires_at),
+                "timeout": str(timeout),
+            }
+
+            if operation:
+                tracking_data["operation"] = operation
+
+            if owner_id:
+                tracking_data["owner_id"] = owner_id
+
+            # Store tracking data with same expiration as lock + buffer
+            await client.hset(tracking_key, mapping=tracking_data)
+            await client.expire(tracking_key, timeout + 10)
+
+        except Exception as exc:
+            # Don't fail lock acquisition if tracking fails
+            logger.warning(
+                "Failed to track lock ownership (non-critical)",
+                extra={
+                    "lock_key": lock_key,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            )
+
+    @classmethod
+    async def _remove_lock_tracking(cls, lock_key: str) -> None:
+        """Remove lock ownership tracking data."""
+        client = cls.client()
+        tracking_key = f"lock:tracking:{lock_key}"
+
+        try:
+            await client.delete(tracking_key)
+        except Exception as exc:
+            logger.warning(
+                "Failed to remove lock tracking (non-critical)",
+                extra={
+                    "lock_key": lock_key,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            )
+
+    @classmethod
+    async def get_lock_owner(cls, lock_key: str) -> Optional[dict[str, Any]]:
+        """
+        Get current lock owner information for debugging.
+
+        Parameters
+        ----------
+        lock_key : str
+            The lock key to check
+
+        Returns
+        -------
+        Optional[dict[str, Any]]
+            Lock ownership data if lock is held:
+            - token: Lock token
+            - acquired_at: Timestamp when acquired
+            - expires_at: Timestamp when expires
+            - timeout: Lock timeout in seconds
+            - operation: Optional operation name
+            - owner_id: Optional owner identifier
+            - held_duration: Current duration lock has been held (seconds)
+            Returns None if lock not held or tracking data not available.
+        """
+        client = cls.client()
+        tracking_key = f"lock:tracking:{lock_key}"
+
+        try:
+            data = await client.hgetall(tracking_key)
+
+            if not data:
+                return None
+
+            # Calculate held duration
+            acquired_at = float(data.get("acquired_at", 0))
+            held_duration = time.time() - acquired_at if acquired_at else 0
+
+            result = {
+                "token": data.get("token"),
+                "acquired_at": acquired_at,
+                "expires_at": float(data.get("expires_at", 0)),
+                "timeout": int(data.get("timeout", 0)),
+                "held_duration": round(held_duration, 2),
+            }
+
+            if "operation" in data:
+                result["operation"] = data["operation"]
+
+            if "owner_id" in data:
+                result["owner_id"] = data["owner_id"]
+
+            return result
+
+        except Exception as exc:
+            logger.error(
+                "Failed to retrieve lock owner info",
+                extra={
+                    "lock_key": lock_key,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+                exc_info=True,
+            )
+            return None
+
+    @classmethod
+    async def get_all_active_locks(cls) -> list[dict[str, Any]]:
+        """
+        Get all currently held locks for debugging.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            List of active lock information dictionaries.
+            Each dict contains: lock_key, token, acquired_at, expires_at,
+            held_duration, and optional operation/owner_id fields.
+        """
+        client = cls.client()
+
+        try:
+            # Scan for all lock tracking keys
+            tracking_keys = []
+            async for key in client.scan_iter(match="lock:tracking:*"):
+                tracking_keys.append(key)
+
+            # Retrieve ownership info for each
+            locks = []
+            for tracking_key in tracking_keys:
+                # Extract original lock key
+                lock_key = tracking_key.replace("lock:tracking:", "")
+
+                owner_info = await cls.get_lock_owner(lock_key)
+                if owner_info:
+                    owner_info["lock_key"] = lock_key
+                    locks.append(owner_info)
+
+            return locks
+
+        except Exception as exc:
+            logger.error(
+                "Failed to retrieve active locks",
+                extra={
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+                exc_info=True,
+            )
+            return []
+
+    @classmethod
     @asynccontextmanager
     async def acquire_lock(
         cls,
@@ -619,13 +809,18 @@ class RedisService:
         timeout: Optional[int] = None,
         wait_timeout: Optional[int] = None,
         retry_interval: Optional[float] = None,
+        operation: Optional[str] = None,
+        owner_id: Optional[str] = None,
     ) -> AsyncGenerator[None, None]:
         """
         Acquire a distributed lock using Redis SET NX with unique token.
-        
+
         Uses a UUID token and Lua script for safe release. The lock will
         automatically expire if not released (e.g., due to crash).
-        
+
+        Lock ownership is tracked in Redis for debugging purposes, allowing
+        inspection of which locks are held, by whom, and for how long.
+
         Parameters
         ----------
         key : str
@@ -636,21 +831,35 @@ class RedisService:
             Maximum time to wait for lock acquisition (default from config)
         retry_interval : Optional[float]
             Sleep duration between acquisition attempts (default from config)
-            
+        operation : Optional[str]
+            Optional operation name for debugging (e.g., "fusion", "summon")
+        owner_id : Optional[str]
+            Optional owner identifier for debugging (e.g., player_id, user_id)
+
         Yields
         ------
         None
             Control is yielded when lock is acquired
-            
+
         Raises
         ------
         TimeoutError
             If lock cannot be acquired within wait_timeout
-            
+
         Example
         -------
+        Basic usage:
         >>> async with RedisService.acquire_lock(f"fusion:{player_id}", timeout=5):
         >>>     # perform atomic operation
+        >>>     await fusion_service.perform_fusion(player_id, material_ids)
+
+        With ownership tracking:
+        >>> async with RedisService.acquire_lock(
+        >>>     f"fusion:{player_id}",
+        >>>     timeout=5,
+        >>>     operation="fusion",
+        >>>     owner_id=str(player_id)
+        >>> ):
         >>>     await fusion_service.perform_fusion(player_id, material_ids)
         """
         client = cls.client()
@@ -682,12 +891,24 @@ class RedisService:
 
                     if acquired:
                         acquisition_time_ms = (time.monotonic() - lock_start_time) * 1000
+
+                        # Track lock ownership for debugging
+                        await cls._track_lock_ownership(
+                            lock_key=key,
+                            token=token,
+                            timeout=timeout,
+                            operation=operation,
+                            owner_id=owner_id,
+                        )
+
                         logger.debug(
                             "Redis lock acquired",
                             extra={
                                 "lock_key": key,
                                 "timeout_seconds": timeout,
                                 "acquisition_time_ms": round(acquisition_time_ms, 2),
+                                "operation": operation,
+                                "owner_id": owner_id,
                             },
                         )
                         break
@@ -738,6 +959,9 @@ class RedisService:
                     release_time_ms = (time.monotonic() - release_start_time) * 1000
 
                     if released:
+                        # Remove lock ownership tracking
+                        await cls._remove_lock_tracking(key)
+
                         logger.debug(
                             "Redis lock released",
                             extra={
@@ -746,6 +970,9 @@ class RedisService:
                             },
                         )
                     else:
+                        # Lock expired or stolen, but still remove tracking
+                        await cls._remove_lock_tracking(key)
+
                         logger.warning(
                             "Redis lock already expired or stolen",
                             extra={"lock_key": key},

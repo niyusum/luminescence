@@ -88,7 +88,7 @@ from collections import deque
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from src.core.logging.logger import get_logger
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.modules.audit.model import AuditLog
 
 if TYPE_CHECKING:

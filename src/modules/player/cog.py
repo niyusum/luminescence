@@ -30,7 +30,7 @@ from src.modules.exploration.constants import RELIC_TYPES
 from src.modules.tutorial.service import TutorialService
 from src.database.models.core.player import Player
 from src.database.models.economy.transaction_log import TransactionLog
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.core.infra.transaction_logger import TransactionLogger
 from core.event.bus.event_bus import EventBus
 from src.core.exceptions import (
@@ -40,9 +40,10 @@ from src.core.exceptions import (
     InvalidOperationError
 )
 from src.utils.decorators import ratelimit
-from src.utils.embed_builder import EmbedBuilder
+from src.ui import EmbedFactory, BaseView
 from src.core.constants import MAX_POINTS_PER_STAT
 from src.core.validation import InputValidator
+from src.ui.emojis import Emojis
 
 
 def _safe_value(text: str, limit: int = 1024) -> str:
@@ -110,7 +111,7 @@ class PlayerCog(BaseCog):
             async with self.get_session() as session:
                 existing = await session.get(Player, ctx.author.id, with_for_update=True)
                 if existing:
-                    embed = EmbedBuilder.warning(
+                    embed = EmbedFactory.warning(
                         title="Already Registered",
                         description=(
                             f"Welcome back, {ctx.author.mention}!\n"
@@ -164,8 +165,8 @@ class PlayerCog(BaseCog):
                 await session.commit()
 
             # Public welcome + ToS post
-            embed = EmbedBuilder.success(
-                title="🎉 Welcome to Lumen RPG!",
+            embed = EmbedFactory.success(
+                title=f"{Emojis.CELEBRATION} Welcome to Lumen RPG!",
                 description=(
                     f"{ctx.author.mention} has joined the world of Lumen!\n\n"
                     "By registering, you agree to follow our **Terms of Service** and community rules.\n"
@@ -174,17 +175,17 @@ class PlayerCog(BaseCog):
                 footer="Use /help for all commands"
             )
             embed.add_field(
-                name="📜 Terms of Service",
+                name=f"{Emojis.SCROLL} Terms of Service",
                 value="Review and accept to continue using the bot.",
                 inline=False
             )
             embed.add_field(
-                name="💬 Support",
+                name=f"{Emojis.CHAT} Support",
                 value=f"[Join our Support Server]({self.support_url}) for help, events, and announcements.",
                 inline=False
             )
             embed.add_field(
-                name="🚀 First Steps",
+                name=f"{Emojis.ROCKET} First Steps",
                 value="`;charge` to gain auric coin • ``;summon` to pull maidens • `;me` to view your profile",
                 inline=False
             )
@@ -269,12 +270,12 @@ class PlayerCog(BaseCog):
             created_at = getattr(player, "created_at", None)
             created_ts = int(created_at.timestamp()) if created_at else None
 
-            title = f"👤 {target.display_name}"
+            title = f"{Emojis.PLAYER} {target.display_name}"
             desc_parts = [f"Level {level} • {experience:,} XP"]
             if created_ts:
                 desc_parts.append(f"Playing since <t:{created_ts}:D>")
 
-            embed = EmbedBuilder.primary(
+            embed = EmbedFactory.primary(
                 title=title,
                 description=" • ".join(desc_parts),
                 footer=f"Player ID: {player.discord_id}"
@@ -283,7 +284,7 @@ class PlayerCog(BaseCog):
 
             # === 1. TOTAL POWER ===
             embed.add_field(
-                name="⚔️ Total Power",
+                name=f"{Emojis.ATTACK} Total Power",
                 value=f"**{total_power:,}**\n*All {player.total_maidens_owned} maidens*",
                 inline=True
             )
@@ -291,7 +292,7 @@ class PlayerCog(BaseCog):
             # === 2. LUMEES ===
             lumees = int(getattr(player, "lumees", 0))
             embed.add_field(
-                name="💰 Lumees",
+                name=f"{Emojis.LUMEES} Lumees",
                 value=f"**{lumees:,}**",
                 inline=True
             )
@@ -299,7 +300,7 @@ class PlayerCog(BaseCog):
             # === 3. LUMENITE ===
             gems = int(getattr(player, "lumenite", 0))
             embed.add_field(
-                name="💎 Lumenite",
+                name=f"{Emojis.LUMENITE} Lumenite",
                 value=f"**{gems:,}**",
                 inline=True
             )
@@ -307,7 +308,7 @@ class PlayerCog(BaseCog):
             # === 4. AURIC_COIN ===
             auric_coin = int(getattr(player, "auric_coin", 0))
             embed.add_field(
-                name="💎 AuricCoin",
+                name=f"{Emojis.AURIC_COIN} AuricCoin",
                 value=f"**{auric_coin:,}**",
                 inline=True
             )
@@ -318,7 +319,7 @@ class PlayerCog(BaseCog):
             highest_tier_achieved = getattr(player, "highest_tier_achieved", "—")
 
             embed.add_field(
-                name="🎴 Collection",
+                name=f"{Emojis.MAIDEN} Collection",
                 value=(
                     f"**Total:** {total_maidens_owned:,}\n"
                     f"**Unique:** {unique_maidens:,}\n"
@@ -329,7 +330,7 @@ class PlayerCog(BaseCog):
 
             # === 6. PROGRESSION ===
             embed.add_field(
-                name="🗼 Progression",
+                name=f"{Emojis.ASCENSION} Progression",
                 value=(
                     f"**Ascension:** Floor {player.highest_floor_ascended}\n"
                     f"**Exploration:** Sector {player.highest_sector_reached}"
@@ -390,7 +391,7 @@ class PlayerCog(BaseCog):
 
                 # Check if player has points
                 if player.stat_points_available == 0:
-                    embed = EmbedBuilder.warning(
+                    embed = EmbedFactory.warning(
                         title="No Points Available",
                         description="You don't have any stat points to allocate!",
                         footer="Gain points each time you level up"
@@ -401,13 +402,13 @@ class PlayerCog(BaseCog):
                     total_spent = spent["energy"] + spent["stamina"] + spent["hp"]
 
                     embed.add_field(
-                        name="📊 Current Stats",
+                        name=f"{Emojis.INFO} Current Stats",
                         value=(
-                            f"🪙 **Energy:** {player.max_energy} "
+                            f"{Emojis.ENERGY} **Energy:** {player.max_energy} "
                             f"({spent['energy']} points)\n"
-                            f"💪 **Stamina:** {player.max_stamina} "
+                            f"{Emojis.STAMINA} **Stamina:** {player.max_stamina} "
                             f"({spent['stamina']} points)\n"
-                            f"❤️ **HP:** {player.max_hp} "
+                            f"{Emojis.HP} **HP:** {player.max_hp} "
                             f"({spent['hp']} points)\n\n"
                             f"**Total Allocated:** {total_spent} points"
                         ),
@@ -415,7 +416,7 @@ class PlayerCog(BaseCog):
                     )
 
                     embed.add_field(
-                        name="💡 Gain More Points",
+                        name=f"{Emojis.TIP} Gain More Points",
                         value="Level up to gain 5 allocation points!",
                         inline=False
                     )
@@ -424,8 +425,8 @@ class PlayerCog(BaseCog):
                     return
 
                 # Show allocation UI
-                embed = EmbedBuilder.primary(
-                    title="📊 Stat Allocation",
+                embed = EmbedFactory.primary(
+                    title=f"{Emojis.INFO} Stat Allocation",
                     description=(
                         f"**Available Points:** {player.stat_points_available}\n\n"
                         "Choose how to allocate your stat points!"
@@ -438,9 +439,9 @@ class PlayerCog(BaseCog):
                 embed.add_field(
                     name="Current Max Stats",
                     value=(
-                        f"🪙 Energy: {player.max_energy}\n"
-                        f"💪 Stamina: {player.max_stamina}\n"
-                        f"❤️ HP: {player.max_hp}"
+                        f"{Emojis.ENERGY} Energy: {player.max_energy}\n"
+                        f"{Emojis.STAMINA} Stamina: {player.max_stamina}\n"
+                        f"{Emojis.HP} HP: {player.max_hp}"
                     ),
                     inline=True
                 )
@@ -450,9 +451,9 @@ class PlayerCog(BaseCog):
                 embed.add_field(
                     name="Points Invested",
                     value=(
-                        f"🪙 {spent['energy']} in Energy\n"
-                        f"💪 {spent['stamina']} in Stamina\n"
-                        f"❤️ {spent['hp']} in HP\n"
+                        f"{Emojis.ENERGY} {spent['energy']} in Energy\n"
+                        f"{Emojis.STAMINA} {spent['stamina']} in Stamina\n"
+                        f"{Emojis.HP} {spent['hp']} in HP\n"
                         f"**Total:** {total_spent} points"
                     ),
                     inline=True
@@ -465,13 +466,13 @@ class PlayerCog(BaseCog):
                     build_text += (
                         f"**{name.title()}**\n"
                         f"{build['description']}\n"
-                        f"🪙{build['energy']} 💪{build['stamina']} ❤️{build['hp']}\n"
-                        f"✅ {build['pros']}\n"
-                        f"❌ {build['cons']}\n\n"
+                        f"{Emojis.ENERGY}{build['energy']} {Emojis.STAMINA}{build['stamina']} {Emojis.HP}{build['hp']}\n"
+                        f"{Emojis.SUCCESS} {build['pros']}\n"
+                        f"{Emojis.ERROR} {build['cons']}\n\n"
                     )
 
                 embed.add_field(
-                    name="📋 Recommended Builds",
+                    name=f"{Emojis.CLIPBOARD} Recommended Builds",
                     value=build_text,
                     inline=False
                 )
@@ -525,13 +526,13 @@ class PlayerCog(BaseCog):
             if not logs:
                 await self.send_info(
                     ctx,
-                    "📜 No Transactions",
+                    f"{Emojis.SCROLL} No Transactions",
                     "You have no resource transaction history yet."
                 )
                 return
 
             embed = discord.Embed(
-                title=f"📜 Resource Transactions (Last {len(logs)})",
+                title=f"{Emojis.SCROLL} Resource Transactions (Last {len(logs)})",
                 description="Recent lumees, auric coin, and lumenite changes",
                 color=0x2C2D31
             )
@@ -552,9 +553,9 @@ class PlayerCog(BaseCog):
                 # Add modifier info
                 bonus_lines = []
                 if mods.get("income_boost", 1.0) > 1.0:
-                    bonus_lines.append(f"💰 +{(mods['income_boost'] - 1.0) * 100:.0f}% income")
+                    bonus_lines.append(f"{Emojis.LUMEES} +{(mods['income_boost'] - 1.0) * 100:.0f}% income")
                 if mods.get("xp_boost", 1.0) > 1.0:
-                    bonus_lines.append(f"📈 +{(mods['xp_boost'] - 1.0) * 100:.0f}% XP")
+                    bonus_lines.append(f"{Emojis.EXPERIENCE} +{(mods['xp_boost'] - 1.0) * 100:.0f}% XP")
 
                 # Timestamp
                 ts = int(log.timestamp.timestamp())
@@ -604,7 +605,7 @@ class TosAgreeView(discord.ui.View):
             if isinstance(item, discord.ui.Button) and item.style == discord.ButtonStyle.link:
                 item.url = support_url
 
-    @discord.ui.button(label="✅ I Agree", style=discord.ButtonStyle.success, custom_id="tos_agree")
+    @discord.ui.button(label=f"{Emojis.SUCCESS} I Agree", style=discord.ButtonStyle.success, custom_id="tos_agree")
     async def agree(self, interaction: discord.Interaction, _: discord.ui.Button):
         if interaction.user.id != self.player_id:
             await interaction.response.send_message("This button is not for you!", ephemeral=True)
@@ -620,8 +621,8 @@ class TosAgreeView(discord.ui.View):
                 try:
                     channel = interaction.channel
                     if channel and done:
-                        embed = EmbedBuilder.success(
-                            title=f"🎉 Tutorial Complete: {done['title']}",
+                        embed = EmbedFactory.success(
+                            title=f"{Emojis.CELEBRATION} Tutorial Complete: {done['title']}",
                             description=done["congrats"],
                             footer="You're all set — try `/charge` next!"
                         )
@@ -707,7 +708,7 @@ class UnifiedProfileView(discord.ui.View):
                 self.remove_item(self.allocate_button)
             else:
                 # Update button label with points count
-                self.allocate_button.label = f"⚗️ Allocate Points (+{player.stat_points_available} available!)"
+                self.allocate_button.label = f"{Emojis.FUSION} Allocate Points (+{player.stat_points_available} available!)"
 
             # TODO: Add mail button conditionally when mail system exists
             # For now, always remove it
@@ -721,7 +722,7 @@ class UnifiedProfileView(discord.ui.View):
 
     # === ROW 1: Advanced Stats ===
     @discord.ui.button(
-        label="📊 Advanced Stats",
+        label=f"{Emojis.INFO} Advanced Stats",
         style=discord.ButtonStyle.primary,
         custom_id="advanced_stats",
         row=0
@@ -763,8 +764,8 @@ class UnifiedProfileView(discord.ui.View):
                     session, self.player.discord_id, include_leader_bonus=True
                 )
 
-            embed = EmbedBuilder.info(
-                title=f"📊 Advanced Statistics for {self.target.display_name}",
+            embed = EmbedFactory.info(
+                title=f"{Emojis.INFO} Advanced Statistics for {self.target.display_name}",
                 description=f"Level {self.player.level} • Comprehensive Analytics",
                 footer=f"Player ID: {self.player.discord_id}"
             )
@@ -775,7 +776,7 @@ class UnifiedProfileView(discord.ui.View):
             total_spent = spent["energy"] + spent["stamina"] + spent["hp"]
 
             embed.add_field(
-                name="🪙 Resources & Allocation",
+                name=f"{Emojis.ENERGY} Resources & Allocation",
                 value=_safe_value(
                     f"**Energy:** {self.player.energy}/{self.player.max_energy} (+{spent['energy']} pts)\n"
                     f"**Stamina:** {self.player.stamina}/{self.player.max_stamina} (+{spent['stamina']} pts)\n"
@@ -787,7 +788,7 @@ class UnifiedProfileView(discord.ui.View):
 
             # === COMBAT POWER BREAKDOWN ===
             embed.add_field(
-                name="⚔️ Combat Power",
+                name=f"{Emojis.ATTACK} Combat Power",
                 value=_safe_value(
                     f"**Total Power:** {total_power:,}\n"
                     f"*(All {self.player.total_maidens_owned} maidens)*\n\n"
@@ -810,7 +811,7 @@ class UnifiedProfileView(discord.ui.View):
 
                 if token_lines:
                     embed.add_field(
-                        name="🎫 Token Inventory",
+                        name=f"{Emojis.TOKEN} Token Inventory",
                         value=_safe_value("\n".join(token_lines)),
                         inline=True
                     )
@@ -834,14 +835,14 @@ class UnifiedProfileView(discord.ui.View):
 
                 if bonus_lines:
                     embed.add_field(
-                        name="🏆 Mastery Bonuses",
+                        name=f"{Emojis.LEADERBOARD} Mastery Bonuses",
                         value=_safe_value("\n".join(bonus_lines)),
                         inline=False
                     )
 
             # === COLLECTION ===
             embed.add_field(
-                name="🎴 Collection",
+                name=f"{Emojis.MAIDEN} Collection",
                 value=_safe_value(
                     f"**Total Maidens:** {self.player.total_maidens_owned:,}\n"
                     f"**Unique Maidens:** {self.player.unique_maidens:,}\n"
@@ -852,7 +853,7 @@ class UnifiedProfileView(discord.ui.View):
 
             # === CURRENCY ===
             embed.add_field(
-                name="💰 Currency",
+                name=f"{Emojis.LUMEES} Currency",
                 value=_safe_value(
                     f"**Lumees:** {self.player.lumees:,}\n"
                     f"**AuricCoin:** {self.player.auric_coin:,}\n"
@@ -863,7 +864,7 @@ class UnifiedProfileView(discord.ui.View):
 
             # === PROGRESSION ===
             embed.add_field(
-                name="🗼 Progression",
+                name=f"{Emojis.ASCENSION} Progression",
                 value=_safe_value(
                     f"**Ascension:** Floor {self.player.highest_floor_ascended}\n"
                     f"**Exploration:** Sector {self.player.highest_sector_reached}\n"
@@ -878,7 +879,7 @@ class UnifiedProfileView(discord.ui.View):
             pity_percentage = (pity_counter / 90) * 100 if pity_counter > 0 else 0.0
 
             embed.add_field(
-                name="✨ Summon Statistics",
+                name=f"{Emojis.SUMMON} Summon Statistics",
                 value=_safe_value(
                     f"**Total Summons:** {total_summons:,}\n"
                     f"**Pity Counter:** {pity_counter}/90 ({pity_percentage:.1f}%)"
@@ -893,7 +894,7 @@ class UnifiedProfileView(discord.ui.View):
             total_shards = int(sum(int(v or 0) for v in fusion_shards.values()))
 
             embed.add_field(
-                name="⚗️ Fusion Statistics",
+                name=f"{Emojis.FUSION} Fusion Statistics",
                 value=_safe_value(
                     f"**Total Fusions:** {total_fusions:,}\n"
                     f"**Success Rate:** {success_rate:.1f}%\n"
@@ -906,10 +907,10 @@ class UnifiedProfileView(discord.ui.View):
             stats_json = _as_dict(getattr(self.player, "stats", None))
             drops_performed = int(stats_json.get("drops_performed", 0))
             has_charge = int(getattr(self.player, "DROP_CHARGES", 0)) >= 1
-            drop_status = "✅ Ready!" if has_charge else "⏳ Regenerating"
+            drop_status = f"{Emojis.SUCCESS} Ready!" if has_charge else f"{Emojis.REGENERATING} Regenerating"
 
             embed.add_field(
-                name="💎 DROP Statistics",
+                name=f"{Emojis.DROP_CHARGES} DROP Statistics",
                 value=_safe_value(
                     f"**Total DROPS:** {drops_performed:,}\n"
                     f"**Status:** {drop_status}"
@@ -923,7 +924,7 @@ class UnifiedProfileView(discord.ui.View):
             net_lumees = lumees_earned - lumees_spent
 
             embed.add_field(
-                name="💹 Economy Statistics",
+                name=f"{Emojis.CHART} Economy Statistics",
                 value=_safe_value(
                     f"**Earned:** {lumees_earned:,} lumees\n"
                     f"**Spent:** {lumees_spent:,} lumees\n"
@@ -945,7 +946,7 @@ class UnifiedProfileView(discord.ui.View):
                 ) or "No shards collected yet"
 
                 embed.add_field(
-                    name="🔷 Top Fusion Shards",
+                    name=f"{Emojis.BLUE_DIAMOND} Top Fusion Shards",
                     value=_safe_value(shard_text),
                     inline=True
                 )
@@ -957,7 +958,7 @@ class UnifiedProfileView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
         except Exception:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Advanced Stats Error",
                 description="Unable to load detailed statistics.",
                 help_text="Please try again shortly."
@@ -966,7 +967,7 @@ class UnifiedProfileView(discord.ui.View):
 
     # === ROW 2 (Conditional): Allocate Points ===
     @discord.ui.button(
-        label="⚗️ Allocate Points",
+        label=f"{Emojis.FUSION} Allocate Points",
         style=discord.ButtonStyle.success,
         custom_id="allocate_points",
         row=1
@@ -991,7 +992,7 @@ class UnifiedProfileView(discord.ui.View):
 
     # === ROW 2 (Conditional): Mail Button (Future Feature) ===
     @discord.ui.button(
-        label="📬 Mail",
+        label=f"{Emojis.MAILBOX} Mail",
         style=discord.ButtonStyle.primary,
         custom_id="view_mail",
         row=1
@@ -1016,7 +1017,7 @@ class UnifiedProfileView(discord.ui.View):
 
     # === ROW 3: Quick Actions ===
     @discord.ui.button(
-        label="🎴 Collection",
+        label=f"{Emojis.MAIDEN} Collection",
         style=discord.ButtonStyle.secondary,
         custom_id="view_collection",
         row=2
@@ -1040,7 +1041,7 @@ class UnifiedProfileView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="💎 drop",
+        label=f"{Emojis.DROP_CHARGES} drop",
         style=discord.ButtonStyle.secondary,
         custom_id="drop_action",
         row=2
@@ -1064,7 +1065,7 @@ class UnifiedProfileView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="✨ Summon",
+        label=f"{Emojis.SUMMON} Summon",
         style=discord.ButtonStyle.secondary,
         custom_id="summon_action",
         row=2
@@ -1113,7 +1114,7 @@ class AllocationView(discord.ui.View):
         self.message = message
 
     @discord.ui.button(
-        label="✏️ Allocate Points",
+        label=f"{Emojis.PENCIL} Allocate Points",
         style=discord.ButtonStyle.primary,
         custom_id="allocate_modal"
     )
@@ -1134,7 +1135,7 @@ class AllocationView(discord.ui.View):
         await interaction.response.send_modal(modal)
 
     @discord.ui.button(
-        label="📊 Preview Build",
+        label=f"{Emojis.INFO} Preview Build",
         style=discord.ButtonStyle.secondary,
         custom_id="preview_build"
     )
@@ -1245,8 +1246,8 @@ class AllocationModal(discord.ui.Modal, title="Allocate Stat Points"):
                 await session.commit()
 
             # Success embed
-            embed = EmbedBuilder.success(
-                title="✅ Stats Allocated!",
+            embed = EmbedFactory.success(
+                title=f"{Emojis.SUCCESS} Stats Allocated!",
                 description=f"Successfully invested {total} points"
             )
 
@@ -1262,16 +1263,16 @@ class AllocationModal(discord.ui.Modal, title="Allocate Stat Points"):
             embed.add_field(
                 name="New Max Stats",
                 value=(
-                    f"🪙 **Energy:** {new_max['max_energy']}" + (f" (+{energy_gain})" if energy_gain > 0 else "") + "\n"
-                    f"💪 **Stamina:** {new_max['max_stamina']}" + (f" (+{stamina_gain})" if stamina_gain > 0 else "") + "\n"
-                    f"❤️ **HP:** {new_max['max_hp']}" + (f" (+{hp_gain})" if hp_gain > 0 else "")
+                    f"{Emojis.ENERGY} **Energy:** {new_max['max_energy']}" + (f" (+{energy_gain})" if energy_gain > 0 else "") + "\n"
+                    f"{Emojis.STAMINA} **Stamina:** {new_max['max_stamina']}" + (f" (+{stamina_gain})" if stamina_gain > 0 else "") + "\n"
+                    f"{Emojis.HP} **HP:** {new_max['max_hp']}" + (f" (+{hp_gain})" if hp_gain > 0 else "")
                 ),
                 inline=False
             )
 
             # Resources refreshed
             embed.add_field(
-                name="💫 Resources Refreshed",
+                name=f"{Emojis.RADIANT} Resources Refreshed",
                 value="All resources restored to new maximum values!",
                 inline=False
             )
@@ -1287,7 +1288,7 @@ class AllocationModal(discord.ui.Modal, title="Allocate Stat Points"):
             await interaction.edit_original_response(embed=embed, view=None)
 
         except ValueError as e:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Invalid Input",
                 description=str(e),
                 help_text="Enter valid positive numbers for allocation."
@@ -1295,14 +1296,14 @@ class AllocationModal(discord.ui.Modal, title="Allocate Stat Points"):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
         except InvalidOperationError as e:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Allocation Failed",
                 description=str(e)
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
         except Exception:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Allocation Error",
                 description="An unexpected error occurred.",
                 help_text="Please try again."

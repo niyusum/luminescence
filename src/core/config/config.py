@@ -115,10 +115,11 @@ class Config:
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
     
-    # Directory Configuration
-    BASE_DIR: Path = Path(__file__).resolve().parent.parent
-    LOGS_DIR: Path = BASE_DIR / "logs"
-    DATA_DIR: Path = BASE_DIR / "data"
+    # Directory Configuration - place logs + data at project root
+    PROJECT_ROOT = Path(__file__).resolve().parents[3]
+    LOGS_DIR = PROJECT_ROOT / "logs"
+    DATA_DIR = PROJECT_ROOT / "data"
+
     
     # Bot Metadata
     BOT_NAME: str = "Lumen RPG"
@@ -329,7 +330,7 @@ class Config:
         
         # Game Configuration
         cls.DEFAULT_STARTING_LUMEES = cls._safe_int("DEFAULT_STARTING_LUMEES", 1000, min_val=0)
-        cls.DEFAULT_STARTING_auric_coin = cls._safe_int("DEFAULT_STARTING_auric_coin", 5, min_val=0)
+        cls.DEFAULT_STARTING_AURIC_COIN = cls._safe_int("DEFAULT_STARTING_AURIC_COIN", 5, min_val=0)
         cls.DEFAULT_STARTING_ENERGY = cls._safe_int("DEFAULT_STARTING_ENERGY", 100, min_val=0)
         cls.DEFAULT_STARTING_STAMINA = cls._safe_int("DEFAULT_STARTING_STAMINA", 50, min_val=0)
         

@@ -1,3 +1,15 @@
+"""
+Combat and progression utilities.
+
+Contains business logic for:
+- Power calculations (database queries)
+- Power breakdown analysis
+- Combat utilities with display helpers
+
+Display formatting methods are being migrated to src.ui.formatters
+and maintained here as backward-compatible wrappers.
+"""
+
 from typing import Dict, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -5,6 +17,8 @@ from sqlalchemy import select, func
 from src.database.models.core.maiden import Maiden
 from src.database.models.core.maiden_base import MaidenBase
 from src.core.logging.logger import get_logger
+from src.ui.emojis import Emojis
+from src.ui.formatters import CombatFormatters, ProgressFormatters
 
 logger = get_logger(__name__)
 
@@ -121,97 +135,76 @@ class CombatUtils:
     def render_hp_bar(current_hp: int, max_hp: int, width: int = 20) -> str:
         """
         Render ASCII HP bar using Unicode blocks.
-        
+
+        ⚠️ DEPRECATED: Use src.ui.formatters.CombatFormatters.render_hp_bar instead
+        This wrapper maintained for backward compatibility.
+
         Args:
             current_hp: Current HP value
             max_hp: Maximum HP value
             width: Bar width in characters
-        
+
         Returns:
             Formatted HP bar string
-        
-        Example:
-            >>> CombatUtils.render_hp_bar(7500, 10000, 20)
-            '███████████████░░░░░'
         """
-        if max_hp == 0:
-            return "░" * width
-        
-        filled_width = int((current_hp / max_hp) * width)
-        filled_width = max(0, min(width, filled_width))
-        empty_width = width - filled_width
-        
-        return "█" * filled_width + "░" * empty_width
+        return CombatFormatters.render_hp_bar(current_hp, max_hp, width)
     
     @staticmethod
     def render_hp_percentage(current_hp: int, max_hp: int) -> str:
         """
         Render HP as percentage string.
-        
+
+        ⚠️ DEPRECATED: Use src.ui.formatters.CombatFormatters.render_hp_percentage instead
+        This wrapper maintained for backward compatibility.
+
         Returns:
             Formatted percentage (e.g., "75%")
         """
-        if max_hp == 0:
-            return "0%"
-        
-        percent = int((current_hp / max_hp) * 100)
-        return f"{percent}%"
+        return CombatFormatters.render_hp_percentage(current_hp, max_hp)
     
     @staticmethod
     def format_damage_display(damage: int, is_crit: bool = False) -> str:
         """
         Format damage number for display.
-        
+
+        ⚠️ DEPRECATED: Use src.ui.formatters.CombatFormatters.format_damage_display instead
+        This wrapper maintained for backward compatibility.
+
         Args:
             damage: Damage value
             is_crit: Whether this is a critical hit
-        
+
         Returns:
             Formatted damage string with emojis
         """
-        formatted = f"{damage:,}"
-        
-        if is_crit:
-            return f"💥 **{formatted}** ✨ CRITICAL!"
-        else:
-            return f"⚔️ {formatted}"
-    
+        return CombatFormatters.format_damage_display(damage, is_crit)
+
     @staticmethod
     def get_element_emoji(element: str) -> str:
         """
         Get emoji for element type.
-        
+
+        ⚠️ DEPRECATED: Use src.ui.formatters.CombatFormatters.get_element_emoji instead
+        This wrapper maintained for backward compatibility.
+
         Returns:
             Element emoji
         """
-        emojis = {
-            "infernal": "🔥",
-            "abyssal": "💧",
-            "tempest": "🌪️",
-            "earth": "🌿",
-            "Radiant": "✨",
-            "umbral": "🌑",
-        }
-        return emojis.get(element, "⚪")
-    
+        return CombatFormatters.get_element_emoji(element)
+
     @staticmethod
     def get_rarity_emoji(rarity: str) -> str:
         """
         Get emoji for rarity tier.
-        
+
+        ⚠️ DEPRECATED: Use src.ui.formatters.CombatFormatters.get_rarity_emoji instead
+        This wrapper maintained for backward compatibility.
+
         Returns:
             Rarity emoji
         """
-        emojis = {
-            "common": "⚪",
-            "uncommon": "🟢",
-            "rare": "🔵",
-            "epic": "🟣",
-            "legendary": "🟠",
-            "mythic": "🔴",
-        }
-        return emojis.get(rarity, "⚪")
-    
+        return CombatFormatters.get_rarity_emoji(rarity)
+
     @staticmethod
     def format_combat_log_entry(
         attacker: str,
@@ -222,15 +215,14 @@ class CombatUtils:
     ) -> str:
         """
         Format single combat log entry.
-        
+
+        ⚠️ DEPRECATED: Use src.ui.formatters.CombatFormatters.format_combat_log_entry instead
+        This wrapper maintained for backward compatibility.
+
         Returns:
             Formatted combat log line
         """
-        damage_display = CombatUtils.format_damage_display(damage, is_crit)
-        hp_bar = CombatUtils.render_hp_bar(current_hp, max_hp, width=20)
-        hp_percent = CombatUtils.render_hp_percentage(current_hp, max_hp)
-        
-        return f"{damage_display}\n{hp_bar} {hp_percent}\nHP: {current_hp:,} / {max_hp:,}"
+        return CombatFormatters.format_combat_log_entry(attacker, damage, current_hp, max_hp, is_crit)
 
 
 class ProgressUtils:
@@ -244,80 +236,58 @@ class ProgressUtils:
     def render_progress_bar(progress: float, width: int = 20) -> str:
         """
         Render progress bar for sector exploration.
-        
+
+        ⚠️ DEPRECATED: Use src.ui.formatters.ProgressFormatters.render_progress_bar instead
+        This wrapper maintained for backward compatibility.
+
         Args:
             progress: Progress percentage (0.0 - 100.0)
             width: Bar width in characters
-        
+
         Returns:
             Formatted progress bar
         """
-        filled_width = int((progress / 100.0) * width)
-        filled_width = max(0, min(width, filled_width))
-        empty_width = width - filled_width
-        
-        return "━" * filled_width + "░" * empty_width
-    
+        return ProgressFormatters.render_progress_bar(progress, width)
+
     @staticmethod
     def format_progress_display(progress: float) -> str:
         """
         Format progress as percentage with color coding.
-        
+
+        ⚠️ DEPRECATED: Use src.ui.formatters.ProgressFormatters.format_progress_display instead
+        This wrapper maintained for backward compatibility.
+
         Returns:
             Formatted string
         """
-        if progress < 25:
-            emoji = "🔴"
-        elif progress < 50:
-            emoji = "🟠"
-        elif progress < 75:
-            emoji = "🟡"
-        elif progress < 100:
-            emoji = "🟢"
-        else:
-            emoji = "✅"
-        
-        return f"{emoji} {progress:.1f}%"
-    
+        return ProgressFormatters.format_progress_display(progress)
+
     @staticmethod
     def format_resource_cost(resource: str, amount: int) -> str:
         """
         Format resource cost display.
-        
+
+        ⚠️ DEPRECATED: Use src.ui.formatters.ProgressFormatters.format_resource_cost instead
+        This wrapper maintained for backward compatibility.
+
         Args:
             resource: Resource type (energy, stamina, gems)
             amount: Cost amount
-        
+
         Returns:
             Formatted string with emoji
         """
-        emojis = {
-            "energy": "🪙",
-            "stamina": "💪",
-            "lumenite": "💎",
-            "lumees": "💰",
-            "auric_coin": "💎",
-        }
-        
-        emoji = emojis.get(resource, "•")
-        return f"{emoji} {amount}"
-    
+        return ProgressFormatters.format_resource_cost(resource, amount)
+
     @staticmethod
     def format_reward_display(reward_type: str, amount: int) -> str:
         """
         Format reward display with appropriate emoji.
-        
+
+        ⚠️ DEPRECATED: Use src.ui.formatters.ProgressFormatters.format_reward_display instead
+        This wrapper maintained for backward compatibility.
+
         Returns:
             Formatted reward string
         """
-        emojis = {
-            "lumees": "💰",
-            "xp": "⭐",
-            "lumenite": "💎",
-            "auric_coin": "💎",
-            "DROP_CHARGES": "💎",
-            "fusion_catalyst": "🔮",
-        }
-        
-        emoji = emojis.get(reward_type, "✨")
-        return f"{emoji} +{amount:,}"
+        return ProgressFormatters.format_reward_display(reward_type, amount)

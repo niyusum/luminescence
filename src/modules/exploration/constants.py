@@ -15,6 +15,8 @@ LUMEN LAW Compliance:
 from typing import Dict, Any
 from dataclasses import dataclass
 
+from src.ui.emojis import Emojis
+
 
 # ============================================================================
 # MASTERY RANKS
@@ -29,10 +31,10 @@ MASTERY_RANK_NAMES = {
 }
 
 MASTERY_RANK_EMOJIS = {
-    0: "⭐",  # No mastery
-    1: "🥉",  # Bronze
-    2: "🥈",  # Silver
-    3: "🥇",  # Gold
+    0: Emojis.NO_MASTERY,  # No mastery
+    1: Emojis.BRONZE,  # Bronze
+    2: Emojis.SILVER,  # Silver
+    3: Emojis.GOLD,  # Gold
 }
 
 
@@ -44,67 +46,67 @@ RELIC_TYPES = {
     "shrine_income": {
         "name": "Shrine Income Boost",
         "description": "Increases passive lumees earned from shrines",
-        "icon": "🏛️",
+        "icon": Emojis.SHRINE_INCOME,
         "bonus_type": "percentage",
         "category": "economy"
     },
     "combine_rate": {
         "name": "Fusion Success Boost",
         "description": "Increases success rate for maiden fusion",
-        "icon": "🔮",
+        "icon": Emojis.FUSION_SUCCESS_BOOST,
         "bonus_type": "percentage",
         "category": "progression"
     },
     "attack_boost": {
         "name": "Attack Power Boost",
         "description": "Increases ATK stat for all maidens",
-        "icon": "⚔️",
+        "icon": Emojis.ATTACK_BOOST,
         "bonus_type": "percentage",
         "category": "combat"
     },
     "defense_boost": {
         "name": "Defense Power Boost",
         "description": "Increases DEF stat for all maidens",
-        "icon": "🛡️",
+        "icon": Emojis.DEFENSE_BOOST,
         "bonus_type": "percentage",
         "category": "combat"
     },
     "hp_boost": {
         "name": "HP Boost",
         "description": "Increases max HP for ascension tower",
-        "icon": "❤️",
+        "icon": Emojis.HP_BOOST,
         "bonus_type": "flat",
         "category": "survival"
     },
     "energy_regen": {
         "name": "Energy Regeneration",
         "description": "Increases energy regeneration per hour",
-        "icon": "🪙",
+        "icon": Emojis.ENERGY_REGEN,
         "bonus_type": "flat",
         "category": "resources"
     },
     "stamina_regen": {
         "name": "Stamina Regeneration",
         "description": "Increases stamina regeneration per hour",
-        "icon": "💪",
+        "icon": Emojis.STAMINA_REGEN,
         "bonus_type": "flat",
         "category": "resources"
     },
     "xp_gain": {
         "name": "Experience Boost",
         "description": "Increases XP gained from all sources",
-        "icon": "📈",
+        "icon": Emojis.XP_GAIN,
         "bonus_type": "percentage",
         "category": "progression"
     }
 }
 
 RELIC_CATEGORIES = {
-    "economy": {"name": "Economy", "icon": "💰", "types": ["shrine_income"]},
-    "combat": {"name": "Combat", "icon": "⚔️", "types": ["attack_boost", "defense_boost"]},
-    "progression": {"name": "Progression", "icon": "📊", "types": ["combine_rate", "xp_gain"]},
-    "resources": {"name": "Resources", "icon": "🪙", "types": ["energy_regen", "stamina_regen"]},
-    "survival": {"name": "Survival", "icon": "❤️", "types": ["hp_boost"]}
+    "economy": {"name": "Economy", "icon": Emojis.CATEGORY_ECONOMY, "types": ["shrine_income"]},
+    "combat": {"name": "Combat", "icon": Emojis.CATEGORY_COMBAT, "types": ["attack_boost", "defense_boost"]},
+    "progression": {"name": "Progression", "icon": Emojis.CATEGORY_PROGRESSION, "types": ["combine_rate", "xp_gain"]},
+    "resources": {"name": "Resources", "icon": Emojis.CATEGORY_RESOURCES, "types": ["energy_regen", "stamina_regen"]},
+    "survival": {"name": "Survival", "icon": Emojis.CATEGORY_SURVIVAL, "types": ["hp_boost"]}
 }
 
 

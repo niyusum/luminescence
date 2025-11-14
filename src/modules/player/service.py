@@ -5,7 +5,7 @@ from sqlalchemy import select
 import math
 
 from src.database.models.core.player import Player
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.config.config import Config
 from src.core.constants import (

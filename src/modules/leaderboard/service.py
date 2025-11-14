@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 
 from src.database.models.core.player import Player
 from src.database.models.progression.leaderboard import LeaderboardSnapshot
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)

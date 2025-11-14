@@ -1,32 +1,155 @@
 """
-Database subsystem bootstrap for Lumen 2025.
+Database Subsystem Bootstrap for Lumen (2025)
 
 Purpose
 -------
-Provide a single entry point for initializing and shutting down the database
-subsystem, including:
+Provide a single entry point for initializing and shutting down the entire
+database subsystem with health verification and optional component construction.
 
-- Engine + session factory initialization.
-- Optional readiness verification via health checks.
-- Construction helpers for health monitors and retry policies.
+This module serves as the orchestration layer for database infrastructure,
+coordinating DatabaseService initialization, health verification, and providing
+factory methods for related infrastructure components (health monitors, retry
+policies).
+
+Key Features:
+- Engine + session factory initialization via DatabaseService
+- Optional readiness verification via health checks with timeout
+- Convenience helpers for creating health monitors and retry policies
+- Structured logging throughout bootstrap lifecycle
+- Graceful shutdown with resource cleanup
 
 Responsibilities
 ----------------
-- Centralize database subsystem startup and shutdown.
-- Provide helpers for creating related infra components (health monitor,
-  retry policy).
-- Emit structured logs around bootstrap lifecycle.
+- Centralize database subsystem startup and shutdown lifecycle
+- Initialize DatabaseService (engine, session factory, connection pool)
+- Optionally verify database readiness via health check with timeout
+- Provide factory methods for related components:
+  - `create_database_health_monitor_from_config()`
+  - `create_database_retry_policy_from_config()`
+- Emit structured logs for bootstrap events and errors
+- Propagate initialization failures with clear error messages
 
 Non-Responsibilities
 --------------------
-- Does not perform migrations.
-- Does not manage domain state or business logic.
-- Does not create background tasks by itself; the caller is responsible for
-  scheduling monitors or other loops.
+- Database migrations (handled by Alembic/migration scripts)
+- Domain state management or business logic
+- Background task scheduling (caller schedules health monitors)
+- Connection string construction (handled by Config)
+- Transaction management (handled by DatabaseService)
+- Query execution (handled by services/repositories)
 
-Design Notes
-------------
-- Intended to be called from the main application bootstrap sequence.
+LUMEN LAW Compliance
+--------------------
+- Article I: Transaction-safe initialization (DatabaseService handles pooling)
+- Article II: Comprehensive audit logging of bootstrap events
+- Article IX: Graceful degradation (health check optional, clear errors)
+- Article X: Structured observability throughout lifecycle
+
+Architecture Notes
+------------------
+**Bootstrap Sequence**:
+1. `initialize_database_subsystem()` called during bot startup
+2. DatabaseService initializes engine and session factory
+3. Optional health check verifies database connectivity
+4. Returns on success or raises DatabaseInitializationError on failure
+
+**Health Verification**:
+- Configurable timeout via `DATABASE_BOOTSTRAP_HEALTH_TIMEOUT_SECONDS`
+- Default: 5 seconds
+- Can be disabled by passing `verify_health=False`
+- Useful for fast startup in dev environments
+
+**Component Factories**:
+- `create_database_health_monitor_from_config()`: Background health monitoring
+- `create_database_retry_policy_from_config()`: Retry logic for transient failures
+
+**Shutdown Sequence**:
+1. `shutdown_database_subsystem()` called during bot shutdown
+2. DatabaseService.shutdown() disposes engine and closes connections
+3. Logs completion for observability
+
+Configuration
+-------------
+Bootstrap behavior controlled by Config attributes:
+- `DATABASE_URL`: Connection string (required)
+- `DATABASE_BOOTSTRAP_HEALTH_TIMEOUT_SECONDS`: Health check timeout (default: 5.0)
+- `DATABASE_HEALTH_CHECK_INTERVAL_SECONDS`: For health monitor (default: 30)
+- `DATABASE_RETRY_MAX_ATTEMPTS`: For retry policy (default: 3)
+
+Usage Example
+-------------
+Basic initialization in bot startup:
+
+>>> from src.core.database.bootstrap import (
+>>>     initialize_database_subsystem,
+>>>     shutdown_database_subsystem
+>>> )
+>>>
+>>> # During bot startup (in setup_hook or main)
+>>> try:
+>>>     await initialize_database_subsystem(verify_health=True)
+>>>     logger.info("Database ready")
+>>> except DatabaseInitializationError as e:
+>>>     logger.critical(f"Database initialization failed: {e}")
+>>>     raise
+>>>
+>>> # During bot shutdown (in close method)
+>>> await shutdown_database_subsystem()
+
+With health monitoring:
+
+>>> from src.core.database.bootstrap import (
+>>>     initialize_database_subsystem,
+>>>     create_database_health_monitor_from_config,
+>>>     shutdown_database_subsystem
+>>> )
+>>>
+>>> # Initialize database
+>>> await initialize_database_subsystem()
+>>>
+>>> # Create and start health monitor
+>>> monitor = create_database_health_monitor_from_config()
+>>> asyncio.create_task(monitor.start())
+>>>
+>>> # ... bot runs ...
+>>>
+>>> # Shutdown
+>>> await monitor.stop()
+>>> await shutdown_database_subsystem()
+
+Skip health check for fast dev startup:
+
+>>> # In development, skip health check for faster restarts
+>>> await initialize_database_subsystem(verify_health=False)
+
+Error Handling
+--------------
+`initialize_database_subsystem()` can raise:
+
+**DatabaseInitializationError** - When:
+- Database connection fails
+- Health check times out (if `verify_health=True`)
+- Health check fails (if `verify_health=True`)
+- Engine creation fails
+- Configuration is invalid
+
+All errors include:
+- Clear error message
+- Structured logging with context
+- Original exception preserved via `from exc`
+
+Integration with BotLifecycle
+------------------------------
+This module is typically called from BotLifecycle during bot startup:
+
+>>> # In BotLifecycle.initialize_service():
+>>> db_time = await self.initialize_service(
+>>>     "Database",
+>>>     initialize_database_subsystem(verify_health=True)
+>>> )
+>>>
+>>> # In BotLifecycle.shutdown():
+>>> await shutdown_database_subsystem()
 """
 
 from __future__ import annotations

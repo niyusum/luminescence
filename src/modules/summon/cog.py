@@ -9,12 +9,13 @@ from src.modules.player.service import PlayerService
 from src.modules.summon.service import SummonService
 from src.core.infra.redis_service import RedisService
 from src.core.infra.transaction_logger import TransactionLogger
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from core.event.bus.event_bus import EventBus
 from src.core.exceptions import InsufficientResourcesError, ValidationError
 from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
-from utils.embed_builder import EmbedBuilder
+from src.ui import EmbedFactory, BaseView
+from src.ui.emojis import Emojis
 
 logger = get_logger(__name__)
 
@@ -163,13 +164,13 @@ class SummonCog(BaseCog):
         name = result.get("maiden_name", "Unknown Maiden")
         tier = result.get("tier", 1)
         element = result.get("element", "Unknown")
-        emoji = result.get("element_emoji", "❓")
+        emoji = result.get("element_emoji", Emojis.HELP)
         is_new = result.get("is_new", False)
         pity = result.get("pity_triggered", False)
 
-        title = f"{'🌟 PITY! ' if pity else '✨ '}{name} Summoned!"
+        title = f"{f'{Emojis.PITY} PITY! ' if pity else f'{Emojis.SUMMON} '}{name} Summoned!"
         desc = f"{emoji} **{element.title()}** Element • **Tier {tier}**\n"
-        desc += "🆕 New to your collection!" if is_new else "📦 Added to your collection."
+        desc += f"{Emojis.NEW} New to your collection!" if is_new else f"{Emojis.INFO} Added to your collection."
 
         flavor = {
             1: "Common maiden - fusion material",
@@ -187,7 +188,7 @@ class SummonCog(BaseCog):
         }
         desc += f"\n\n*{flavor.get(tier, 'Mysterious maiden...')}*"
 
-        embed = EmbedBuilder.success(
+        embed = EmbedFactory.success(
             title=title,
             description=desc,
             footer=f"Summon {index}/{total} • {remaining} auric coin remaining"
@@ -196,7 +197,7 @@ class SummonCog(BaseCog):
         atk = result.get("attack", 0)
         dfs = result.get("defense", 0)
         embed.add_field(
-            name="⚔️ Stats",
+            name=f"{Emojis.ATTACK} Stats",
             value=f"ATK: {atk:,} • DEF: {dfs:,}\nPower: {atk + dfs:,}",
             inline=True
         )
@@ -215,7 +216,7 @@ class BatchSummonView(discord.ui.View):
         self.index = 0
         self.message: Optional[discord.Message] = None
 
-    @discord.ui.button(label="Next ▶️", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label=f"Next {Emojis.NEXT}", style=discord.ButtonStyle.primary)
     async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This summon is not for you!", ephemeral=True)
@@ -235,7 +236,7 @@ class BatchSummonView(discord.ui.View):
 
         await interaction.response.edit_message(embed=embed, view=self)
 
-    @discord.ui.button(label="⏩ Skip to Summary", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label=f"{Emojis.SKIP} Skip to Summary", style=discord.ButtonStyle.secondary)
     async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This summon is not for you!", ephemeral=True)
@@ -256,13 +257,13 @@ class BatchSummonView(discord.ui.View):
 
         text = f"You summoned **{total}** maidens!\n"
         if new_count:
-            text += f"🆕 **{new_count}** new to your collection!\n\n"
+            text += f"{Emojis.NEW} **{new_count}** new to your collection!\n\n"
         text += "**Tier Breakdown:**\n"
         for t in sorted(tiers.keys(), reverse=True):
             text += f"• Tier {t}: **{tiers[t]}**\n"
 
-        embed = EmbedBuilder.success(
-            title=f"🎊 Summon Summary ({total} Summons)",
+        embed = EmbedFactory.success(
+            title=f"{Emojis.VICTORY} Summon Summary ({total} Summons)",
             description=text,
             footer=f"Highest Tier: {high} • New Maidens: {new_count}/{total}"
         )
@@ -304,14 +305,14 @@ class SingleSummonView(discord.ui.View):
         if remaining < 1:
             self.summon_again.disabled = True
 
-    @discord.ui.button(label="✨ Summon Again", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label=f"{Emojis.SUMMON} Summon Again", style=discord.ButtonStyle.primary)
     async def summon_again(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This button isn't for you!", ephemeral=True)
             return
         await interaction.response.send_message(f"Use `/summon` again! ({self.remaining} auric coin left)", ephemeral=True)
 
-    @discord.ui.button(label="🎴 View Collection", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label=f"{Emojis.MAIDEN} View Collection", style=discord.ButtonStyle.secondary)
     async def view_collection(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.send_message("This button isn't for you!", ephemeral=True)

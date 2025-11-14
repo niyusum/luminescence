@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.core.player import Player
 from src.modules.resource.service import ResourceService
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.core.exceptions import InsufficientResourcesError, ValidationError
 from src.core.logging.logger import get_logger
 

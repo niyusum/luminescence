@@ -18,7 +18,7 @@ import secrets
 from src.database.models.core.player import Player
 from src.database.models.economy.token import Token
 from src.database.models.core.maiden_base import MaidenBase
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.exceptions import InsufficientResourcesError, InvalidOperationError
 from src.core.logging.logger import get_logger

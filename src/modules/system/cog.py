@@ -15,11 +15,12 @@ from datetime import datetime, timedelta
 import time
 
 from src.core.infra.database_service import DatabaseService
-from src.core.cache.cache_service import CacheService
-from src.core.config.config_manager import ConfigManager
+from src.core.cache import CacheService
+from src.core.config import ConfigManager
 from src.core.logging.logger import get_logger
 from src.core.infra.transaction_logger import TransactionLogger
-from utils.embed_builder import EmbedBuilder
+from src.ui.emojis import Emojis
+from src.ui import EmbedFactory, BaseView
 
 logger = get_logger(__name__)
 
@@ -141,7 +142,7 @@ class SystemTasksCog(BaseCog):
             hit_rate = CacheService.get_hit_rate()
 
             embed = discord.Embed(
-                title="🔧 System Status",
+                title=f"{Emojis.SYSTEM} System Status",
                 description="Current system health and performance metrics",
                 color=0x2c2d31,
                 timestamp=datetime.utcnow()
@@ -149,17 +150,17 @@ class SystemTasksCog(BaseCog):
 
             embed.add_field(
                 name="💾 Database",
-                value=f"{'✅ Healthy' if db_healthy else '❌ Unhealthy'}",
+                value=f"{Emojis.SUCCESS if db_healthy else Emojis.ERROR} {'Healthy' if db_healthy else 'Unhealthy'}",
                 inline=True
             )
             embed.add_field(
-                name="📦 Redis Cache",
-                value=f"{'✅ Healthy' if redis_healthy else '❌ Unhealthy'}",
+                name=f"{Emojis.CATEGORY_RESOURCES} Redis Cache",
+                value=f"{Emojis.SUCCESS if redis_healthy else Emojis.ERROR} {'Healthy' if redis_healthy else 'Unhealthy'}",
                 inline=True
             )
 
             embed.add_field(
-                name="📊 Cache Performance",
+                name=f"{Emojis.INFO} Cache Performance",
                 value=(
                     f"**Hit Rate:** {hit_rate:.1f}%\n"
                     f"**Hits:** {cache_metrics['hits']:,}\n"
@@ -173,9 +174,9 @@ class SystemTasksCog(BaseCog):
             embed.add_field(
                 name="🧹 Background Tasks",
                 value=(
-                    f"**Log Cleanup:** {'✅ Running' if self.cleanup_transaction_logs.is_running() else '❌ Stopped'}\n"
+                    f"**Log Cleanup:** {Emojis.SUCCESS if self.cleanup_transaction_logs.is_running() else Emojis.ERROR} {'Running' if self.cleanup_transaction_logs.is_running() else 'Stopped'}\n"
                     f"**Last Run:** {self.last_cleanup.strftime('%Y-%m-%d %H:%M UTC') if self.last_cleanup else 'Never'}\n"
-                    f"**Cache Refresh:** {'✅ Running' if self.refresh_active_caches.is_running() else '❌ Stopped'}\n"
+                    f"**Cache Refresh:** {Emojis.SUCCESS if self.refresh_active_caches.is_running() else Emojis.ERROR} {'Running' if self.refresh_active_caches.is_running() else 'Stopped'}\n"
                     f"**Last Run:** {self.last_cache_refresh.strftime('%Y-%m-%d %H:%M UTC') if self.last_cache_refresh else 'Never'}"
                 ),
                 inline=False
@@ -183,7 +184,7 @@ class SystemTasksCog(BaseCog):
 
             retention_days = ConfigManager.get("resource_system.audit_retention_days", 90)
             embed.add_field(
-                name="⚙️ Configuration",
+                name=f"{Emojis.SYSTEM} Configuration",
                 value=f"**Audit Retention:** {retention_days} days",
                 inline=False
             )
@@ -237,7 +238,7 @@ class SystemTasksCog(BaseCog):
             task_name = task.lower()
             if task_name in ["cleanup", "cleanup_logs", "logs"]:
                 deleted = await TransactionLogger.cleanup_old_logs()
-                embed = EmbedBuilder.success(
+                embed = EmbedFactory.success(
                     title="Task Triggered",
                     description=(
                         f"Transaction log cleanup executed manually.\n"
@@ -248,14 +249,14 @@ class SystemTasksCog(BaseCog):
 
             elif task_name in ["cache", "cache_refresh", "refresh"]:
                 await self.refresh_active_caches()
-                embed = EmbedBuilder.success(
+                embed = EmbedFactory.success(
                     title="Task Triggered",
                     description="Cache refresh executed manually.\nActive player caches updated.",
                     footer=f"Last refresh: {self.last_cache_refresh.strftime('%Y-%m-%d %H:%M UTC') if self.last_cache_refresh else 'Just now'}"
                 )
 
             else:
-                embed = EmbedBuilder.error(
+                embed = EmbedFactory.error(
                     title="Unknown Task",
                     description=f"Task '{task}' not recognized.",
                     help_text="Available tasks: cleanup, cache_refresh"
@@ -297,7 +298,7 @@ class SystemTasksCog(BaseCog):
     async def system_error(self, ctx: commands.Context, error):
         """Error handler for system commands."""
         if isinstance(error, commands.MissingPermissions):
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Permission Denied",
                 description="You need administrator permissions to use system commands.",
                 help_text="Contact a server administrator."

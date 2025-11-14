@@ -118,7 +118,8 @@ class LoggerConfig:
 
     @property
     def logs_dir(self) -> Path:
-        return Config.LOGS_DIR
+        # Ensure logs are always stored outside the source tree.
+        return Path(Config.LOGS_DIR).resolve()
 
     @property
     def log_level(self) -> int:

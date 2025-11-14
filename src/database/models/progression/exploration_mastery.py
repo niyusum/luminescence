@@ -31,6 +31,8 @@ from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import BigInteger, Index, UniqueConstraint, DateTime
 from datetime import datetime
 
+from src.ui.emojis import Emojis
+
 
 class ExplorationMastery(SQLModel, table=True):
     """
@@ -255,48 +257,48 @@ class ExplorationMastery(SQLModel, table=True):
     def get_rank_display(self) -> str:
         """
         Format rank progress for Discord embeds.
-        
+
         Returns:
             String with emoji indicators for each rank
-        
+
         Example:
             >>> mastery.rank_1_complete = True
             >>> mastery.rank_2_complete = True
             >>> mastery.get_rank_display()
             "✅ Rank 1 | ✅ Rank 2 | ❌ Rank 3"
         """
-        rank_1_icon = "✅" if self.rank_1_complete else "❌"
-        rank_2_icon = "✅" if self.rank_2_complete else "❌"
-        rank_3_icon = "✅" if self.rank_3_complete else "❌"
-        
+        rank_1_icon = Emojis.SUCCESS if self.rank_1_complete else Emojis.ERROR
+        rank_2_icon = Emojis.SUCCESS if self.rank_2_complete else Emojis.ERROR
+        rank_3_icon = Emojis.SUCCESS if self.rank_3_complete else Emojis.ERROR
+
         return f"{rank_1_icon} Rank 1 | {rank_2_icon} Rank 2 | {rank_3_icon} Rank 3"
     
     def get_mastery_badge(self) -> str:
         """
         Get mastery badge emoji based on completion.
-        
+
         Returns:
             Emoji string representing mastery level:
                 - 🥉 Bronze (Rank 1)
                 - 🥈 Silver (Rank 2)
                 - 🥇 Gold (Rank 3 - fully mastered)
                 - ⭐ None (no ranks complete)
-        
+
         Example:
             >>> mastery.rank_1_complete = True
             >>> mastery.get_mastery_badge()
             "🥉"
         """
         current_rank = self.get_current_rank()
-        
+
         if current_rank == 3:
-            return "🥇"  # Gold - fully mastered
+            return Emojis.GOLD  # Gold - fully mastered
         elif current_rank == 2:
-            return "🥈"  # Silver
+            return Emojis.SILVER  # Silver
         elif current_rank == 1:
-            return "🥉"  # Bronze
+            return Emojis.BRONZE  # Bronze
         else:
-            return "⭐"  # No mastery
+            return Emojis.NO_MASTERY  # No mastery
     
     def get_time_to_complete_rank(self, rank: int) -> Optional[str]:
         """

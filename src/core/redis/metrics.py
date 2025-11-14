@@ -52,7 +52,7 @@ from typing import Any, Dict, List, Optional
 from threading import Lock
 
 from src.core.logging.logger import get_logger
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 
 logger = get_logger(__name__)
 

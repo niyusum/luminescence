@@ -15,7 +15,7 @@ from src.core.bot.base_cog import BaseCog
 from src.core.infra.database_service import DatabaseService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.infra.redis_service import RedisService
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.modules.player.service import PlayerService
 from src.modules.exploration.service import ExplorationService
 from src.modules.exploration.matron_logic import MatronService
@@ -23,9 +23,10 @@ from src.modules.exploration.mastery_logic import MasteryService
 from src.modules.exploration.constants import RELIC_TYPES
 from src.modules.combat.service import CombatService
 from src.core.exceptions import InsufficientResourcesError, InvalidOperationError, NotFoundError, CooldownError
-from src.core.logging.logger import get_logger 
+from src.core.logging.logger import get_logger
 from src.utils.decorators import ratelimit
-from utils.embed_builder import EmbedBuilder
+from src.ui import EmbedFactory, BaseView
+from src.ui.emojis import Emojis
 
 if TYPE_CHECKING:
     from typing import Callable
@@ -59,13 +60,13 @@ class ExplorationCog(BaseCog):
         primary_color = ConfigManager.get("embed_colors.primary", default=0x2c2d31)
         
         embed = discord.Embed(
-            title=f"🛡️ MATRON ENCOUNTER",
+            title=f"{Emojis.DEFENSE} MATRON ENCOUNTER",
             description=f"Sector {matron['sector_id']} - Sublevel {matron['sublevel']}",
             color=primary_color
         )
-        
+
         embed.add_field(
-            name=f"⚔️ {matron['name']}",
+            name=f"{Emojis.ATTACK} {matron['name']}",
             value=(
                 f"{element_emoji} **{matron['element'].title()}**\n"
                 f"**HP:** {matron['hp']:,}"
@@ -74,7 +75,7 @@ class ExplorationCog(BaseCog):
         )
         
         embed.add_field(
-            name="💪 Your Total Power",
+            name=f"{Emojis.STAMINA} Your Total Power",
             value=f"{player_power:,}",
             inline=True
         )
@@ -88,30 +89,30 @@ class ExplorationCog(BaseCog):
         fast_percent = ConfigManager.get("exploration.rewards.fast_bonus_percent", 50)
 
         embed.add_field(
-            name="📊 Combat Info",
+            name=f"{Emojis.INFO} Combat Info",
             value=(
                 f"**HP:** {hp_bar}\n"
                 f"**Turns:** 0 / {matron['optimal_turns']} (Optimal)\n"
                 f"**Turn Limit:** {matron['turn_limit']}\n"
-                f"⚠️ Matron dismisses you at turn limit!"
+                f"{Emojis.WARNING} Matron dismisses you at turn limit!"
             ),
             inline=False
         )
         
         embed.add_field(
-            name="💰 Reward Bonuses",
+            name=f"{Emojis.LUMEES} Reward Bonuses",
             value=(
-                f"⭐ **Perfect:** ≤{matron['optimal_turns']} turns (+{optimal_percent}% rewards)\n"
-                f"🏃 **Fast:** ≤{matron['optimal_turns']+3} turns (+{fast_percent}% rewards)\n"
-                f"✅ **Standard:** ≤{matron['turn_limit']} turns (base rewards)\n"
-                f"🐌 **Slow:** >{matron['turn_limit']} turns (dismissed)"
+                f"{Emojis.NO_MASTERY} **Perfect:** ≤{matron['optimal_turns']} turns (+{optimal_percent}% rewards)\n"
+                f"{Emojis.RUNNING} **Fast:** ≤{matron['optimal_turns']+3} turns (+{fast_percent}% rewards)\n"
+                f"{Emojis.SUCCESS} **Standard:** ≤{matron['turn_limit']} turns (base rewards)\n"
+                f"{Emojis.SLOW} **Slow:** >{matron['turn_limit']} turns (dismissed)"
             ),
             inline=False
         )
         
         if matron["is_sector_boss"]:
             embed.add_field(
-                name="🏆 SECTOR BOSS",
+                name=f"{Emojis.VICTORY} SECTOR BOSS",
                 value="Extra rewards on victory!",
                 inline=False
             )
@@ -154,7 +155,7 @@ class ExplorationCog(BaseCog):
         try:
             primary_color = ConfigManager.get("embed_colors.primary", default=0x2c2d31)
             embed = discord.Embed(
-                title="🗺️ Exploration",
+                title=f"{Emojis.EXPLORATION} Exploration",
                 description=(
                     "**Venture** into sectors to gain progress, rewards, and encounter maidens!\n\n"
                     "**Mastery** system rewards permanent bonuses for completing sectors.\n\n"
@@ -164,19 +165,19 @@ class ExplorationCog(BaseCog):
             )
 
             embed.add_field(
-                name="🪙 Energy System",
+                name=f"{Emojis.ENERGY} Energy System",
                 value="Each exploration costs energy. Energy regenerates over time.",
                 inline=False
             )
 
             embed.add_field(
-                name="🎯 Progress & Matrons",
+                name=f"{Emojis.TARGET} Progress & Matrons",
                 value="Complete sublevels to spawn Matron bosses. Defeat them for greater rewards!",
                 inline=False
             )
 
             embed.add_field(
-                name="💡 Quick Tip",
+                name=f"{Emojis.TIP} Quick Tip",
                 value="You can also use `;explore <sector> <sublevel>` to venture directly!",
                 inline=False
             )
@@ -271,17 +272,17 @@ class ExplorationCog(BaseCog):
                     # Build completion + matron spawn embed
                     success_color = ConfigManager.get("embed_colors.success", default=0x00FF00)
                     embed = discord.Embed(
-                        title=f"🎉 Sector {sector} - Sublevel {sublevel} COMPLETE!",
+                        title=f"{Emojis.CELEBRATION} Sector {sector} - Sublevel {sublevel} COMPLETE!",
                         description="You've completed this sub-sector! A Matron has appeared!",
                         color=success_color
                     )
 
-                    embed.add_field(name="🪙 Energy", value=f"-{result['energy_cost']}", inline=True)
-                    embed.add_field(name="💰 Rewards", value=f"+{result['lumees_gained']:,} Lumees\n+{result['xp_gained']} XP", inline=True)
+                    embed.add_field(name=f"{Emojis.ENERGY} Energy", value=f"-{result['energy_cost']}", inline=True)
+                    embed.add_field(name=f"{Emojis.LUMEES} Rewards", value=f"+{result['lumees_gained']:,} Lumees\n+{result['xp_gained']} XP", inline=True)
 
                     progress_bar = self._render_progress_bar(result['current_progress'], width=10)
                     embed.add_field(
-                        name="📊 Progress",
+                        name=f"{Emojis.INFO} Progress",
                         value=f"{progress_bar} {result['current_progress']:.1f}%",
                         inline=False
                     )
@@ -289,7 +290,7 @@ class ExplorationCog(BaseCog):
                     if result.get('maiden_encounter'):
                         maiden = result['maiden_encounter']
                         embed.add_field(
-                            name="✨ Maiden Encountered!",
+                            name=f"{Emojis.SUMMON} Maiden Encountered!",
                             value=f"**{maiden['name']}** ({maiden['tier']}⭐) appeared!",
                             inline=False
                         )
@@ -312,17 +313,17 @@ class ExplorationCog(BaseCog):
                     # Build normal result embed
                     primary_color = ConfigManager.get("embed_colors.primary", default=0x2c2d31)
                     embed = discord.Embed(
-                        title=f"🗺️ Sector {sector} - Sublevel {sublevel}",
+                        title=f"{Emojis.EXPLORATION} Sector {sector} - Sublevel {sublevel}",
                         description="Exploration complete!",
                         color=primary_color
                     )
 
-                    embed.add_field(name="🪙 Energy", value=f"-{result['energy_cost']}", inline=True)
-                    embed.add_field(name="💰 Rewards", value=f"+{result['lumees_gained']:,} Lumees\n+{result['xp_gained']} XP", inline=True)
+                    embed.add_field(name=f"{Emojis.ENERGY} Energy", value=f"-{result['energy_cost']}", inline=True)
+                    embed.add_field(name=f"{Emojis.LUMEES} Rewards", value=f"+{result['lumees_gained']:,} Lumees\n+{result['xp_gained']} XP", inline=True)
 
                     progress_bar = self._render_progress_bar(result['current_progress'], width=10)
                     embed.add_field(
-                        name="📊 Progress",
+                        name=f"{Emojis.INFO} Progress",
                         value=f"{progress_bar} {result['current_progress']:.1f}%\n+{result['progress_gained']:.1f}% this exploration",
                         inline=False
                     )
@@ -330,7 +331,7 @@ class ExplorationCog(BaseCog):
                     if result.get('maiden_encounter'):
                         maiden = result['maiden_encounter']
                         embed.add_field(
-                            name="✨ Maiden Encountered!",
+                            name=f"{Emojis.SUMMON} Maiden Encountered!",
                             value=f"**{maiden['name']}** ({maiden['tier']}⭐) appeared!",
                             inline=False
                         )
@@ -417,19 +418,19 @@ class ExplorationCog(BaseCog):
                 mastery_color = ConfigManager.get("embed_colors.mastery", default=0x9B59B6)
 
                 embed = discord.Embed(
-                    title=f"🏆 {ctx.author.display_name}'s Mastery",
+                    title=f"{Emojis.LEADERBOARD} {ctx.author.display_name}'s Mastery",
                     description=("Complete exploration sectors to earn permanent relic bonuses."),
                     color=mastery_color,
                     timestamp=discord.utils.utcnow()
                 )
 
-                embed.add_field(name="📦 Total Relics", value=f"**{len(relics)}** active relics", inline=True)
+                embed.add_field(name=f"{Emojis.INFO} Total Relics", value=f"**{len(relics)}** active relics", inline=True)
 
                 if bonuses:
                     bonus_text = []
                     for relic_type, value in bonuses.items():
                         relic_info = RELIC_TYPES.get(relic_type, {})
-                        icon = relic_info.get("icon", "🏆")
+                        icon = relic_info.get("icon", f"{Emojis.LEADERBOARD}")
                         name = relic_info.get("name", relic_type)
 
                         if relic_type in ConfigManager.get("mastery.flat_bonus_types", []):
@@ -437,20 +438,20 @@ class ExplorationCog(BaseCog):
                         else:
                             bonus_text.append(f"{icon} **{name}:** +{value:.1f}%")
 
-                    embed.add_field(name="✨ Active Bonuses", value="\n".join(bonus_text), inline=False)
+                    embed.add_field(name=f"{Emojis.SUMMON} Active Bonuses", value="\n".join(bonus_text), inline=False)
                 else:
-                    embed.add_field(name="✨ Active Bonuses", value="No active relics yet. Complete sectors to earn bonuses!", inline=False)
+                    embed.add_field(name=f"{Emojis.SUMMON} Active Bonuses", value="No active relics yet. Complete sectors to earn bonuses!", inline=False)
 
                 sector_status = []
                 # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
-                max_mastery_sector = ConfigManager.get("exploration.max_mastery_sector", default=6) 
+                max_mastery_sector = ConfigManager.get("exploration.max_mastery_sector", default=6)
                 for sector_id in range(1, max_mastery_sector + 1):
                     status = await MasteryService.get_sector_mastery_status(session, player.discord_id, sector_id)
                     rank = status["current_rank"]
                     stars = "★" * rank + "☆" * (3 - rank)
                     sector_status.append(f"Sector {sector_id}: {stars}")
 
-                embed.add_field(name="🗺️ Sector Progress", value="\n".join(sector_status), inline=False)
+                embed.add_field(name=f"{Emojis.EXPLORATION} Sector Progress", value="\n".join(sector_status), inline=False)
                 embed.set_footer(text="Use ;mastery <sector_id> to view detailed sector mastery")
 
                 await ctx.send(embed=embed)
@@ -493,7 +494,7 @@ class ExplorationCog(BaseCog):
                 mastery_color = ConfigManager.get("embed_colors.mastery", default=0x9B59B6)
 
                 embed = discord.Embed(
-                    title=f"🗺️ Sector {sector_id} Mastery",
+                    title=f"{Emojis.EXPLORATION} Sector {sector_id} Mastery",
                     description=f"Complete all {sublevels_per_sector} sublevels to unlock mastery ranks.",
                     color=mastery_color,
                     timestamp=discord.utils.utcnow()
@@ -502,16 +503,16 @@ class ExplorationCog(BaseCog):
                 current_rank = status["current_rank"]
 
                 if status["fully_mastered"]:
-                    embed.add_field(name="🏆 Status", value="**Fully Mastered!** ★★★", inline=False)
+                    embed.add_field(name=f"{Emojis.LEADERBOARD} Status", value="**Fully Mastered!** ★★★", inline=False)
                 else:
                     stars = "★" * current_rank + "☆" * (3 - current_rank)
-                    embed.add_field(name="🏆 Current Rank", value=f"{stars} Rank {current_rank}/3", inline=False)
+                    embed.add_field(name=f"{Emojis.LEADERBOARD} Current Rank", value=f"{stars} Rank {current_rank}/3", inline=False)
 
                 if not status["fully_mastered"]:
                     next_rank = status.get("next_rank", {})
                     if next_rank:
                         embed.add_field(
-                            name="📈 Progress to Next Rank",
+                            name=f"{Emojis.EXPERIENCE} Progress to Next Rank",
                             value=(
                                 f"**Required:** Clear all {next_rank['sublevels_required']} sublevels\n"
                                 f"**Reward:** {next_rank['relic_reward']['name']} {next_rank['relic_reward']['icon']}"
@@ -524,11 +525,11 @@ class ExplorationCog(BaseCog):
                     relic_lines = []
                     for relic in sector_relics:
                         relic_info = RELIC_TYPES.get(relic.relic_type, {})
-                        icon = relic_info.get("icon", "🏆")
+                        icon = relic_info.get("icon", f"{Emojis.LEADERBOARD}")
                         name = relic_info.get("name", relic.relic_type)
                         relic_lines.append(f"{icon} {name} (Rank {relic.mastery_rank})")
 
-                    embed.add_field(name="🎁 Earned Relics", value="\n".join(relic_lines), inline=False)
+                    embed.add_field(name=f"{Emojis.DAILY} Earned Relics", value="\n".join(relic_lines), inline=False)
 
                 await ctx.send(embed=embed)
 
@@ -586,7 +587,7 @@ class MatronCombatView(discord.ui.View):
         return True
 
     @discord.ui.button(
-        label="⚔️ Attack x1",
+        label=f"{Emojis.ATTACK} Attack x1",
         style=discord.ButtonStyle.secondary,
         custom_id="matron_x1"
     )
@@ -597,9 +598,9 @@ class MatronCombatView(discord.ui.View):
     ):
         """Execute x1 attack (1 stamina)."""
         await self._execute_attack(interaction, "x1")
-    
+
     @discord.ui.button(
-        label="⚔️⚔️ Attack x3",
+        label=f"{Emojis.ATTACK}{Emojis.ATTACK} Attack x3",
         style=discord.ButtonStyle.primary,
         custom_id="matron_x3"
     )
@@ -610,9 +611,9 @@ class MatronCombatView(discord.ui.View):
     ):
         """Execute x3 attack (3 stamina)."""
         await self._execute_attack(interaction, "x3")
-    
+
     @discord.ui.button(
-        label="💥 Attack x10",
+        label=f"{Emojis.CRITICAL} Attack x10",
         style=discord.ButtonStyle.danger,
         custom_id="matron_x10"
     )
@@ -698,7 +699,7 @@ class MatronCombatView(discord.ui.View):
         # LUMEN LAW POSITIONAL MARKER: SPECIFIC EXCEPTION HANDLING
         except InsufficientResourcesError as e:
             await interaction.followup.send(
-                embed=EmbedBuilder.error("Insufficient Resources", str(e), help_text="You don't have enough resources for this attack."),
+                embed=EmbedFactory.error("Insufficient Resources", str(e), help_text="You don't have enough resources for this attack."),
                 ephemeral=True
             )
             self.cog_logger("matron_attack", e, user_id=self.user_id, status="domain_error", error_type=type(e).__name__)
@@ -714,7 +715,7 @@ class MatronCombatView(discord.ui.View):
                 matron_name=self.matron["name"]
             )
             await interaction.followup.send(
-                embed=EmbedBuilder.error("System Failure", "An unexpected error occurred. Combat aborted."),
+                embed=EmbedFactory.error("System Failure", "An unexpected error occurred. Combat aborted."),
                 ephemeral=True
             )
             # LUMEN LAW POSITIONAL MARKER: DISABLE BUTTONS AFTER USE
@@ -727,27 +728,27 @@ class MatronCombatView(discord.ui.View):
         turn_update_color = ConfigManager.get("embed_colors.turn_update", default=0x0099FF)
 
         embed = discord.Embed(
-            title=f"⚔️ TURN {result['turns_taken']}",
+            title=f"{Emojis.ATTACK} TURN {result['turns_taken']}",
             color=turn_update_color
         )
-        
-        embed.add_field(name="Damage Dealt", value=f"⚔️ {result['damage_dealt']:,}", inline=True)
-        
+
+        embed.add_field(name="Damage Dealt", value=f"{Emojis.ATTACK} {result['damage_dealt']:,}", inline=True)
+
         hp_bar = CombatService.render_hp_bar(result["matron_hp"], self.matron["max_hp"], width=10)
         embed.add_field(name="Matron HP", value=f"{hp_bar} {result['matron_hp']:,}/{self.matron['max_hp']:,}", inline=True)
-        
+
         optimal = self.matron["optimal_turns"]
         turn_limit = self.matron["turn_limit"]
         turns = result["turns_taken"]
-        
+
         if turns <= optimal:
-            status = "⭐ PERFECT pace!"
+            status = f"{Emojis.NO_MASTERY} PERFECT pace!"
         elif turns <= optimal + 3:
-            status = "🏃 FAST pace!"
+            status = f"{Emojis.RUNNING} FAST pace!"
         elif turns < turn_limit - 2:
-            status = "✅ Standard pace"
+            status = f"{Emojis.SUCCESS} Standard pace"
         else:
-            status = "🚨 WARNING: Near turn limit!"
+            status = f"{Emojis.WARNING} WARNING: Near turn limit!"
         
         embed.add_field(
             name="Turn Status",
@@ -763,7 +764,7 @@ class MatronCombatView(discord.ui.View):
         """Build victory embed."""
         rewards = result["rewards"]
         turn_bonus = rewards["turn_bonus"]
-        
+
         # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
         success_color = ConfigManager.get("embed_colors.success", default=0x00FF00)
         perfect_percent = ConfigManager.get("exploration.rewards.perfect_bonus_percent", 100)
@@ -771,25 +772,25 @@ class MatronCombatView(discord.ui.View):
         slow_percent = ConfigManager.get("exploration.rewards.slow_penalty_percent", 50)
 
         bonus_text = {
-            "perfect": f"PERFECT CLEAR! (+{perfect_percent}% rewards)", 
-            "fast": f"FAST CLEAR! (+{fast_percent}% rewards)", 
-            "standard": "CLEAR (base rewards)", 
+            "perfect": f"PERFECT CLEAR! (+{perfect_percent}% rewards)",
+            "fast": f"FAST CLEAR! (+{fast_percent}% rewards)",
+            "standard": "CLEAR (base rewards)",
             "slow": f"SLOW CLEAR (-{slow_percent}% rewards)"
         }
-        bonus_emoji = {"perfect": "⭐", "fast": "🏃", "standard": "✅", "slow": "🐌"}
-        
-        embed = discord.Embed(title="🏆 MATRON DEFEATED!", description=f"{self.matron['name']} has been conquered!", color=success_color)
-        
+        bonus_emoji = {"perfect": Emojis.NO_MASTERY, "fast": Emojis.RUNNING, "standard": Emojis.SUCCESS, "slow": Emojis.SLOW}
+
+        embed = discord.Embed(title=f"{Emojis.VICTORY} MATRON DEFEATED!", description=f"{self.matron['name']} has been conquered!", color=success_color)
+
         embed.add_field(name=f"{bonus_emoji[turn_bonus]} {bonus_text[turn_bonus]}", value=f"**Turns Used:** {result['turns_taken']}", inline=False)
-        
+
         reward_text = f"**+{rewards['lumees']:,}** Lumees\n**+{rewards['xp']}** XP"
         if rewards.get("sector_clear_bonus"):
             bonus = rewards["sector_clear_bonus"]
-            reward_text += f"\n\n**🏆 Sector Boss Bonus:**"
+            reward_text += f"\n\n**{Emojis.VICTORY} Sector Boss Bonus:**"
             reward_text += f"\n+{bonus['lumees']:,} Lumees"
-            reward_text += f"\n🥈 Silver Token x1"
-        
-        embed.add_field(name="💰 Rewards", value=reward_text, inline=False)
+            reward_text += f"\n{Emojis.SILVER} Silver Token x1"
+
+        embed.add_field(name=f"{Emojis.LUMEES} Rewards", value=reward_text, inline=False)
         embed.set_footer(text="Matron defeated | Sector progress saved")
         
         return embed
@@ -799,8 +800,8 @@ class MatronCombatView(discord.ui.View):
         # LUMEN LAW POSITIONAL MARKER: CONFIG MANAGER USE
         dismiss_color = ConfigManager.get("embed_colors.dismiss", default=0x808080)
 
-        embed = discord.Embed(title="💨 DISMISSED", description=result["dismissal_text"], color=dismiss_color)
-        
+        embed = discord.Embed(title=f"{Emojis.DISMISSED} DISMISSED", description=result["dismissal_text"], color=dismiss_color)
+
         embed.add_field(
             name="Combat Stats",
             value=(
@@ -810,15 +811,15 @@ class MatronCombatView(discord.ui.View):
             ),
             inline=False
         )
-        
+
         embed.add_field(
-            name="❌ No Rewards",
+            name=f"{Emojis.ERROR} No Rewards",
             value=(f"Stamina consumed: {result['stamina_cost']}\n" f"Gems consumed: {result['gem_cost']}"),
             inline=False
         )
-        
+
         embed.add_field(
-            name="💡 Tips",
+            name=f"{Emojis.TIP} Tips",
             value=("• Upgrade your maiden collection\n" "• Use higher attack multipliers (x3, x10)\n" "• Allocate more stamina for more attempts\n" "• Set a leader for income boost"),
             inline=False
         )
@@ -866,7 +867,7 @@ class ExplorationMenuView(discord.ui.View):
         return True
 
     @discord.ui.button(
-        label="⚔️ Venture",
+        label=f"{Emojis.ATTACK} Venture",
         style=discord.ButtonStyle.primary,
         custom_id="exploration_venture"
     )
@@ -882,7 +883,7 @@ class ExplorationMenuView(discord.ui.View):
         sector_view = SectorSelectView(self.user_id, self.cog)
 
         embed = discord.Embed(
-            title="🗺️ Select Sector",
+            title=f"{Emojis.EXPLORATION} Select Sector",
             description="Choose which sector you'd like to explore:",
             color=0x5865F2
         )
@@ -890,7 +891,7 @@ class ExplorationMenuView(discord.ui.View):
         await interaction.followup.send(embed=embed, view=sector_view, ephemeral=True)
 
     @discord.ui.button(
-        label="🏆 Mastery",
+        label=f"{Emojis.LEADERBOARD} Mastery",
         style=discord.ButtonStyle.secondary,
         custom_id="exploration_mastery"
     )
@@ -918,7 +919,7 @@ class ExplorationMenuView(discord.ui.View):
 
         except Exception as e:
             await interaction.followup.send(
-                embed=EmbedBuilder.error(
+                embed=EmbedFactory.error(
                     "Mastery Error",
                     "Failed to load mastery data.",
                     help_text="Please try again."
@@ -955,7 +956,7 @@ class SectorSelectView(discord.ui.View):
                 label=f"Sector {i}",
                 value=str(i),
                 description=f"Explore Sector {i}",
-                emoji="🗺️"
+                emoji=Emojis.EXPLORATION
             )
             for i in range(1, max_sector + 1)
         ]
@@ -981,7 +982,7 @@ class SectorSelectDropdown(discord.ui.Select):
         self.cog = cog
 
         super().__init__(
-            placeholder="🗺️ Select a sector...",
+            placeholder=f"{Emojis.EXPLORATION} Select a sector...",
             min_values=1,
             max_values=1,
             options=options,
@@ -998,7 +999,7 @@ class SectorSelectDropdown(discord.ui.Select):
         sublevel_view = SublevelSelectView(self.user_id, self.cog, selected_sector)
 
         embed = discord.Embed(
-            title=f"🗺️ Sector {selected_sector} - Select Sublevel",
+            title=f"{Emojis.EXPLORATION} Sector {selected_sector} - Select Sublevel",
             description="Choose which sublevel you'd like to explore:",
             color=0x5865F2
         )
@@ -1024,7 +1025,7 @@ class SublevelSelectView(discord.ui.View):
                 label=f"Sublevel {i}",
                 value=str(i),
                 description=f"Explore Sector {sector} - Sublevel {i}",
-                emoji="⚔️"
+                emoji=Emojis.ATTACK
             )
             for i in range(1, max_sublevel + 1)
         ]
@@ -1051,7 +1052,7 @@ class SublevelSelectDropdown(discord.ui.Select):
         self.sector = sector
 
         super().__init__(
-            placeholder="⚔️ Select a sublevel...",
+            placeholder=f"{Emojis.ATTACK} Select a sublevel...",
             min_values=1,
             max_values=1,
             options=options,

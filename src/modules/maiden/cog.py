@@ -8,10 +8,11 @@ from src.core.bot.base_cog import BaseCog
 from src.modules.maiden.service import MaidenService
 from src.modules.maiden.leader_service import LeaderService
 from src.modules.combat.service import CombatService
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from core.event.bus.event_bus import EventBus
 from src.utils.decorators import ratelimit
-from utils.embed_builder import EmbedBuilder
+from src.ui import EmbedFactory, BaseView
+from src.ui.emojis import Emojis
 
 
 class MaidenCog(BaseCog):
@@ -102,8 +103,8 @@ class MaidenCog(BaseCog):
                             leader_bonuses = " • ".join(bonus_parts) if bonus_parts else "No active bonuses"
 
                 # Build overview embed
-                embed = EmbedBuilder.primary(
-                    title=f"🎴 {ctx.author.name}'s Maiden Overview",
+                embed = EmbedFactory.primary(
+                    title=f"{Emojis.MAIDEN} {ctx.author.name}'s Maiden Overview",
                     description="Manage your maiden collection and leader",
                     footer="Use the buttons below to view collection or set leader"
                 )
@@ -114,7 +115,7 @@ class MaidenCog(BaseCog):
                     f"**Unique:** {player.unique_maidens}\n"
                     f"**Highest Tier:** {player.highest_tier_achieved}"
                 )
-                embed.add_field(name="📊 Collection", value=collection_stats, inline=True)
+                embed.add_field(name=f"{Emojis.INFO} Collection", value=collection_stats, inline=True)
 
                 # Power stats
                 power_stats = (
@@ -122,7 +123,7 @@ class MaidenCog(BaseCog):
                     f"**Strategic:** {strategic_power.total_power:,}\n"
                     f"**Level:** {player.level}"
                 )
-                embed.add_field(name="⚔️ Power", value=power_stats, inline=True)
+                embed.add_field(name=f"{Emojis.ATTACK} Power", value=power_stats, inline=True)
 
                 # Leader info
                 if leader_info:
@@ -133,7 +134,7 @@ class MaidenCog(BaseCog):
                 else:
                     leader_text = "*No leader set*\nSet a leader to gain bonuses!"
 
-                embed.add_field(name="⭐ Current Leader", value=leader_text, inline=False)
+                embed.add_field(name=f"{Emojis.NO_MASTERY} Current Leader", value=leader_text, inline=False)
 
                 # Send with interactive menu
                 view = MaidenMenuView(ctx.author.id, self.bot, ctx)
@@ -194,7 +195,7 @@ class MaidenMenuView(discord.ui.View):
         self.message: Optional[discord.Message] = None
 
     @discord.ui.button(
-        label="📚 View Collection",
+        label=f"{Emojis.TUTORIAL} View Collection",
         style=discord.ButtonStyle.primary,
         custom_id="view_collection"
     )
@@ -213,7 +214,7 @@ class MaidenMenuView(discord.ui.View):
                 maidens = await MaidenService.get_player_maidens(session, self.user_id)
 
                 if not maidens:
-                    embed = EmbedBuilder.warning(
+                    embed = EmbedFactory.warning(
                         title="No Maidens Found",
                         description="You don't have any maidens yet.",
                         footer="Tip: Use /summon to acquire new maidens!"
@@ -226,8 +227,8 @@ class MaidenMenuView(discord.ui.View):
                 total_pages = max(1, math.ceil(len(maidens) / per_page))
                 page_maidens = maidens[0:per_page]
 
-                embed = EmbedBuilder.primary(
-                    title=f"🎴 {interaction.user.name}'s Maiden Collection",
+                embed = EmbedFactory.primary(
+                    title=f"{Emojis.MAIDEN} {interaction.user.name}'s Maiden Collection",
                     description=f"Showing {len(maidens)} maiden{'s' if len(maidens) != 1 else ''}",
                     footer=f"Page 1/{total_pages}"
                 )
@@ -238,7 +239,7 @@ class MaidenMenuView(discord.ui.View):
                     quantity = maiden.get("quantity", 1)
                     attack = maiden.get("attack", 0)
                     defense = maiden.get("defense", 0)
-                    element_emoji = maiden.get("element_emoji", "❓")
+                    element_emoji = maiden.get("element_emoji", Emojis.HELP)
 
                     field_name = f"{element_emoji} {name} (Tier {m_tier})"
                     if quantity > 1:
@@ -254,7 +255,7 @@ class MaidenMenuView(discord.ui.View):
                     await interaction.followup.send(embed=embed, ephemeral=True)
 
         except Exception as e:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Collection Error",
                 description="Unable to load your maiden collection.",
                 footer="Please try again shortly."
@@ -262,7 +263,7 @@ class MaidenMenuView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(
-        label="⭐ Set Leader",
+        label=f"{Emojis.NO_MASTERY} Set Leader",
         style=discord.ButtonStyle.success,
         custom_id="set_leader"
     )
@@ -283,7 +284,7 @@ class MaidenMenuView(discord.ui.View):
                 maidens = await MaidenService.get_maidens_with_leader_effects(session, self.user_id)
 
                 if not maidens:
-                    embed = EmbedBuilder.warning(
+                    embed = EmbedFactory.warning(
                         title="No Leader-Capable Maidens",
                         description="You don't have any maidens with leader effects yet.",
                         footer="Tip: Higher tier maidens often have leader abilities!"
@@ -298,8 +299,8 @@ class MaidenMenuView(discord.ui.View):
                 # Show leader selection
                 view = LeaderSelectionView(self.user_id, maidens, current_leader_id, self.bot)
 
-                embed = EmbedBuilder.info(
-                    title="⭐ Select Your Leader",
+                embed = EmbedFactory.info(
+                    title=f"{Emojis.NO_MASTERY} Select Your Leader",
                     description="Choose a maiden to lead your collection and gain bonuses.",
                     footer="Only maidens with leader effects are shown"
                 )
@@ -307,7 +308,7 @@ class MaidenMenuView(discord.ui.View):
                 await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
         except Exception as e:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Leader Selection Error",
                 description="Unable to load leader options.",
                 footer="Please try again shortly."
@@ -353,7 +354,7 @@ class MaidenCollectionPaginationView(discord.ui.View):
             self.next_button.disabled = True
 
     @discord.ui.button(
-        label="◀️ Previous",
+        label=f"{Emojis.BACK} Previous",
         style=discord.ButtonStyle.secondary,
         custom_id="maidens_previous",
     )
@@ -368,7 +369,7 @@ class MaidenCollectionPaginationView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="Next ▶️",
+        label=f"Next {Emojis.NEXT}",
         style=discord.ButtonStyle.secondary,
         custom_id="maidens_next",
     )
@@ -419,7 +420,7 @@ class LeaderSelectionView(discord.ui.View):
                 label=label,
                 value=str(maiden['id']),
                 description=description,
-                emoji=maiden.get('element_emoji', '⚪'),
+                emoji=maiden.get('element_emoji', Emojis.COMMON),
                 default=(maiden['id'] == current_leader_id)
             ))
 
@@ -465,8 +466,8 @@ class LeaderSelectionView(discord.ui.View):
                     maiden = await session.get(Maiden, maiden_id)
                     maiden_base = await session.get(MaidenBase, maiden.maiden_base_id)
 
-                    embed = EmbedBuilder.success(
-                        title="⭐ Leader Set!",
+                    embed = EmbedFactory.success(
+                        title=f"{Emojis.NO_MASTERY} Leader Set!",
                         description=f"**{maiden_base.name}** (T{maiden.tier}) is now your leader!",
                         footer="Leader bonuses are now active"
                     )
@@ -502,7 +503,7 @@ class LeaderSelectionView(discord.ui.View):
 
                     await interaction.followup.send(embed=embed, ephemeral=True)
                 else:
-                    embed = EmbedBuilder.error(
+                    embed = EmbedFactory.error(
                         title="Leader Set Failed",
                         description="Unable to set leader maiden.",
                         footer="Please try again"
@@ -510,7 +511,7 @@ class LeaderSelectionView(discord.ui.View):
                     await interaction.followup.send(embed=embed, ephemeral=True)
 
         except Exception as e:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Error",
                 description="An error occurred while setting leader.",
                 footer="Please try again shortly."
@@ -532,14 +533,14 @@ class LeaderSelectionView(discord.ui.View):
                 success = await MaidenService.remove_leader(session, self.user_id)
 
                 if success:
-                    embed = EmbedBuilder.success(
+                    embed = EmbedFactory.success(
                         title="Leader Removed",
                         description="Your leader has been removed. You no longer have leader bonuses active.",
                         footer="Use /maidens to set a new leader"
                     )
                     await interaction.followup.send(embed=embed, ephemeral=True)
                 else:
-                    embed = EmbedBuilder.error(
+                    embed = EmbedFactory.error(
                         title="Removal Failed",
                         description="Unable to remove leader maiden.",
                         footer="Please try again"
@@ -547,7 +548,7 @@ class LeaderSelectionView(discord.ui.View):
                     await interaction.followup.send(embed=embed, ephemeral=True)
 
         except Exception as e:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Error",
                 description="An error occurred while removing leader.",
                 footer="Please try again shortly."

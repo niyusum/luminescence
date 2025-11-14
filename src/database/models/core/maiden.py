@@ -4,6 +4,8 @@ from datetime import datetime
 from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import BigInteger, Index, String, UniqueConstraint
 
+from src.ui.emojis import Emojis
+
 
 class Maiden(SQLModel, table=True):
     """
@@ -140,7 +142,7 @@ class Maiden(SQLModel, table=True):
 
         if element := Element.from_string(self.element):
             return element.emoji
-        return "❓"
+        return Emojis.HELP
 
     def get_element_color(self) -> int:
         """Discord embed color for this element."""

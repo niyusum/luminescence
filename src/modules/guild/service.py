@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.core.exceptions import InvalidOperationError
 from src.core.logging.logger import get_logger
 from src.core.infra.transaction_logger import TransactionLogger

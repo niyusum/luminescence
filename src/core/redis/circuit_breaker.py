@@ -59,7 +59,7 @@ from enum import Enum
 from typing import Optional
 
 from src.core.logging.logger import get_logger
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 
 logger = get_logger(__name__)
 

@@ -19,9 +19,10 @@ from datetime import datetime, timedelta
 
 from src.core.bot.base_cog import BaseCog
 from src.modules.shrines.service import ShrineService
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
+from src.ui.emojis import Emojis
 from src.utils.decorators import ratelimit
-from utils.embed_builder import EmbedBuilder
+from src.ui import EmbedFactory, BaseView
 
 
 class ShrineCog(BaseCog):
@@ -63,8 +64,8 @@ class ShrineCog(BaseCog):
 
                 # Build shrine overview embed
                 if not shrines:
-                    embed = EmbedBuilder.info(
-                        title="🏛️ Personal Shrines",
+                    embed = EmbedFactory.info(
+                        title=f"{Emojis.SHRINES} Personal Shrines",
                         description=(
                             "You don't have any shrines yet!\n\n"
                             "**Shrines provide passive resource yields** that you can collect periodically.\n"
@@ -102,8 +103,8 @@ class ShrineCog(BaseCog):
                         amount = int(amount * 1.25)
                     total_value_estimate += amount
 
-                embed = EmbedBuilder.primary(
-                    title=f"🏛️ {ctx.author.name}'s Shrines",
+                embed = EmbedFactory.primary(
+                    title=f"{Emojis.SHRINES} {ctx.author.name}'s Shrines",
                     description="Manage your passive resource shrines",
                     footer="Use buttons below to collect or manage shrines"
                 )
@@ -114,7 +115,7 @@ class ShrineCog(BaseCog):
                     f"**Ready to Collect:** {ready_count}\n"
                     f"**Est. Ready Value:** ~{total_value_estimate:,} resources"
                 )
-                embed.add_field(name="📊 Overview", value=stats_text, inline=False)
+                embed.add_field(name=f"{Emojis.INFO} Overview", value=stats_text, inline=False)
 
                 # List shrines
                 shrine_list = []
@@ -123,15 +124,15 @@ class ShrineCog(BaseCog):
                     cap_hours = int(conf.get("collection_cap_hours", 24))
 
                     # Shrine emoji based on type
-                    shrine_emoji = "✨" if shrine.shrine_type == "radiant" else "🏛️"
+                    shrine_emoji = Emojis.RADIANT if shrine.shrine_type == "radiant" else Emojis.SHRINE_INCOME
 
                     # Check readiness
-                    status = "✅ Ready"
+                    status = f"{Emojis.SUCCESS} Ready"
                     if shrine.last_collected_at:
                         elapsed = (datetime.utcnow() - shrine.last_collected_at) / timedelta(hours=1)
                         if elapsed < cap_hours:
                             remaining = cap_hours - elapsed
-                            status = f"⏳ {int(remaining)}h remaining"
+                            status = f"{Emojis.REGENERATING} {int(remaining)}h remaining"
 
                     shrine_line = (
                         f"{shrine_emoji} **{shrine.shrine_type.title()}** (Slot {shrine.slot}) - Level {shrine.level}\n"
@@ -141,7 +142,7 @@ class ShrineCog(BaseCog):
 
                 if shrine_list:
                     embed.add_field(
-                        name="🏛️ Your Shrines",
+                        name=f"{Emojis.SHRINES} Your Shrines",
                         value="\n".join(shrine_list[:10]),  # Max 10 to avoid embed limits
                         inline=False
                     )
@@ -176,7 +177,7 @@ class ShrineMenuView(discord.ui.View):
         self.message: Optional[discord.Message] = None
 
     @discord.ui.button(
-        label="💰 Collect All",
+        label=f"{Emojis.LUMEES} Collect All",
         style=discord.ButtonStyle.success,
         custom_id="collect_all_shrines"
     )
@@ -197,7 +198,7 @@ class ShrineMenuView(discord.ui.View):
 
                 # Build result embed
                 if not result["collected"]:
-                    embed = EmbedBuilder.warning(
+                    embed = EmbedFactory.warning(
                         title="No Shrines Ready",
                         description="None of your shrines are ready to collect yet.",
                         footer="Check back later!"
@@ -215,8 +216,8 @@ class ShrineMenuView(discord.ui.View):
                     for key, amount in totals.items()
                 ])
 
-                embed = EmbedBuilder.success(
-                    title="💰 Shrines Collected!",
+                embed = EmbedFactory.success(
+                    title=f"{Emojis.LUMEES} Shrines Collected!",
                     description=f"Collected from **{collected_count}** shrine{'s' if collected_count != 1 else ''}!",
                     footer=f"{pending_count} shrine{'s' if pending_count != 1 else ''} still recharging"
                 )
@@ -230,7 +231,7 @@ class ShrineMenuView(discord.ui.View):
                     for c in result["collected"]:
                         granted_text = ", ".join([f"{v:,} {k}" for k, v in c["granted"].items()])
                         details.append(
-                            f"⛩️ {c['type'].title()} (L{c['level']}) → {granted_text}"
+                            f"{Emojis.SHRINES} {c['type'].title()} (L{c['level']}) → {granted_text}"
                         )
                     if details:
                         embed.add_field(name="Details", value="\n".join(details), inline=False)
@@ -238,7 +239,7 @@ class ShrineMenuView(discord.ui.View):
                 await interaction.followup.send(embed=embed)
 
         except Exception as e:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Collection Error",
                 description=str(e) if str(e) else "Unable to collect from shrines.",
                 footer="Please try again"
@@ -246,7 +247,7 @@ class ShrineMenuView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(
-        label="⬆️ Upgrade",
+        label=f"{Emojis.UPGRADE} Upgrade",
         style=discord.ButtonStyle.primary,
         custom_id="upgrade_shrine"
     )
@@ -260,7 +261,7 @@ class ShrineMenuView(discord.ui.View):
 
         try:
             if not self.shrines:
-                embed = EmbedBuilder.warning(
+                embed = EmbedFactory.warning(
                     title="No Shrines",
                     description="You don't have any shrines to upgrade.",
                     footer="Acquire shrines first!"
@@ -271,7 +272,7 @@ class ShrineMenuView(discord.ui.View):
             # Show upgrade selection view
             view = ShrineUpgradeView(self.user_id, self.bot, self.shrines)
 
-            embed = EmbedBuilder.info(
+            embed = EmbedFactory.info(
                 title="⬆️ Upgrade Shrine",
                 description="Select a shrine to upgrade. Upgrading increases yield but costs lumees.",
                 footer="Higher levels = better rewards"
@@ -280,7 +281,7 @@ class ShrineMenuView(discord.ui.View):
             await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
         except Exception as e:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Upgrade Error",
                 description="Unable to show upgrade options.",
                 footer="Please try again"
@@ -288,7 +289,7 @@ class ShrineMenuView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(
-        label="🔍 Details",
+        label=f"{Emojis.SEARCH} Details",
         style=discord.ButtonStyle.secondary,
         custom_id="shrine_details"
     )
@@ -311,8 +312,8 @@ class ShrineMenuView(discord.ui.View):
                     "lumenite": int(getattr(player, "lumenite", 0)),
                 }
 
-                embed = EmbedBuilder.primary(
-                    title="🔍 Shrine Details",
+                embed = EmbedFactory.primary(
+                    title=f"{Emojis.SEARCH} Shrine Details",
                     description="Detailed information about your shrines",
                     footer="Upgrade shrines to increase yields"
                 )
@@ -342,11 +343,11 @@ class ShrineMenuView(discord.ui.View):
                         elapsed = (datetime.utcnow() - shrine.last_collected_at) / timedelta(hours=1)
                         if elapsed < cap_hours:
                             remaining = cap_hours - elapsed
-                            ready_status = f"⏳ Ready in {int(remaining)}h"
+                            ready_status = f"{Emojis.REGENERATING} Ready in {int(remaining)}h"
                         else:
-                            ready_status = "✅ Ready to collect"
+                            ready_status = f"{Emojis.SUCCESS} Ready to collect"
                     else:
-                        ready_status = "✅ Ready to collect"
+                        ready_status = f"{Emojis.SUCCESS} Ready to collect"
 
                     field_value = (
                         f"**Level:** {shrine.level}/{max_level}\n"
@@ -357,7 +358,7 @@ class ShrineMenuView(discord.ui.View):
                     )
 
                     embed.add_field(
-                        name=f"⛩️ {shrine.shrine_type.title()} Shrine (Slot {shrine.slot})",
+                        name=f"{Emojis.SHRINES} {shrine.shrine_type.title()} Shrine (Slot {shrine.slot})",
                         value=field_value,
                         inline=False
                     )
@@ -365,7 +366,7 @@ class ShrineMenuView(discord.ui.View):
                 await interaction.followup.send(embed=embed, ephemeral=True)
 
         except Exception as e:
-            embed = EmbedBuilder.error(
+            embed = EmbedFactory.error(
                 title="Details Error",
                 description="Unable to load shrine details.",
                 footer="Please try again"
@@ -418,7 +419,7 @@ class ShrineUpgradeView(discord.ui.View):
                 label=label,
                 value=value,
                 description=description,
-                emoji="✨" if shrine.shrine_type == "radiant" else "🏛️",
+                emoji=Emojis.RADIANT if shrine.shrine_type == "radiant" else Emojis.SHRINE_INCOME,
                 default=False
             ))
 
@@ -453,8 +454,8 @@ class ShrineUpgradeView(discord.ui.View):
                 conf = ConfigManager.get(f"shrines.{shrine_type}", {})
                 max_level = int(conf.get("max_level", 12))
 
-                embed = EmbedBuilder.success(
-                    title="⬆️ Shrine Upgraded!",
+                embed = EmbedFactory.success(
+                    title=f"{Emojis.UPGRADE} Shrine Upgraded!",
                     description=f"Your **{shrine_type.title()}** shrine (Slot {slot}) is now **Level {shrine.level}**!",
                     footer=f"Level {shrine.level}/{max_level}"
                 )
@@ -483,19 +484,19 @@ class ShrineUpgradeView(discord.ui.View):
             from src.core.exceptions import InvalidOperationError, InsufficientResourcesError
 
             if isinstance(e, InsufficientResourcesError):
-                embed = EmbedBuilder.error(
+                embed = EmbedFactory.error(
                     title="Insufficient Lumees",
                     description=str(e),
                     help_text="Earn more lumees and try again."
                 )
             elif isinstance(e, InvalidOperationError):
-                embed = EmbedBuilder.error(
+                embed = EmbedFactory.error(
                     title="Cannot Upgrade",
                     description=str(e),
                     help_text="Check shrine level and requirements."
                 )
             else:
-                embed = EmbedBuilder.error(
+                embed = EmbedFactory.error(
                     title="Upgrade Error",
                     description="Unable to upgrade shrine.",
                     footer="Please try again"

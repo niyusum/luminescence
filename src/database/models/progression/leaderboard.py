@@ -3,6 +3,8 @@ from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import BigInteger, Index
 from datetime import datetime
 
+from src.ui.emojis import Emojis
+
 
 class LeaderboardSnapshot(SQLModel, table=True):
     """
@@ -52,22 +54,22 @@ class LeaderboardSnapshot(SQLModel, table=True):
     def get_rank_display(self) -> str:
         """Format rank with medal emojis for top 3."""
         if self.rank == 1:
-            return "🥇 #1"
+            return f"{Emojis.GOLD} #1"
         elif self.rank == 2:
-            return "🥈 #2"
+            return f"{Emojis.SILVER} #2"
         elif self.rank == 3:
-            return "🥉 #3"
+            return f"{Emojis.BRONZE} #3"
         else:
             return f"#{self.rank}"
-    
+
     def get_rank_change_display(self) -> str:
         """Format rank change with directional indicators."""
         if self.rank_change > 0:
-            return f"📈 +{self.rank_change}"
+            return f"{Emojis.EXPERIENCE} +{self.rank_change}"
         elif self.rank_change < 0:
-            return f"📉 {self.rank_change}"
+            return f"{Emojis.EXPERIENCE} {self.rank_change}"
         else:
-            return "➡️ 0"
+            return f"{Emojis.NEXT} 0"
     
     def __repr__(self) -> str:
         return (

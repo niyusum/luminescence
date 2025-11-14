@@ -1,13 +1,246 @@
 """
-Input validation layer for all user inputs.
+Input Validation Layer for Lumen (2025)
 
-Provides type-safe validation with security checks for all Discord commands.
-Prevents injection attacks, type errors, and database corruption.
+Purpose
+-------
+Provide a centralized, security-first validation layer for all user inputs across
+the Lumen RPG bot. Enforces type safety, bounds checking, and format validation to
+prevent injection attacks, type errors, and database corruption.
 
-LUMEN LAW Compliance:
+This module serves as the single source of truth for input validation, ensuring
+consistent validation rules, clear error messages, and defense-in-depth security
+across all Discord commands and services.
+
+Responsibilities
+----------------
+- Validate and convert user inputs to correct types (int, str, list, etc.)
+- Enforce bounds checking for numerical inputs (min/max validation)
+- Validate Discord snowflake IDs and database IDs
+- Validate stat allocation requests against available points
+- Validate tier numbers against game constants
+- Validate string length and character restrictions
+- Validate choice inputs against allowed options
+- Validate ID lists with duplicate detection
+- Validate resource amounts (lumees, auric coin, etc.)
+- Raise ValidationError with user-friendly error messages
+- Provide reusable validation methods for all service layers
+
+Non-Responsibilities
+--------------------
+- Business logic validation (handled by service layer)
+- Database constraints validation (handled by database layer)
+- Discord UI presentation (handled by cog layer)
+- Authorization and permissions (handled by Discord decorators)
+- Rate limiting (handled by Redis rate limiter)
+- Transaction management (handled by DatabaseService)
+
+LUMEN LAW Compliance
+--------------------
 - Article VII: Domain validation without Discord dependencies
-- Security-first design with explicit bounds checking
-- Clear error messages for user feedback
+- Article IX: Fail-fast with clear error messages (never silent failures)
+- Article X: Security-first design with explicit bounds checking
+- Article II: Input validation supports audit trail integrity
+
+Security Considerations
+-----------------------
+**Injection Prevention**:
+- All string inputs are stripped and validated
+- Type conversion prevents SQL injection via type errors
+- Bounds checking prevents overflow attacks
+- Character whitelisting available for strict validation
+
+**Type Safety**:
+- Explicit type conversion with error handling
+- No implicit type coercion
+- Validates before converting to prevent crashes
+
+**Defense in Depth**:
+- Multiple validation layers (type, bounds, format)
+- Always fails closed (raises on invalid input)
+- Validates each item in batch operations
+- Duplicate detection in ID lists
+
+Architecture Notes
+------------------
+**Validation Strategy**:
+- **Fail-fast**: Raises ValidationError on first validation failure
+- **User-friendly**: Error messages designed for Discord embed display
+- **Composable**: Complex validations build on simple primitives
+- **Stateless**: All methods are static, no instance state
+
+**Error Handling**:
+- Single exception type: ValidationError
+- Includes field_name for precise error identification
+- Includes validation_message for user feedback
+- Designed for BaseCog error handling integration
+
+**Validation Patterns**:
+- Primitive validators: validate_integer(), validate_string()
+- Specialized validators: validate_tier(), validate_discord_id()
+- Batch validators: validate_id_list()
+- Domain validators: validate_stat_allocation(), validate_resource_amount()
+
+Key Features
+------------
+**Integer Validation**:
+- `validate_integer()`: Full-featured integer validation with bounds
+- `validate_positive_integer()`: Shortcut for >= 1 validation
+- `validate_non_negative_integer()`: Shortcut for >= 0 validation
+
+**Domain-Specific Validation**:
+- `validate_tier()`: Maiden tier validation (1-12)
+- `validate_stat_allocation()`: Stat point allocation with availability check
+- `validate_discord_id()`: Discord snowflake validation (64-bit)
+- `validate_maiden_id()`: Database ID validation
+- `validate_resource_amount()`: Resource quantity validation
+
+**String Validation**:
+- `validate_string()`: Length and character pattern validation
+- `validate_choice()`: Enum/choice validation with case-insensitivity
+
+**Batch Validation**:
+- `validate_id_list()`: List validation with count limits and duplicate detection
+
+Usage Examples
+--------------
+Basic integer validation:
+
+>>> from src.core.validation.input_validator import InputValidator
+>>>
+>>> # Validate positive integer with max bound
+>>> tier = InputValidator.validate_positive_integer("5", "tier", max_value=12)
+>>> # Returns: 5
+>>>
+>>> # Validation failure
+>>> try:
+>>>     amount = InputValidator.validate_positive_integer("-1", "amount")
+>>> except ValidationError as e:
+>>>     print(e.validation_message)
+>>>     # Output: "amount must be at least 1, got -1"
+
+Stat allocation validation:
+
+>>> # In stat allocation command
+>>> try:
+>>>     amount = InputValidator.validate_stat_allocation(
+>>>         stat_name="energy",
+>>>         amount=user_input,  # e.g., "10"
+>>>         available_points=player.available_stat_points  # e.g., 15
+>>>     )
+>>>     # Returns: 10 (validated and safe to use)
+>>> except ValidationError as e:
+>>>     await ctx.send(f"Invalid input: {e.validation_message}")
+
+Discord ID validation:
+
+>>> # Validate Discord user/guild/channel ID
+>>> user_id = InputValidator.validate_discord_id(
+>>>     ctx.author.id,
+>>>     field_name="user_id"
+>>> )
+>>> # Returns: validated 64-bit integer
+
+String validation with constraints:
+
+>>> # Validate guild name
+>>> guild_name = InputValidator.validate_string(
+>>>     user_input,
+>>>     field_name="guild_name",
+>>>     min_length=3,
+>>>     max_length=32,
+>>>     allowed_chars="a-zA-Z0-9 "
+>>> )
+>>> # Returns: stripped, validated string
+
+Choice validation:
+
+>>> # Validate stat selection
+>>> stat = InputValidator.validate_choice(
+>>>     user_input,
+>>>     field_name="stat",
+>>>     valid_choices=["energy", "stamina", "hp"]
+>>> )
+>>> # Returns: lowercase validated choice
+
+ID list validation with duplicate detection:
+
+>>> # Validate fusion maiden selection
+>>> maiden_ids = InputValidator.validate_id_list(
+>>>     user_selection,  # e.g., ["123", "456"]
+>>>     field_name="maiden_ids",
+>>>     min_count=2,
+>>>     max_count=10
+>>> )
+>>> # Returns: [123, 456] (validated integers, no duplicates)
+
+Resource amount validation:
+
+>>> # Validate lumee expenditure
+>>> amount = InputValidator.validate_resource_amount(
+>>>     user_input,
+>>>     resource_name="lumees",
+>>>     max_value=999999999
+>>> )
+>>> # Returns: validated positive integer
+
+Integration with Service Layer
+-------------------------------
+Validation typically occurs at the service layer boundary:
+
+>>> class FusionService:
+>>>     @staticmethod
+>>>     async def fuse_maidens(session, player_id: int, tier: int):
+>>>         # Validate inputs before business logic
+>>>         validated_tier = InputValidator.validate_tier(tier, "tier")
+>>>         validated_player_id = InputValidator.validate_positive_integer(
+>>>             player_id, "player_id"
+>>>         )
+>>>
+>>>         # Proceed with validated inputs...
+>>>         # Business logic, database operations, etc.
+
+Integration with Cog Layer
+---------------------------
+Cogs use validation and handle ValidationError for user feedback:
+
+>>> class FusionCog(BaseCog):
+>>>     @commands.command(name="fuse")
+>>>     async def fuse(self, ctx, tier: str):
+>>>         '''Fuse maidens to create higher tier.'''
+>>>         try:
+>>>             # Validate user input
+>>>             validated_tier = InputValidator.validate_tier(tier, "tier")
+>>>
+>>>             async with self.get_session() as session:
+>>>                 result = await FusionService.fuse_maidens(
+>>>                     session, ctx.author.id, validated_tier
+>>>                 )
+>>>                 await self.send_success(ctx, "Fusion Complete!", result.message)
+>>>
+>>>         except ValidationError as e:
+>>>             await self.send_error(ctx, "Invalid Input", e.validation_message)
+
+Error Reference
+---------------
+All validation methods raise ValidationError with structured information:
+
+**ValidationError attributes**:
+- `field_name`: Name of the field that failed validation
+- `validation_message`: User-friendly error message
+
+**Common error messages**:
+- "Must be a whole number, got '{value}'" - Type conversion failure
+- "Must be at least {min}, got {value}" - Below minimum bound
+- "Cannot exceed {max}, got {value}" - Above maximum bound
+- "Cannot be zero" - Zero not allowed when allow_zero=False
+- "Not enough points available" - Insufficient resources
+- "List contains duplicate IDs" - Duplicate detection in batch validation
+- "Invalid choice '{value}'. Must be one of: {choices}" - Choice validation failure
+
+Constants Used
+--------------
+- `MAX_POINTS_PER_STAT`: Maximum stat allocation per operation
+- `MAX_TIER_NUMBER`: Maximum maiden tier (1-12 range)
 """
 
 from typing import Any, Optional, Union, List, Dict

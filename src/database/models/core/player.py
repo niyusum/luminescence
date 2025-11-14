@@ -308,7 +308,7 @@ class Player(SQLModel, table=True):
         if self.last_drop_regen is None:
             return 0
         
-        from src.core.config.config_manager import ConfigManager
+        from src.core.config import ConfigManager
         regen_interval = ConfigManager.get("drop_system.regen_minutes", 5) * 60
         time_since = (datetime.utcnow() - self.last_drop_regen).total_seconds()
         return max(0, int(regen_interval - time_since))
@@ -472,7 +472,7 @@ class Player(SQLModel, table=True):
             >>> actual_auric_coin = player.set_auric_coin_safe(1000000)
             >>> # actual_auric_coin will be 999999 if that's the cap
         """
-        from src.core.config.config_manager import ConfigManager
+        from src.core.config import ConfigManager
         auric_coin_cap = ConfigManager.get("resource_system.auric_coin_max_cap", 999999)
         self.auric_coin = min(max(0, amount), auric_coin_cap)
         return self.auric_coin

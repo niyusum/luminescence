@@ -40,7 +40,7 @@ from typing import Any, Dict, List, Optional, Callable
 import inspect
 
 from src.core.logging.logger import get_logger
-from src.core.config.config_manager import ConfigManager
+from src.core.config import ConfigManager
 from src.core.event.types import EventPayload, ListenerPriority, EventListener, CallbackType
 from src.core.event.registry import ListenerRegistry
 from src.core.event.router import EventRouter

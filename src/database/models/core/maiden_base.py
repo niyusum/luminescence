@@ -4,6 +4,8 @@ from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import Index, String, Text
 from sqlalchemy.dialects.postgresql import JSON
 
+from src.ui.emojis import Emojis
+
 
 class MaidenBase(SQLModel, table=True):
     """
@@ -122,7 +124,7 @@ class MaidenBase(SQLModel, table=True):
         from src.modules.maiden.constants import Element
         if element_obj := Element.from_string(self.element):
             return element_obj.emoji
-        return "❓"
+        return Emojis.HELP
 
     def get_element_color(self) -> int:
         """Discord embed color for this element."""

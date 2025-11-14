@@ -187,7 +187,7 @@ def mock_config(monkeypatch):
         "prayer_system": {"regen_minutes": 5, "regen_interval_seconds": 300},
     }
 
-    from src.core.config.config_manager import ConfigManager
+    from src.core.config.manager import ConfigManager
 
     def mock_get(key, default=None):
         keys = key.split(".")

@@ -12,8 +12,9 @@ from src.core.exceptions import InvalidOperationError
 from src.core.infra.database_service import DatabaseService
 from src.core.infra.redis_service import RedisService
 from src.modules.guild.service import GuildService
-from src.core.config.config_manager import ConfigManager
-from src.utils.embed_builder import EmbedBuilder
+from src.core.config import ConfigManager
+from src.ui.emojis import Emojis
+from src.ui import EmbedFactory, BaseView
 from src.utils.decorators import ratelimit
 
 if TYPE_CHECKING:
@@ -24,12 +25,12 @@ logger = get_logger(__name__)
 
 def _ok(title: str, desc: str = "") -> discord.Embed:
     """Success embed for guild operations."""
-    return EmbedBuilder.success(title=title, description=desc)
+    return EmbedFactory.success(title=title, description=desc)
 
 
 def _err(title: str, desc: str = "") -> discord.Embed:
     """Error embed for guild operations."""
-    return EmbedBuilder.error(title=title, description=desc)
+    return EmbedFactory.error(title=title, description=desc)
 
 
 def _gid(ctx: commands.Context) -> Optional[int]:
@@ -68,7 +69,7 @@ class GuildCog(BaseCog):
 
         try:
             embed = _ok(
-                "🏰 Guild Commands",
+                f"{Emojis.GUILD} Guild Commands",
                 (
                     "**Available Commands** (use `;guild` or `;g`)\n"
                     "• `;guild create <name>` — Create your guild\n"
@@ -819,7 +820,7 @@ class GuildMenuView(discord.ui.View):
         self.message: Optional[discord.Message] = None
 
     @discord.ui.button(
-        label="📊 Guild Info",
+        label=f"{Emojis.INFO} Guild Info",
         style=discord.ButtonStyle.primary,
         custom_id="guild_info"
     )
@@ -848,7 +849,7 @@ class GuildMenuView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="💰 Donate",
+        label=f"{Emojis.LUMEES} Donate",
         style=discord.ButtonStyle.success,
         custom_id="guild_donate"
     )
@@ -876,7 +877,7 @@ class GuildMenuView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="⬆️ Upgrade",
+        label=f"{Emojis.UPGRADE} Upgrade",
         style=discord.ButtonStyle.success,
         custom_id="guild_upgrade"
     )
