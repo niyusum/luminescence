@@ -1,4 +1,4 @@
-from src.core.bot.base_cog import BaseCog
+from src.bot.base_cog import BaseCog
 """
 System administration and background tasks.
 

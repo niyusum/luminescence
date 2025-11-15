@@ -12,10 +12,9 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.economy import TransactionLog
-from src.core.bot.base_service import BaseService
 
 
-class TransactionService(BaseService):
+class TransactionService:
     """
     Service for querying transaction logs.
 

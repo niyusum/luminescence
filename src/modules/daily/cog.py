@@ -12,7 +12,7 @@ LUMEN LAW Compliance:
     - Article I.7: All business logic delegated to DailyService
 """
 
-from src.core.bot.base_cog import BaseCog
+from src.bot.base_cog import BaseCog
 import discord
 from discord.ext import commands
 from typing import Optional

@@ -5,7 +5,7 @@ from discord.ext import commands
 from typing import Optional, TYPE_CHECKING
 import time # ADDED: For latency logging
 
-from src.core.bot.base_cog import BaseCog
+from src.bot.base_cog import BaseCog
 
 from src.core.logging.logger import get_logger
 from src.core.exceptions import InvalidOperationError

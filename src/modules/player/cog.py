@@ -17,7 +17,7 @@ import discord
 from discord.ext import commands
 from typing import Optional, Dict, Any
 
-from src.core.bot.base_cog import BaseCog
+from src.bot.base_cog import BaseCog
 from src.core.infra.database_service import DatabaseService
 from src.modules.player.service import PlayerService
 from src.modules.player.transaction_service import TransactionService

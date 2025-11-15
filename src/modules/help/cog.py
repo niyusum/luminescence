@@ -14,7 +14,7 @@ from discord.ext import commands
 from typing import Dict, Optional
 import time
 
-from src.core.bot.base_cog import BaseCog
+from src.bot.base_cog import BaseCog
 from src.core.config import ConfigManager
 from src.ui.emojis import Emojis
 from src.ui import EmbedFactory, BaseView

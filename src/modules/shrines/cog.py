@@ -17,7 +17,7 @@ from discord.ext import commands
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 
-from src.core.bot.base_cog import BaseCog
+from src.bot.base_cog import BaseCog
 from src.modules.shrines.service import ShrineService
 from src.core.config import ConfigManager
 from src.ui.emojis import Emojis

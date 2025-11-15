@@ -3,7 +3,7 @@ import sys
 
 from src.core.config.config import Config
 from src.core.logging.logger import get_logger
-from src.core.bot.lumen_bot import LumenBot
+from src.bot.lumen_bot import LumenBot
 from src.core.event.registry import register_all_event_listeners
 
 logger = get_logger(__name__)

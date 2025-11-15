@@ -72,7 +72,7 @@ Usage Example
 -------------
 Creating a feature cog:
 
->>> from src.core.bot.base_cog import BaseCog
+>>> from src.bot.base_cog import BaseCog
 >>> from discord.ext import commands
 >>>
 >>> class FusionCog(BaseCog):
@@ -269,23 +269,10 @@ class BaseCog(commands.Cog):
     # ========================================================================
     # PLAYER VALIDATION UTILITIES
     # ========================================================================
-
-    async def require_player(self, ctx: commands.Context, session, player_id: int, lock: bool = False):
-        """
-        Retrieve a player or inform them to register if missing.
-        """
-        from src.modules.player.service import PlayerService
-
-        player = await PlayerService.get_player_with_regen(session, player_id, lock=lock)
-        if not player:
-            await self.send_error(
-                ctx,
-                "Not Registered",
-                "You need to register first!",
-                help_text="Use `rregister` to create your account."
-            )
-            return None
-        return player
+    # NOTE: Player validation is module-specific.
+    # Each cog should import PlayerService from src.modules.player.service
+    # and implement its own require_player() helper as needed.
+    # This keeps the bot layer free from module dependencies.
 
     # ========================================================================
     # LOGGING UTILITIES

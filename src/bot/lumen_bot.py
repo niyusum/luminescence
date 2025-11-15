@@ -31,8 +31,8 @@ from typing import List
 import discord
 from discord.ext import commands
 
-from src.core.bot.lifecycle import BotLifecycle, StartupMetrics
-from src.core.bot.loader import load_all_features
+from src.bot.lifecycle import BotLifecycle, StartupMetrics
+from src.bot.loader import load_all_features
 from src.core.config import ConfigManager
 from src.core.config.config import Config
 from src.core.database.service import DatabaseService
@@ -43,7 +43,7 @@ from src.core.exceptions import (
 )
 from src.core.logging.logger import LogContext, get_logger
 from src.core.redis.service import RedisService
-from src.modules.tutorial.listener import register_tutorial_listeners
+from src.core.event import event_bus
 from src.utils.embed_builder import EmbedBuilder
 
 logger = get_logger(__name__)
@@ -148,9 +148,9 @@ class LumenBot(commands.Bot):
             cog_stats = await load_all_features(self)
             cogs_time = (time.perf_counter() - cogs_start) * 1000
 
-            # Register event listeners (Discord-specific)
-            await register_tutorial_listeners(self)
-            logger.info("✅ Tutorial listeners registered")
+            # Publish bot setup complete event for module listeners
+            await event_bus.publish("bot.setup_complete", {"bot": self})
+            logger.info("✅ Bot setup complete event published")
 
             # Slash commands removed - prefix-only architecture
             sync_time = 0

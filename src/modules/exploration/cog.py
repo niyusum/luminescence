@@ -11,7 +11,7 @@ from discord.ext import commands
 from typing import Optional, Dict, Any, TYPE_CHECKING
 import time
 
-from src.core.bot.base_cog import BaseCog
+from src.bot.base_cog import BaseCog
 from src.core.infra.database_service import DatabaseService
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.infra.redis_service import RedisService

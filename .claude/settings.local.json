@@ -7,7 +7,9 @@
       "Bash(nul)",
       "Bash(tree:*)",
       "Bash(cat:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(python -m pytest tests/ui/ -v --tb=short)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []

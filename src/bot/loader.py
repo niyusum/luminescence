@@ -139,7 +139,7 @@ To create a new feature cog that will be auto-discovered:
 
 >>> # src/features/myfeature/myfeature_cog.py
 >>> from discord.ext import commands
->>> from src.core.bot.base_cog import BaseCog
+>>> from src.bot.base_cog import BaseCog
 >>>
 >>> class MyFeatureCog(BaseCog):
 >>>     def __init__(self, bot: commands.Bot):

@@ -18,7 +18,7 @@ from typing import Optional, Dict, Any, List
 import time
 
 from core.config.config_manager import ConfigManager
-from src.core.bot.base_cog import BaseCog
+from src.bot.base_cog import BaseCog
 from src.core.infra.database_service import DatabaseService
 from src.core.logging.logger import get_logger, LogContext
 from src.modules.player.service import PlayerService
