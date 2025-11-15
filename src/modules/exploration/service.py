@@ -5,7 +5,7 @@ from datetime import datetime
 import secrets
 
 from src.database.models.core.player import Player
-from src.database.models.core.maiden_base import MaidenBase
+from database.models.core.maiden_base import MaidenBase
 from src.database.models.progression.sector_progress import SectorProgress
 from src.core.config import ConfigManager
 from src.modules.resource.service import ResourceService

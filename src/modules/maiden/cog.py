@@ -68,7 +68,7 @@ class MaidenCog(BaseCog):
                 leader_bonuses = ""
                 if player.leader_maiden_id:
                     from src.database.models.core.maiden import Maiden
-                    from src.database.models.core.maiden_base import MaidenBase
+                    from database.models.core.maiden_base import MaidenBase
 
                     leader = await session.get(Maiden, player.leader_maiden_id)
                     if leader:
@@ -461,7 +461,7 @@ class LeaderSelectionView(discord.ui.View):
                 if success:
                     # Get maiden info for confirmation
                     from src.database.models.core.maiden import Maiden
-                    from src.database.models.core.maiden_base import MaidenBase
+                    from database.models.core.maiden_base import MaidenBase
 
                     maiden = await session.get(Maiden, maiden_id)
                     maiden_base = await session.get(MaidenBase, maiden.maiden_base_id)

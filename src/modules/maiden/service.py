@@ -29,7 +29,7 @@ from sqlalchemy import select, func
 import time
 
 from src.database.models.core.maiden import Maiden
-from src.database.models.core.maiden_base import MaidenBase
+from database.models.core.maiden_base import MaidenBase
 from src.database.models.core.player import Player
 from src.core.exceptions import MaidenNotFoundError
 from src.core.logging.logger import get_logger

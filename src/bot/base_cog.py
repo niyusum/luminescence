@@ -7,142 +7,51 @@ Provide foundational infrastructure for all feature cogs in the Lumen RPG bot.
 Enforces architectural patterns, standardized error handling, and consistent
 user feedback while maintaining LUMEN LAW compliance across the Discord layer.
 
-This base class serves as the parent for all feature cogs (Fusion, Ascension,
-Collection, etc.), providing common utilities and enforcing separation between
-Discord UI concerns and business logic.
-
 Responsibilities
 ----------------
-- Provide database session management utilities
+- Provide database session convenience (service-managed transactions)
 - Standardize user feedback (success/error/info embeds)
 - Handle domain exceptions with user-friendly messages
-- Enforce player validation and registration checks
 - Provide structured logging with Discord context
-- Support Discord View error handling
-- Create user validation checks for interactive components
+- Support Discord View error handling helpers
+- Provide user validation helpers for interactive components
 
 Non-Responsibilities
 --------------------
 - Business logic (delegated to service layer)
-- Database operations (delegated to service layer)
-- Event handling (handled by dedicated listeners)
-- Bot lifecycle management (handled by BotLifecycle)
+- Database mutation rules, locking, or transactions (delegated to services)
+- Bot lifecycle or feature loading (handled elsewhere)
+- Event bus emissions
 
-LUMEN LAW Compliance
---------------------
-- Article VI: Cogs handle Discord layer only (UI and context)
-- Article VII: Standardized error handling and user feedback
-- Article II: Transaction logging and audit integrity
-- Article I: Transaction-safe operations via DatabaseService
-- Article IX: Graceful error handling with fallbacks
-- Article X: Structured logging for observability
+Lumen 2025 Compliance
+---------------------
+- Cogs are Discord-only UI surfaces (no business logic)
+- All errors converted into structured embeds
+- Logging uses LogContext with Discord IDs where available
+- No direct database writes; only uses DatabaseService transaction contexts
 
 Architecture Notes
 ------------------
-- **Prefix-only architecture**: Post-slash-command removal, all commands use prefix
-- **Error boundaries**: Converts domain exceptions to Discord embeds
-- **Context injection**: All operations include Discord context for audit trails
-- **Layered design**: Cog → Service → Repository → Database
-- **Reusable utilities**: Common patterns extracted for DRY compliance
-
-Key Features
-------------
-**Database Access**:
-- `get_session()`: Returns async transaction context from DatabaseService
-
-**User Feedback**:
-- `send_success()`: Standardized success embed
-- `send_error()`: Standardized error embed
-- `send_info()`: Standardized informational embed
-- `defer()`: Typing indicator for long operations
-
-**Error Handling**:
-- `handle_standard_errors()`: Converts domain exceptions to user-friendly messages
-- `handle_view_error()`: Error handling for Discord View interactions
-
-**Validation**:
-- `require_player()`: Player existence check with registration prompt
-- `create_user_validation_check()`: User authorization for interactive components
-
-**Logging**:
-- `log_command_use()`: Command execution logging with context
-- `log_cog_error()`: Cog-level error logging with context
-
-Usage Example
--------------
-Creating a feature cog:
-
->>> from src.bot.base_cog import BaseCog
->>> from discord.ext import commands
->>>
->>> class FusionCog(BaseCog):
->>>     def __init__(self, bot: commands.Bot):
->>>         super().__init__(bot, "FusionCog")
->>>
->>>     @commands.command(name="fuse")
->>>     async def fuse(self, ctx: commands.Context, tier: int):
->>>         '''Fuse two maidens to create a higher tier maiden.'''
->>>         await self.defer(ctx)  # Show typing indicator
->>>
->>>         async with self.get_session() as session:
->>>             # Validate player exists
->>>             player = await self.require_player(ctx, session, ctx.author.id, lock=True)
->>>             if not player:
->>>                 return
->>>
->>>             try:
->>>                 # Business logic in service layer
->>>                 result = await FusionService.fuse_maidens(session, player.id, tier)
->>>
->>>                 # Success feedback
->>>                 await self.send_success(
->>>                     ctx,
->>>                     "Fusion Complete!",
->>>                     f"Created a Tier {result.tier} maiden!"
->>>                 )
->>>
->>>             except InsufficientResourcesError as e:
->>>                 await self.send_error(ctx, "Insufficient Resources", str(e))
-
-Discord View Integration Example
----------------------------------
-Using BaseCog utilities in Discord Views:
-
->>> class FusionView(discord.ui.View):
->>>     def __init__(self, user_id: int, cog: BaseCog):
->>>         super().__init__(timeout=120)
->>>         self.user_id = user_id
->>>         self.cog = cog
->>>         self.validate_user = cog.create_user_validation_check(user_id)
->>>
->>>     @discord.ui.button(label="Confirm Fusion")
->>>     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
->>>         # Validate user authorization
->>>         if not await self.validate_user(interaction):
->>>             return
->>>
->>>         try:
->>>             await interaction.response.defer()
->>>             # Execute fusion logic...
->>>             await self.cog.send_success(interaction, "Success!", "Fusion complete!")
->>>         except Exception as e:
->>>             await self.cog.handle_view_error(interaction, e, "fusion_confirm")
+- Prefix-only architecture (slash commands removed)
+- Error boundaries: domain exceptions → user-friendly embeds
+- Layered: Cog → Service → Infra
 """
+
+from __future__ import annotations
+
+from typing import Any, Awaitable, Callable, Optional
 
 import discord
 from discord.ext import commands
-from typing import Optional
-from datetime import datetime
 
 from src.core.database.service import DatabaseService
-from src.core.infra.transaction_logger import TransactionLogger
-from src.core.logging.logger import get_logger, LogContext
+from src.core.logging.logger import LogContext, get_logger
 from src.core.exceptions import (
+    CooldownError,
     InsufficientResourcesError,
     InvalidOperationError,
-    CooldownError,
     NotFoundError,
-    RateLimitError
+    RateLimitError,
 )
 from src.utils.embed_builder import EmbedBuilder
 
@@ -150,12 +59,15 @@ from src.utils.embed_builder import EmbedBuilder
 class BaseCog(commands.Cog):
     """
     Base class for all feature cogs (prefix-only).
-    
-    Provides common utilities for error handling, database access,
-    and consistent feedback while enforcing LUMEN LAW.
+
+    Provides common utilities for:
+    - safe database transaction contexts
+    - standardized feedback embeds
+    - domain-aware error handling
+    - Discord View helper utilities
     """
 
-    def __init__(self, bot: commands.Bot, cog_name: str):
+    def __init__(self, bot: commands.Bot, cog_name: str) -> None:
         """
         Initialize BaseCog.
 
@@ -171,32 +83,46 @@ class BaseCog(commands.Cog):
     # DATABASE UTILITIES
     # ========================================================================
 
-    async def get_session(self):
-        """Return an async database transaction context."""
+    def get_session(self):
+        """
+        Return an async database transaction context manager.
+
+        Usage:
+            async with self.get_session() as session:
+                ...
+
+        Transaction semantics (enforced by DatabaseService):
+        - Atomic transaction per context
+        - Pessimistic locking for writes
+        - No manual commits in the cog layer
+        """
         return DatabaseService.get_transaction()
 
     # ========================================================================
     # USER FEEDBACK UTILITIES
     # ========================================================================
 
-    async def defer(self, ctx: commands.Context):
+    async def defer(self, ctx: commands.Context) -> None:
         """
         Indicate to the user that a long operation is in progress.
 
-        Uses ctx.typing() instead of Discord interaction defer.
+        Uses ctx.typing() for prefix commands.
         """
         try:
             await ctx.typing()
-        except Exception as e:
-            self.logger.warning(f"Failed to start typing indicator: {e}")
+        except Exception as exc:  # Best-effort UX hint
+            self.logger.warning(
+                "Failed to start typing indicator",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
 
     async def send_error(
         self,
         ctx: commands.Context,
         title: str,
         description: str,
-        help_text: Optional[str] = None
-    ):
+        help_text: Optional[str] = None,
+    ) -> None:
         """Send standardized error feedback."""
         embed = EmbedBuilder.error(title=title, description=description, help_text=help_text)
         await self._safe_send(ctx, embed)
@@ -206,8 +132,8 @@ class BaseCog(commands.Cog):
         ctx: commands.Context,
         title: str,
         description: str,
-        footer: Optional[str] = None
-    ):
+        footer: Optional[str] = None,
+    ) -> None:
         """Send standardized success feedback."""
         embed = EmbedBuilder.success(title=title, description=description, footer=footer)
         await self._safe_send(ctx, embed)
@@ -217,33 +143,52 @@ class BaseCog(commands.Cog):
         ctx: commands.Context,
         title: str,
         description: str,
-        footer: Optional[str] = None
-    ):
+        footer: Optional[str] = None,
+    ) -> None:
         """Send standardized informational feedback."""
         embed = EmbedBuilder.info(title=title, description=description, footer=footer)
         await self._safe_send(ctx, embed)
 
-    async def _safe_send(self, ctx: commands.Context, embed: discord.Embed):
-        """Send embed safely to the invoking context."""
+    async def _safe_send(self, ctx: commands.Context, embed: discord.Embed) -> None:
+        """
+        Safely send an embed to the invoking context.
+
+        Uses reply when possible, falls back to send.
+        """
         try:
-            await ctx.reply(embed=embed)
-        except Exception as e:
-            self.logger.error(f"Failed to send embed in {self.cog_name}: {e}")
+            if ctx.message:
+                await ctx.reply(embed=embed, mention_author=False)
+            else:
+                await ctx.send(embed=embed)
+        except Exception as exc:
+            self.logger.error(
+                "Failed to send embed from BaseCog",
+                extra={
+                    "cog_name": self.cog_name,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+                exc_info=True,
+            )
 
     # ========================================================================
-    # STANDARDIZED ERROR HANDLING
+    # STANDARDIZED ERROR HANDLING (COMMAND CONTEXT)
     # ========================================================================
 
     async def handle_standard_errors(self, ctx: commands.Context, error: Exception) -> bool:
         """
-        Handle known LUMEN LAW exceptions with user-friendly responses.
+        Handle known domain exceptions with user-friendly responses.
 
         Returns:
-            bool: True if handled, False otherwise.
+            True if the error was handled and a response was sent, False otherwise.
         """
         if isinstance(error, InsufficientResourcesError):
-            await self.send_error(ctx, "Insufficient Resources", str(error),
-                                  "Check your inventory and try again.")
+            await self.send_error(
+                ctx,
+                "Insufficient Resources",
+                str(error),
+                "Check your inventory and try again.",
+            )
             return True
 
         if isinstance(error, InvalidOperationError):
@@ -251,13 +196,21 @@ class BaseCog(commands.Cog):
             return True
 
         if isinstance(error, CooldownError):
-            await self.send_error(ctx, "Cooldown Active", str(error),
-                                  "Please wait before retrying.")
+            await self.send_error(
+                ctx,
+                "Cooldown Active",
+                str(error),
+                "Please wait before retrying.",
+            )
             return True
 
         if isinstance(error, RateLimitError):
-            await self.send_error(ctx, "Rate Limit Exceeded", str(error),
-                                  "You're using this command too frequently. Please slow down.")
+            await self.send_error(
+                ctx,
+                "Rate Limit Exceeded",
+                str(error),
+                "You're using this command too frequently. Please slow down.",
+            )
             return True
 
         if isinstance(error, NotFoundError):
@@ -265,14 +218,6 @@ class BaseCog(commands.Cog):
             return True
 
         return False
-
-    # ========================================================================
-    # PLAYER VALIDATION UTILITIES
-    # ========================================================================
-    # NOTE: Player validation is module-specific.
-    # Each cog should import PlayerService from src.modules.player.service
-    # and implement its own require_player() helper as needed.
-    # This keeps the bot layer free from module dependencies.
 
     # ========================================================================
     # LOGGING UTILITIES
@@ -283,79 +228,92 @@ class BaseCog(commands.Cog):
         command_name: str,
         user_id: int,
         guild_id: Optional[int] = None,
-        **kwargs
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Log command usage for observability and analytics.
+
+        Uses LogContext to attach player/guild information in a structured way.
         """
         context = LogContext(
             service=self.cog_name,
             operation=command_name,
             player_id=user_id,
             guild_id=guild_id,
-            **kwargs
+            **kwargs,
         )
-        self.logger.info(f"Command used: r{command_name}", extra={"context": context})
+        self.logger.info(
+            "Command used",
+            extra={"context": context},
+        )
 
     def log_cog_error(
         self,
         operation: str,
         error: Exception,
         user_id: Optional[int] = None,
-        **kwargs
-    ):
+        guild_id: Optional[int] = None,
+        **kwargs: Any,
+    ) -> None:
         """
-        Log cog-level operational errors.
+        Log cog-level operational errors with context.
+
+        Args:
+            operation: Logical operation name (e.g., "fusion_execute")
+            error: Exception that occurred
+            user_id: Discord user ID if available
+            guild_id: Discord guild ID if available
         """
         context = LogContext(
             service=self.cog_name,
             operation=operation,
             player_id=user_id,
-            **kwargs
+            guild_id=guild_id,
+            **kwargs,
         )
         self.logger.error(
             f"{self.cog_name}.{operation} failed: {error}",
             exc_info=error,
-            extra={"context": context}
+            extra={"context": context},
         )
 
     # ========================================================================
     # DISCORD VIEW UTILITIES
     # ========================================================================
 
-    def create_user_validation_check(self, user_id: int):
+    def create_user_validation_check(
+        self,
+        user_id: int,
+    ) -> Callable[[discord.Interaction], Awaitable[bool]]:
         """
         Create a reusable user validation function for Discord Views.
 
-        Returns an async function that validates interaction user and sends
+        Returns an async function that validates the interaction user and sends
         an ephemeral error message if the user is not authorized.
 
         Args:
             user_id: Discord user ID who is authorized to use the view
-
-        Returns:
-            Async function that returns True if user is valid, False otherwise
-
-        Usage in View:
-            class MyView(discord.ui.View):
-                def __init__(self, user_id: int, cog: BaseCog):
-                    super().__init__(timeout=120)
-                    self.user_id = user_id
-                    self.validate_user = cog.create_user_validation_check(user_id)
-
-                @discord.ui.button(label="Click")
-                async def button(self, interaction: discord.Interaction, button: discord.ui.Button):
-                    if not await self.validate_user(interaction):
-                        return  # User validation failed, error sent
-
-                    # Continue with button logic...
         """
+
         async def check(interaction: discord.Interaction) -> bool:
             if interaction.user.id != user_id:
-                await interaction.response.send_message(
-                    "This button is not for you!",
-                    ephemeral=True
-                )
+                try:
+                    await interaction.response.send_message(
+                        "This button is not for you!",
+                        ephemeral=True,
+                    )
+                except discord.InteractionResponded:
+                    # Already responded; try followup as best-effort
+                    try:
+                        await interaction.followup.send(
+                            "This button is not for you!",
+                            ephemeral=True,
+                        )
+                    except Exception as exc:
+                        self.logger.warning(
+                            "Failed to send unauthorized interaction message",
+                            extra={"error": str(exc), "error_type": type(exc).__name__},
+                        )
                 return False
             return True
 
@@ -366,8 +324,8 @@ class BaseCog(commands.Cog):
         interaction: discord.Interaction,
         error: Exception,
         operation_name: str,
-        **context
-    ):
+        **context: object,
+    ) -> None:
         """
         Standardized error handling for Discord View interactions.
 
@@ -376,81 +334,63 @@ class BaseCog(commands.Cog):
 
         Args:
             interaction: Discord interaction from button/modal/select callback
-            operation_name: Name of the operation for logging (e.g., "fusion_execute")
+            operation_name: Name of the operation for logging (e.g., "fusion_confirm")
             error: Exception that occurred
             **context: Additional context for logging (e.g., guild_id, floor, etc.)
-
-        Usage in View:
-            try:
-                # Execute view logic...
-                await SomeService.do_something(...)
-            except Exception as e:
-                await self.cog.handle_view_error(
-                    interaction, e, "view_action",
-                    guild_id=interaction.guild_id
-                )
-                # Optionally disable view
-                await interaction.edit_original_response(view=None)
-
-        LUMEN LAW Compliance:
-            - Converts domain exceptions to Discord embeds (Article I.5)
-            - Logs with full context (Article II)
-            - Provides user-friendly error messages
         """
-        # Log the error with context
         self.log_cog_error(
             operation_name,
             error,
             user_id=interaction.user.id,
             guild_id=interaction.guild.id if interaction.guild else None,
-            **context
+            **context,
         )
 
-        # Build appropriate error embed based on exception type
+        # Build appropriate error embed
         if isinstance(error, InsufficientResourcesError):
             embed = EmbedBuilder.error(
                 title="Insufficient Resources",
                 description=str(error),
-                help_text="Check your inventory and try again."
+                help_text="Check your inventory and try again.",
             )
         elif isinstance(error, InvalidOperationError):
             embed = EmbedBuilder.error(
                 title="Invalid Operation",
-                description=str(error)
+                description=str(error),
             )
         elif isinstance(error, CooldownError):
             embed = EmbedBuilder.warning(
                 title="Cooldown Active",
-                description=str(error)
+                description=str(error),
             )
         elif isinstance(error, RateLimitError):
             embed = EmbedBuilder.warning(
                 title="Rate Limit Exceeded",
                 description=str(error),
-                help_text="You're using this command too frequently. Please slow down."
             )
         elif isinstance(error, NotFoundError):
             embed = EmbedBuilder.error(
                 title="Not Found",
-                description=str(error)
+                description=str(error),
             )
         else:
-            # Generic error for unexpected exceptions
             embed = EmbedBuilder.error(
                 title="Something Went Wrong",
-                description="An unexpected error occurred.",
-                help_text="The issue has been logged."
+                description="An unexpected error occurred while handling your action.",
+                help_text="The issue has been logged.",
             )
 
-        # Send error embed (ephemeral)
+        # Send error embed (ephemeral where possible)
         try:
-            # Try followup first (if response was already deferred)
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        except discord.InteractionResponded:
-            # If already responded, try editing
-            try:
-                await interaction.edit_original_response(embed=embed)
-            except Exception as edit_error:
-                self.logger.warning(f"Failed to edit interaction response: {edit_error}")
+            if interaction.response.is_done():
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=embed, ephemeral=True)
         except Exception as send_error:
-            self.logger.warning(f"Failed to send error message to user: {send_error}")
+            self.logger.warning(
+                "Failed to send view error message",
+                extra={
+                    "error": str(send_error),
+                    "error_type": type(send_error).__name__,
+                },
+            )

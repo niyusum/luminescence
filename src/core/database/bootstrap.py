@@ -1,67 +1,57 @@
 """
-Database Subsystem Bootstrap for Lumen (2025)
+Database Subsystem Bootstrap - Infrastructure Orchestration (Lumen 2025)
 
 Purpose
 -------
-Provide a single entry point for initializing and shutting down the entire
-database subsystem with health verification and optional component construction.
+Single entry point for initializing and shutting down the entire database
+subsystem with health verification and component factory methods.
 
-This module serves as the orchestration layer for database infrastructure,
-coordinating DatabaseService initialization, health verification, and providing
-factory methods for related infrastructure components (health monitors, retry
-policies).
-
-Key Features:
-- Engine + session factory initialization via DatabaseService
-- Optional readiness verification via health checks with timeout
-- Convenience helpers for creating health monitors and retry policies
-- Structured logging throughout bootstrap lifecycle
-- Graceful shutdown with resource cleanup
+Orchestrates DatabaseService initialization, health verification, and provides
+convenient factory methods for creating related infrastructure components.
 
 Responsibilities
 ----------------
-- Centralize database subsystem startup and shutdown lifecycle
 - Initialize DatabaseService (engine, session factory, connection pool)
 - Optionally verify database readiness via health check with timeout
-- Provide factory methods for related components:
-  - `create_database_health_monitor_from_config()`
-  - `create_database_retry_policy_from_config()`
-- Emit structured logs for bootstrap events and errors
+- Provide factory methods for DatabaseHealthMonitor and DatabaseRetryPolicy
+- Emit structured logs for bootstrap lifecycle events
 - Propagate initialization failures with clear error messages
+- Graceful shutdown with resource cleanup
 
 Non-Responsibilities
 --------------------
-- Database migrations (handled by Alembic/migration scripts)
+- Database migrations (handled by Alembic)
 - Domain state management or business logic
-- Background task scheduling (caller schedules health monitors)
+- Background task scheduling (caller schedules monitors)
 - Connection string construction (handled by Config)
 - Transaction management (handled by DatabaseService)
-- Query execution (handled by services/repositories)
+- Query execution (handled by services)
 
-LUMEN LAW Compliance
---------------------
-- Article I: Transaction-safe initialization (DatabaseService handles pooling)
-- Article II: Comprehensive audit logging of bootstrap events
-- Article IX: Graceful degradation (health check optional, clear errors)
-- Article X: Structured observability throughout lifecycle
+LUMEN 2025 Compliance
+---------------------
+✓ Article I: Transaction-safe initialization via DatabaseService
+✓ Article II: Comprehensive audit logging of bootstrap events
+✓ Article III: Config-driven with safe defaults
+✓ Article IX: Graceful degradation (health check optional, clear errors)
+✓ Article X: Structured observability throughout lifecycle
 
 Architecture Notes
 ------------------
 **Bootstrap Sequence**:
 1. `initialize_database_subsystem()` called during bot startup
 2. DatabaseService initializes engine and session factory
-3. Optional health check verifies database connectivity
-4. Returns on success or raises DatabaseInitializationError on failure
+3. Optional health check verifies database connectivity with timeout
+4. Returns on success or raises DatabaseInitializationError
 
 **Health Verification**:
-- Configurable timeout via `DATABASE_BOOTSTRAP_HEALTH_TIMEOUT_SECONDS`
-- Default: 5 seconds
-- Can be disabled by passing `verify_health=False`
-- Useful for fast startup in dev environments
+- Configurable timeout via DATABASE_BOOTSTRAP_HEALTH_TIMEOUT_SECONDS
+- Default: 5.0 seconds
+- Can be disabled via `verify_health=False` for fast dev startup
+- Failure propagates as DatabaseInitializationError
 
 **Component Factories**:
-- `create_database_health_monitor_from_config()`: Background health monitoring
-- `create_database_retry_policy_from_config()`: Retry logic for transient failures
+- `create_health_monitor()`: Background health monitoring
+- `create_retry_policy()`: Retry logic for transient failures
 
 **Shutdown Sequence**:
 1. `shutdown_database_subsystem()` called during bot shutdown
@@ -70,22 +60,22 @@ Architecture Notes
 
 Configuration
 -------------
-Bootstrap behavior controlled by Config attributes:
-- `DATABASE_URL`: Connection string (required)
-- `DATABASE_BOOTSTRAP_HEALTH_TIMEOUT_SECONDS`: Health check timeout (default: 5.0)
-- `DATABASE_HEALTH_CHECK_INTERVAL_SECONDS`: For health monitor (default: 30)
-- `DATABASE_RETRY_MAX_ATTEMPTS`: For retry policy (default: 3)
+Bootstrap behavior controlled by Config:
+- DATABASE_URL (required)
+- DATABASE_BOOTSTRAP_HEALTH_TIMEOUT_SECONDS (default: 5.0)
+- DATABASE_HEALTH_CHECK_INTERVAL_SECONDS (default: 30.0)
+- DATABASE_RETRY_MAX_ATTEMPTS (default: 3)
 
 Usage Example
 -------------
-Basic initialization in bot startup:
+Basic initialization:
 
 >>> from src.core.database.bootstrap import (
 >>>     initialize_database_subsystem,
->>>     shutdown_database_subsystem
+>>>     shutdown_database_subsystem,
 >>> )
 >>>
->>> # During bot startup (in setup_hook or main)
+>>> # During bot startup
 >>> try:
 >>>     await initialize_database_subsystem(verify_health=True)
 >>>     logger.info("Database ready")
@@ -93,28 +83,30 @@ Basic initialization in bot startup:
 >>>     logger.critical(f"Database initialization failed: {e}")
 >>>     raise
 >>>
->>> # During bot shutdown (in close method)
+>>> # During bot shutdown
 >>> await shutdown_database_subsystem()
 
 With health monitoring:
 
 >>> from src.core.database.bootstrap import (
 >>>     initialize_database_subsystem,
->>>     create_database_health_monitor_from_config,
->>>     shutdown_database_subsystem
+>>>     create_health_monitor,
+>>>     shutdown_database_subsystem,
 >>> )
 >>>
 >>> # Initialize database
 >>> await initialize_database_subsystem()
 >>>
 >>> # Create and start health monitor
->>> monitor = create_database_health_monitor_from_config()
->>> asyncio.create_task(monitor.start())
+>>> stop_event = asyncio.Event()
+>>> monitor = create_health_monitor()
+>>> monitor_task = asyncio.create_task(monitor.run_forever(stop_event=stop_event))
 >>>
 >>> # ... bot runs ...
 >>>
 >>> # Shutdown
->>> await monitor.stop()
+>>> stop_event.set()
+>>> await monitor_task
 >>> await shutdown_database_subsystem()
 
 Skip health check for fast dev startup:
@@ -124,12 +116,10 @@ Skip health check for fast dev startup:
 
 Error Handling
 --------------
-`initialize_database_subsystem()` can raise:
-
-**DatabaseInitializationError** - When:
+`initialize_database_subsystem()` raises DatabaseInitializationError when:
 - Database connection fails
-- Health check times out (if `verify_health=True`)
-- Health check fails (if `verify_health=True`)
+- Health check times out (if verify_health=True)
+- Health check fails (if verify_health=True)
 - Engine creation fails
 - Configuration is invalid
 
@@ -137,19 +127,6 @@ All errors include:
 - Clear error message
 - Structured logging with context
 - Original exception preserved via `from exc`
-
-Integration with BotLifecycle
-------------------------------
-This module is typically called from BotLifecycle during bot startup:
-
->>> # In BotLifecycle.initialize_service():
->>> db_time = await self.initialize_service(
->>>     "Database",
->>>     initialize_database_subsystem(verify_health=True)
->>> )
->>>
->>> # In BotLifecycle.shutdown():
->>> await shutdown_database_subsystem()
 """
 
 from __future__ import annotations
@@ -175,30 +152,69 @@ from src.core.database.retry_policy import (
 logger = get_logger(__name__)
 
 
+# ============================================================================
+# Subsystem Lifecycle
+# ============================================================================
+
+
 async def initialize_database_subsystem(*, verify_health: bool = True) -> None:
     """
     Initialize the database subsystem.
 
     Steps
     -----
-    1. Initialize `DatabaseService` (engine + session factory).
-    2. Optionally verify readiness with a health check.
+    1. Initialize DatabaseService (engine + session factory)
+    2. Optionally verify readiness with health check (if verify_health=True)
+
+    Parameters
+    ----------
+    verify_health : bool, default=True
+        If True, performs a health check after initialization to verify
+        database connectivity. Health check has a configurable timeout.
 
     Raises
     ------
     DatabaseInitializationError
-        If initialization fails or health check fails when `verify_health=True`.
+        If initialization fails or health check fails/times out.
+
+    Notes
+    -----
+    - Safe to skip health check in development for faster startup
+    - Health timeout controlled by DATABASE_BOOTSTRAP_HEALTH_TIMEOUT_SECONDS
+    - Logs all steps for observability
     """
     logger.info("Initializing database subsystem")
 
-    await DatabaseService.initialize()
+    try:
+        await DatabaseService.initialize()
+    except DatabaseInitializationError:
+        # Already logged and has clear error message
+        raise
+    except Exception as exc:
+        logger.error(
+            "Unexpected error during database initialization",
+            extra={
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            },
+            exc_info=True,
+        )
+        raise DatabaseInitializationError(
+            f"Database initialization failed: {exc}"
+        ) from exc
 
     if not verify_health:
         logger.info("Database subsystem initialized (health check skipped)")
         return
 
+    # Perform health check with timeout
     health_timeout = float(
         getattr(Config, "DATABASE_BOOTSTRAP_HEALTH_TIMEOUT_SECONDS", 5.0)
+    )
+
+    logger.debug(
+        "Performing bootstrap health check",
+        extra={"timeout_seconds": health_timeout},
     )
 
     try:
@@ -208,18 +224,30 @@ async def initialize_database_subsystem(*, verify_health: bool = True) -> None:
         )
     except asyncio.TimeoutError as exc:
         logger.error(
-            "Database health check during bootstrap timed out",
+            "Database health check timed out during bootstrap",
             extra={"timeout_seconds": health_timeout},
             exc_info=True,
         )
         raise DatabaseInitializationError(
-            "Database health check during bootstrap timed out"
+            f"Database health check timed out after {health_timeout}s"
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            "Unexpected error during bootstrap health check",
+            extra={
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            },
+            exc_info=True,
+        )
+        raise DatabaseInitializationError(
+            f"Database health check failed: {exc}"
         ) from exc
 
     if not healthy:
-        logger.error("Database health check during bootstrap failed")
+        logger.error("Database health check failed during bootstrap")
         raise DatabaseInitializationError(
-            "Database health check during bootstrap failed"
+            "Database is unreachable or unhealthy after initialization"
         )
 
     logger.info("Database subsystem initialized and healthy")
@@ -229,19 +257,63 @@ async def shutdown_database_subsystem() -> None:
     """
     Shutdown the database subsystem.
 
-    Calls `DatabaseService.shutdown()` and emits logs.
+    Calls DatabaseService.shutdown() to dispose the engine and close all
+    connections. Emits structured logs for observability.
+
+    This method is safe to call multiple times and will not raise exceptions
+    if the database is already shut down.
     """
     logger.info("Shutting down database subsystem")
-    await DatabaseService.shutdown()
-    logger.info("Database subsystem shutdown complete")
+
+    try:
+        await DatabaseService.shutdown()
+        logger.info("Database subsystem shutdown complete")
+    except Exception as exc:
+        logger.error(
+            "Error during database subsystem shutdown",
+            extra={
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            },
+            exc_info=True,
+        )
+        # Don't re-raise during shutdown to allow graceful degradation
+        logger.warning("Database shutdown completed with errors")
 
 
-def create_database_health_monitor_from_config() -> DatabaseHealthMonitor:
+# ============================================================================
+# Component Factory Methods
+# ============================================================================
+
+
+def create_health_monitor() -> DatabaseHealthMonitor:
     """
-    Convenience helper to create a `DatabaseHealthMonitor` using Config.
+    Create a DatabaseHealthMonitor configured from Config.
+
+    Returns
+    -------
+    DatabaseHealthMonitor
+        Configured health monitor instance ready to run.
+
+    Usage
+    -----
+    >>> monitor = create_health_monitor()
+    >>> stop_event = asyncio.Event()
+    >>> task = asyncio.create_task(monitor.run_forever(stop_event=stop_event))
+    >>> # ... later ...
+    >>> stop_event.set()
+    >>> await task
+
+    Configuration
+    -------------
+    Uses Config values:
+    - DATABASE_HEALTH_CHECK_INTERVAL_SECONDS
+    - DATABASE_HEALTH_FAILURE_THRESHOLD
+    - DATABASE_HEALTH_RECOVERY_THRESHOLD
     """
     config = DatabaseHealthMonitorConfig.from_config()
     monitor = DatabaseHealthMonitor(config)
+
     logger.debug(
         "Created DatabaseHealthMonitor from config",
         extra={
@@ -250,15 +322,42 @@ def create_database_health_monitor_from_config() -> DatabaseHealthMonitor:
             "recovery_threshold": config.recovery_threshold,
         },
     )
+
     return monitor
 
 
-def create_database_retry_policy_from_config() -> DatabaseRetryPolicy:
+def create_retry_policy() -> DatabaseRetryPolicy:
     """
-    Convenience helper to create a `DatabaseRetryPolicy` using Config.
+    Create a DatabaseRetryPolicy configured from Config.
+
+    Returns
+    -------
+    DatabaseRetryPolicy
+        Configured retry policy instance ready to use.
+
+    Usage
+    -----
+    >>> retry_policy = create_retry_policy()
+    >>> async def operation():
+    >>>     async with DatabaseService.get_transaction() as session:
+    >>>         # ... database work ...
+    >>>         pass
+    >>> result = await retry_policy.execute(
+    >>>     operation,
+    >>>     operation_name="player.update_lumees"
+    >>> )
+
+    Configuration
+    -------------
+    Uses Config values:
+    - DATABASE_RETRY_MAX_ATTEMPTS
+    - DATABASE_RETRY_INITIAL_BACKOFF_MS
+    - DATABASE_RETRY_MAX_BACKOFF_MS
+    - DATABASE_RETRY_JITTER_MS
     """
     config = DatabaseRetryConfig.from_config()
     policy = DatabaseRetryPolicy(config)
+
     logger.debug(
         "Created DatabaseRetryPolicy from config",
         extra={
@@ -268,4 +367,15 @@ def create_database_retry_policy_from_config() -> DatabaseRetryPolicy:
             "jitter_ms": config.jitter_ms,
         },
     )
+
     return policy
+
+
+# ============================================================================
+# Legacy Compatibility Aliases
+# ============================================================================
+
+
+# Maintain compatibility with old function names
+create_database_health_monitor_from_config = create_health_monitor
+create_database_retry_policy_from_config = create_retry_policy

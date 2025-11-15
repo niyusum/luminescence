@@ -4,29 +4,19 @@ Redis Resilience Module for Lumen (2025)
 Purpose
 -------
 Unified resilience layer for Redis combining circuit breaking, retry logic,
-and failure recovery into a single cohesive interface.
+and failure recovery into a single cohesive interface that ensures consistent
+failure handling across all Redis operations.
 
-This module consolidates the previously separate circuit_breaker.py and
-retry_policy.py into a unified RedisResilience class that handles:
-- Circuit breaking to prevent cascading failures
-- Automatic retry with exponential backoff
-- Failure detection and recovery tracking
-- Integration with health monitoring
-
-Why Consolidation?
-------------------
-Redis correctness is deeply tied to:
-- Locking (distributed locks require consistent Redis)
-- Timeouts (must be carefully coordinated with retry/circuit state)
+This module consolidates circuit breaker and retry patterns because Redis
+correctness is deeply tied to:
+- Distributed locks (require consistent Redis availability)
+- Timeouts (must be coordinated with retry/circuit state)
 - Retry logic (when and how to retry failed operations)
 - Failure recovery (automatic vs manual recovery)
 - Circuit breaker state (when to fail fast vs allow retries)
-- Reconnection (handling connection drops gracefully)
 - Health checks (continuous background monitoring)
-- Metrics (comprehensive tracking of all resilience events)
 
-These concerns are **highly interdependent** and managing them separately
-leads to:
+These concerns are highly interdependent. Managing them separately leads to:
 - Race conditions between circuit breaker and retry logic
 - Unclear ownership of failure detection
 - Duplicated configuration and metrics
@@ -36,24 +26,26 @@ Responsibilities
 ----------------
 - Execute operations with circuit breaker protection
 - Apply automatic retry with exponential backoff
-- Track failure rates and circuit state
-- Emit resilience events for monitoring
-- Provide unified status API
+- Track failure rates and circuit state transitions
 - Coordinate with health monitoring
+- Provide unified status API
+- Emit structured logs for all resilience events
 
 Non-Responsibilities
 --------------------
 - No Redis operations (wraps them, doesn't execute)
 - No business logic
 - No metrics storage (delegates to metrics.py)
+- No health monitoring (delegates to health_monitor.py)
 
 Lumen 2025 Compliance
 ---------------------
 - Strict layering: pure infrastructure resilience
-- Config-driven: all thresholds and timings
+- Config-driven: all thresholds and timings via ConfigManager
 - Observability: structured logging for all state changes
-- Event emission: circuit state transitions and retry attempts
-- Thread-safe: asyncio.Lock for state management
+- Concurrency safety: asyncio.Lock for state management
+- Domain exceptions: clear, typed exceptions for failures
+- Zero business logic
 
 Configuration Keys
 ------------------
@@ -63,19 +55,20 @@ Circuit Breaker:
 - core.redis.resilience.circuit.timeout_seconds      : int (default 60)
 
 Retry Policy:
-- core.redis.resilience.retry.max_attempts         : int (default 3)
-- core.redis.resilience.retry.initial_delay_seconds: float (default 0.1)
-- core.redis.resilience.retry.max_delay_seconds    : float (default 2.0)
-- core.redis.resilience.retry.backoff_multiplier   : float (default 2.0)
-- core.redis.resilience.retry.jitter               : bool (default True)
+- core.redis.resilience.retry.max_attempts          : int (default 3)
+- core.redis.resilience.retry.initial_delay_seconds : float (default 0.1)
+- core.redis.resilience.retry.max_delay_seconds     : float (default 2.0)
+- core.redis.resilience.retry.backoff_multiplier    : float (default 2.0)
+- core.redis.resilience.retry.jitter                : bool (default True)
 
 Architecture Notes
 ------------------
-- Single entry point: execute() method handles both circuit breaking and retry
+- Single entry point: execute() handles both circuit breaking and retry
 - Circuit breaker checks occur BEFORE retry attempts
 - Failures during retry update circuit breaker state
 - Successes reset both retry counter and circuit breaker
-- Health monitoring integration via status API
+- Thread-safe state management via asyncio.Lock
+- Exponential backoff with jitter to prevent thundering herd
 """
 
 from __future__ import annotations
@@ -99,6 +92,11 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# DOMAIN EXCEPTIONS
+# ═════════════════════════════════════════════════════════════════════════════
+
+
 class CircuitState(Enum):
     """Circuit breaker states."""
 
@@ -108,9 +106,19 @@ class CircuitState(Enum):
 
 
 class CircuitBreakerOpenError(Exception):
-    """Raised when circuit breaker is OPEN and operation is rejected."""
+    """
+    Raised when circuit breaker is OPEN and operation is rejected.
+    
+    This indicates Redis is experiencing sustained failures and the
+    circuit has opened to prevent cascading failures.
+    """
 
     pass
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# REDIS RESILIENCE
+# ═════════════════════════════════════════════════════════════════════════════
 
 
 class RedisResilience:
@@ -120,6 +128,11 @@ class RedisResilience:
     Combines circuit breaker pattern and retry logic with exponential backoff
     into a single cohesive interface. All Redis operations should flow through
     this class to ensure consistent failure handling and recovery.
+
+    Thread Safety
+    -------------
+    All state mutations are protected by asyncio.Lock to ensure safe
+    concurrent access from multiple coroutines.
 
     Example
     -------
@@ -136,6 +149,7 @@ class RedisResilience:
         RedisTimeoutError,
         ConnectionRefusedError,
         ConnectionResetError,
+        OSError,  # Network errors
     )
 
     def __init__(self) -> None:
@@ -184,8 +198,10 @@ class RedisResilience:
                 "circuit_success_threshold": self._circuit_success_threshold,
                 "circuit_timeout_seconds": self._circuit_timeout_seconds,
                 "retry_max_attempts": self._retry_max_attempts,
-                "retry_initial_delay": self._retry_initial_delay,
-                "retry_max_delay": self._retry_max_delay,
+                "retry_initial_delay_seconds": self._retry_initial_delay,
+                "retry_max_delay_seconds": self._retry_max_delay,
+                "retry_backoff_multiplier": self._retry_backoff_multiplier,
+                "jitter_enabled": self._retry_jitter,
             },
         )
 
@@ -225,31 +241,27 @@ class RedisResilience:
         Raises
         ------
         CircuitBreakerOpenError
-            If circuit breaker is OPEN and rejecting requests
+            If circuit breaker is OPEN and won't allow execution
         Exception
             The last exception if all retries are exhausted
         """
-        # Check circuit breaker before attempting
-        can_execute = await self._can_execute()
-        if not can_execute:
+        # Check circuit breaker before attempting operation
+        if not await self._can_execute():
             raise CircuitBreakerOpenError(
-                f"Circuit breaker is OPEN for operation: {operation_name}"
+                f"Redis circuit breaker is OPEN, operation '{operation_name}' rejected"
             )
 
-        # Execute with retry logic
-        attempts = (
-            max_attempts if max_attempts is not None else self._retry_max_attempts
-        )
+        attempts = max_attempts if max_attempts is not None else self._retry_max_attempts
         last_exception: Optional[Exception] = None
 
         for attempt in range(1, attempts + 1):
             try:
+                # Execute operation
                 result = await operation()
 
-                # Success - update circuit breaker
+                # Success - record and return
                 await self._record_success()
 
-                # Log if succeeded after retry
                 if attempt > 1:
                     logger.info(
                         "Redis operation succeeded after retry",
@@ -264,8 +276,6 @@ class RedisResilience:
 
             except self.RETRYABLE_EXCEPTIONS as exc:
                 last_exception = exc
-
-                # Record failure in circuit breaker
                 await self._record_failure()
 
                 # Check if we have more attempts
@@ -275,9 +285,9 @@ class RedisResilience:
                         extra={
                             "operation": operation_name,
                             "attempts": attempt,
+                            "circuit_state": self._circuit_state.value,
                             "error": str(exc),
                             "error_type": type(exc).__name__,
-                            "circuit_state": self._circuit_state.value,
                         },
                         exc_info=True,
                     )
@@ -303,7 +313,7 @@ class RedisResilience:
                 await asyncio.sleep(delay)
 
             except Exception as exc:
-                # Non-retryable exception - still record failure
+                # Non-retryable exception, record failure and fail immediately
                 await self._record_failure()
 
                 logger.error(
@@ -311,9 +321,9 @@ class RedisResilience:
                     extra={
                         "operation": operation_name,
                         "attempt": attempt,
+                        "circuit_state": self._circuit_state.value,
                         "error": str(exc),
                         "error_type": type(exc).__name__,
-                        "circuit_state": self._circuit_state.value,
                     },
                     exc_info=True,
                 )
@@ -322,9 +332,7 @@ class RedisResilience:
         # Should never reach here, but handle gracefully
         if last_exception:
             raise last_exception
-        raise RuntimeError(
-            f"Redis operation '{operation_name}' failed without exception"
-        )
+        raise RuntimeError(f"Redis operation '{operation_name}' failed without exception")
 
     # ═════════════════════════════════════════════════════════════════════════
     # CIRCUIT BREAKER LOGIC
@@ -332,7 +340,7 @@ class RedisResilience:
 
     async def _can_execute(self) -> bool:
         """
-        Check if circuit breaker allows execution.
+        Check if operation can be executed based on circuit breaker state.
 
         Returns
         -------
@@ -347,6 +355,8 @@ class RedisResilience:
             # If OPEN, check if timeout has elapsed
             if self._circuit_state == CircuitState.OPEN:
                 if self._opened_at is None:
+                    # Should never happen, but handle gracefully
+                    logger.warning("Circuit OPEN but no opened_at timestamp, allowing operation")
                     return True
 
                 elapsed = time.time() - self._opened_at
@@ -365,7 +375,7 @@ class RedisResilience:
             return False
 
     async def _record_success(self) -> None:
-        """Record successful operation and update circuit breaker."""
+        """Record successful operation and update circuit state."""
         async with self._lock:
             self._success_count += 1
             self._failure_count = 0  # Reset failure count on success
@@ -384,7 +394,7 @@ class RedisResilience:
                     await self._transition_to_closed()
 
     async def _record_failure(self) -> None:
-        """Record failed operation and update circuit breaker."""
+        """Record failed operation and update circuit state."""
         async with self._lock:
             self._failure_count += 1
             self._success_count = 0  # Reset success count on failure
@@ -495,7 +505,12 @@ class RedisResilience:
     # ═════════════════════════════════════════════════════════════════════════
 
     async def reset(self) -> None:
-        """Manually reset circuit breaker to CLOSED state."""
+        """
+        Manually reset circuit breaker to CLOSED state.
+        
+        Use this to manually recover from circuit breaker OPEN state,
+        typically after confirming Redis has recovered.
+        """
         async with self._lock:
             old_state = self._circuit_state
             self._circuit_state = CircuitState.CLOSED
@@ -510,10 +525,14 @@ class RedisResilience:
             )
 
     async def force_open(self) -> None:
-        """Manually force circuit breaker to OPEN state."""
+        """
+        Manually force circuit breaker to OPEN state.
+        
+        Use this to manually disable Redis operations, typically
+        for maintenance or emergency situations.
+        """
         async with self._lock:
             await self._transition_to_open()
-
             logger.warning("Redis resilience manually forced to OPEN")
 
     # ═════════════════════════════════════════════════════════════════════════
@@ -566,8 +585,8 @@ class RedisResilience:
             ),
             # Retry configuration
             "retry_max_attempts": self._retry_max_attempts,
-            "retry_initial_delay": self._retry_initial_delay,
-            "retry_max_delay": self._retry_max_delay,
+            "retry_initial_delay_seconds": self._retry_initial_delay,
+            "retry_max_delay_seconds": self._retry_max_delay,
             "retry_backoff_multiplier": self._retry_backoff_multiplier,
             "retry_jitter_enabled": self._retry_jitter,
         }

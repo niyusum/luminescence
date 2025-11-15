@@ -3,54 +3,50 @@ Lumen Logging Subsystem (2025)
 
 Purpose
 -------
-Provide a production-grade, hybrid logging system with:
+Provide a production-grade, async-safe logging subsystem that is the single
+source of truth for Lumen observability, offering:
 
-- Structured JSON logs as the single source of truth.
-- LogContext-based propagation of request context via ContextVars.
-- Correlation IDs for traceability across services and events.
-- Component-aware fields derived from logger names and context.
+- Structured JSON logs for aggregation and analysis.
+- LogContext-based propagation of request/operation context via ContextVars.
+- Correlation IDs and request IDs for end-to-end traceability.
+- Component-aware metadata derived from logger names and explicit context.
 - Async-safe logging via a QueueHandler + QueueListener architecture.
+- Bounded, health-aware log queue with graceful degradation on overload.
 - Hybrid output:
   - Console handler (JSON in production, colored human text in dev).
-  - Minimal rotating file handler with ~24h retention for backup.
+  - Minimal rotating file handler with ~24h retention for local backup.
+- Lightweight internal metrics and health inspection for infra observability.
 
 Responsibilities
 ----------------
 - Initialize and configure the global logging stack.
 - Enrich all log records with contextual fields:
-  - user_id, guild_id, command, correlation_id, request_id, component, operation.
+  - user_id, guild_id, command
+  - correlation_id, request_id
+  - component, operation
 - Emit structured logs in JSON format suitable for aggregation systems.
 - Avoid blocking the asyncio event loop with synchronous file I/O.
 - Provide simple helper APIs:
   - get_logger()
   - LogContext (sync + async context manager)
   - set_log_context() / clear_log_context()
-
-Lumen 2025 Compliance
----------------------
-- Logs are structured, JSON-formatted, and environment-aware.
-- Context propagation via LogContext + ContextVars.
-- Correlation IDs attached to every contextualized request.
-- Component-aware metadata derived from logger name and context.
-- Async-safe logging using a log queue and background listener thread.
-- Single source of truth for log schema; no duplicated formatter logic.
-- Minimal, time-based file retention (~24h) to avoid disk bloat.
+  - get_logging_health() for infra-level health inspection.
+- Degrade gracefully when the logging queue is overloaded or handlers fail.
 
 Design Decisions
 ----------------
-- Hybrid model (Option C):
+- Hybrid model:
   - Console logging is the primary sink (JSON in prod, colored in dev).
   - A TimedRotatingFileHandler maintains a small rolling window of logs
     as a local backup (configured for daily rotation with minimal history).
-- JSONFormatter is the canonical representation; console/dev formatter is
-  a human-friendly view for developers only.
+- JSONFormatter is the canonical representation.
 - ContextFilter uses ContextVars to safely enrich logs in async code.
-- Extra fields passed via `logger.info("msg", extra={...})` are merged into
-  the JSON payload while avoiding duplication of standard attributes.
+- Extra fields passed via `logger.info("msg", extra={...})` are merged into JSON.
+- A bounded log queue provides graceful degradation during log storms.
 
 Dependencies
 ------------
-- src.core.config.config.Config: environment, log level, logs directory, and flags.
+- src.core.config.config.Config
 """
 
 from __future__ import annotations
@@ -60,7 +56,7 @@ import logging
 import queue
 import sys
 import uuid
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from logging import Logger
@@ -70,7 +66,7 @@ from logging.handlers import (
     TimedRotatingFileHandler,
 )
 from pathlib import Path
-from typing import Any, Dict, Optional, Mapping
+from typing import Any, Dict, Optional
 
 from src.core.config.config import Config
 
@@ -94,7 +90,6 @@ _request_context: ContextVar[Dict[str, Any]] = ContextVar(
 class LoggerConfig:
     """Configuration for the logging subsystem."""
 
-    # Console + file format strings for non-JSON dev output.
     CONSOLE_FORMAT: str = "%(asctime)s | %(levelname)-8s | %(name)-30s | %(message)s"
     FILE_FORMAT: str = (
         "%(asctime)s | %(levelname)-8s | %(name)-30s "
@@ -102,10 +97,10 @@ class LoggerConfig:
     )
     DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 
-    # Timed rotating file retention.
-    # We use a daily rotation with minimal backup to approximate ~24h window.
     DAILY_BASENAME: str = "lumen_daily.json.log"
-    DAILY_BACKUP_COUNT: int = 1  # keep only the most recent rolled file
+    DAILY_BACKUP_COUNT: int = 1
+
+    QUEUE_MAX_SIZE: int = 10_000
 
     @property
     def environment(self) -> str:
@@ -118,7 +113,6 @@ class LoggerConfig:
 
     @property
     def logs_dir(self) -> Path:
-        # Ensure logs are always stored outside the source tree.
         return Path(Config.LOGS_DIR).resolve()
 
     @property
@@ -130,29 +124,46 @@ class LoggerConfig:
 
     @property
     def use_json(self) -> bool:
-        # In production we always prefer JSON. In dev, Config may override.
-        try:
-            json_flag = Config.get("LOG_JSON", None)
-        except Exception:
-            json_flag = None
-
+        json_flag = getattr(Config, "LOG_JSON", None)
         if json_flag is None:
             return self.is_production
         return bool(json_flag)
 
     @property
     def use_colors(self) -> bool:
-        # Colors only in non-production, TTY consoles, and when not using JSON.
         if self.is_production or self.use_json:
             return False
-        try:
-            colors_flag = Config.get("LOG_COLORS", True)
-        except Exception:
-            colors_flag = True
+        colors_flag = getattr(Config, "LOG_COLORS", True)
         return bool(colors_flag) and sys.stdout.isatty()
 
 
 LOGGER_CONFIG = LoggerConfig()
+
+
+# ============================================================================
+# Logging Metrics / Health
+# ============================================================================
+
+
+@dataclass(slots=True)
+class LoggingMetrics:
+    records_enqueued: int = 0
+    records_dropped: int = 0
+    listener_errors: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class LoggingHealth:
+    initialized: bool
+    queue_size: int
+    queue_max_size: int
+    records_enqueued: int
+    records_dropped: int
+    listener_errors: int
+
+
+_logging_metrics: LoggingMetrics = LoggingMetrics()
+_log_queue: Optional["queue.Queue[logging.LogRecord]"] = None
 
 
 # ============================================================================
@@ -161,21 +172,6 @@ LOGGER_CONFIG = LoggerConfig()
 
 
 class ContextFilter(logging.Filter):
-    """
-    Inject ContextVar-based context into log records.
-
-    Fields added:
-    - user_id
-    - guild_id
-    - command
-    - correlation_id
-    - request_id
-    - component
-    - operation
-
-    Values default to "N/A" when absent.
-    """
-
     def filter(self, record: logging.LogRecord) -> bool:  # type: ignore[override]
         context: Dict[str, Any] = _request_context.get({})
 
@@ -183,15 +179,12 @@ class ContextFilter(logging.Filter):
         record.guild_id = context.get("guild_id", "N/A")
         record.command = context.get("command", "N/A")
 
-        # Correlation ID + request ID (aliases for traceability).
         correlation_id = context.get("correlation_id") or context.get("request_id")
         if not correlation_id:
             correlation_id = "N/A"
         record.correlation_id = correlation_id
         record.request_id = context.get("request_id", correlation_id)
 
-        # Component / operation for better observability.
-        # Component defaults to the top-level logger namespace.
         record.component = context.get("component") or record.name.split(".", 1)[0]
         record.operation = context.get("operation", "N/A")
 
@@ -199,60 +192,30 @@ class ContextFilter(logging.Filter):
 
 
 class ColoredFormatter(logging.Formatter):
-    """
-    Colored console formatter for development readability.
-
-    Colors:
-        DEBUG    - Gray
-        INFO     - Blue
-        WARNING  - Yellow
-        ERROR    - Red
-        CRITICAL - Red + Bold
-    """
-
     COLORS: Dict[str, str] = {
-        "DEBUG": "\033[90m",         # Gray
-        "INFO": "\033[94m",          # Blue
-        "WARNING": "\033[93m",       # Yellow
-        "ERROR": "\033[91m",         # Red
-        "CRITICAL": "\033[91m\033[1m",  # Red + Bold
+        "DEBUG": "\033[90m",
+        "INFO": "\033[94m",
+        "WARNING": "\033[93m",
+        "ERROR": "\033[91m",
+        "CRITICAL": "\033[91m\033[1m",
         "RESET": "\033[0m",
     }
 
     def format(self, record: logging.LogRecord) -> str:  # type: ignore[override]
-        original_levelname = record.levelname
-        color_prefix = self.COLORS.get(original_levelname, "")
-        color_reset = self.COLORS["RESET"] if color_prefix else ""
+        original = record.levelname
+        prefix = self.COLORS.get(original, "")
+        reset = self.COLORS["RESET"] if prefix else ""
 
-        if color_prefix:
-            record.levelname = f"{color_prefix}{original_levelname}{color_reset}"
+        if prefix:
+            record.levelname = f"{prefix}{original}{reset}"
 
         try:
-            result = super().format(record)
+            return super().format(record)
         finally:
-            record.levelname = original_levelname
-
-        return result
+            record.levelname = original
 
 
 class JSONFormatter(logging.Formatter):
-    """
-    JSON formatter for structured logging.
-
-    Output includes:
-    - timestamp (UTC, ISO-8601)
-    - level
-    - logger
-    - message
-    - module, function, line
-    - component, operation
-    - user_id, guild_id, command
-    - correlation_id, request_id
-    - exception (if any)
-    - extra fields (from `extra={...}` in logger calls)
-    """
-
-    # Attributes considered "standard" and removed from the `extra` payload.
     STANDARD_ATTRS = {
         "name",
         "msg",
@@ -287,10 +250,10 @@ class JSONFormatter(logging.Formatter):
     }
 
     def format(self, record: logging.LogRecord) -> str:  # type: ignore[override]
-        timestamp = datetime.now(timezone.utc).isoformat()
+        created_dt = datetime.fromtimestamp(record.created, tz=timezone.utc)
 
         log_data: Dict[str, Any] = {
-            "timestamp": timestamp,
+            "timestamp": created_dt.isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -299,27 +262,23 @@ class JSONFormatter(logging.Formatter):
             "line": record.lineno,
         }
 
-        # Inject core context fields if present and meaningful.
         for attr in self.CONTEXT_ATTRS:
             value = getattr(record, attr, None)
-            if value is not None and value != "N/A":
+            if value not in (None, "N/A"):
                 log_data[attr] = value
 
-        # Exception info.
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
 
-        # Collect all non-standard attributes as "extra".
         extra: Dict[str, Any] = {}
-        for key, value in record.__dict__.items():
+        for key, val in record.__dict__.items():
             if key in self.STANDARD_ATTRS or key in self.CONTEXT_ATTRS:
                 continue
             if key.startswith("_"):
                 continue
-            # Avoid duplicating fields we already included explicitly.
             if key in {"levelname", "name", "message", "asctime"}:
                 continue
-            extra[key] = value
+            extra[key] = val
 
         if extra:
             log_data["extra"] = extra
@@ -328,14 +287,43 @@ class JSONFormatter(logging.Formatter):
 
 
 # ============================================================================
-# Global Queue Listener (async-safe logging)
+# Custom Queue Handler & Listener
+# ============================================================================
+
+
+class LumenQueueHandler(QueueHandler):
+    def enqueue(self, record: logging.LogRecord) -> None:  # type: ignore[override]
+        global _logging_metrics
+        _logging_metrics.records_enqueued += 1
+
+        try:
+            self.queue.put_nowait(record)
+        except queue.Full:
+            _logging_metrics.records_dropped += 1
+            try:
+                sys.stderr.write("Lumen logging queue full; dropping log record.\n")
+            except Exception:
+                pass
+
+
+class LumenQueueListener(QueueListener):
+    def handleError(self, record: logging.LogRecord) -> None:  # type: ignore[override]
+        global _logging_metrics
+        _logging_metrics.listener_errors += 1
+        try:
+            sys.stderr.write("Lumen logging handler error while processing record.\n")
+        except Exception:
+            pass
+
+
+# ============================================================================
+# Global Setup
 # ============================================================================
 
 _queue_listener: Optional[QueueListener] = None
 
 
 def _build_console_handler() -> logging.Handler:
-    """Create the console handler based on environment and configuration."""
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(LOGGER_CONFIG.log_level)
 
@@ -360,13 +348,6 @@ def _build_console_handler() -> logging.Handler:
 
 
 def _build_daily_file_handler() -> logging.Handler:
-    """
-    Create a daily rotating file handler with minimal retention.
-
-    - Rotates at midnight (UTC).
-    - Keeps only a small number of backups (configured as ~24h window).
-    - Always uses JSONFormatter to keep file output structured.
-    """
     LOGGER_CONFIG.logs_dir.mkdir(parents=True, exist_ok=True)
     log_file = LOGGER_CONFIG.logs_dir / LOGGER_CONFIG.DAILY_BASENAME
 
@@ -384,65 +365,49 @@ def _build_daily_file_handler() -> logging.Handler:
 
 
 def setup_logging() -> None:
-    """
-    Configure global logging for the Lumen application.
+    global _queue_listener, _logging_metrics, _log_queue
 
-    Features
-    --------
-    - Async-safe logging via QueueHandler/QueueListener.
-    - Console handler:
-        - JSON in production for log aggregation.
-        - Colored human-readable in development.
-    - Minimal daily rotating file handler with ~24h retention.
-    - ContextFilter for LogContext propagation.
-    - Suppresses noisy third-party loggers at WARNING+.
-    """
-    global _queue_listener
+    root = logging.getLogger()
 
-    root_logger = logging.getLogger()
-    # Avoid re-initialization if already configured.
-    if getattr(root_logger, "_lumen_logging_initialized", False):
+    if getattr(root, "_lumen_logging_initialized", False):
         return
 
-    root_logger.setLevel(LOGGER_CONFIG.log_level)
-    root_logger.handlers.clear()
-    root_logger.filters.clear()
+    _logging_metrics = LoggingMetrics()
 
-    # Context enrichment filter.
-    root_logger.addFilter(ContextFilter())
+    root.setLevel(LOGGER_CONFIG.log_level)
+    root.handlers.clear()
+    root.filters.clear()
 
-    # Build actual output handlers.
-    console_handler = _build_console_handler()
-    daily_handler = _build_daily_file_handler()
+    root.addFilter(ContextFilter())
 
-    # Queue listener for async-safe logging.
-    log_queue: "queue.Queue[logging.LogRecord]" = queue.Queue(-1)
-    _queue_listener = QueueListener(
-        log_queue,
-        console_handler,
-        daily_handler,
+    console = _build_console_handler()
+    file_handler = _build_daily_file_handler()
+
+    _log_queue = queue.Queue(LOGGER_CONFIG.QUEUE_MAX_SIZE)
+
+    _queue_listener = LumenQueueListener(
+        _log_queue,
+        console,
+        file_handler,
         respect_handler_level=True,
     )
     _queue_listener.start()
 
-    queue_handler = QueueHandler(log_queue)
+    queue_handler = LumenQueueHandler(_log_queue)
     queue_handler.setLevel(LOGGER_CONFIG.log_level)
 
-    root_logger.addHandler(queue_handler)
+    root.addHandler(queue_handler)
 
-    # Suppress noisy third-party loggers.
     logging.getLogger("discord").setLevel(logging.WARNING)
     logging.getLogger("discord.http").setLevel(logging.WARNING)
     logging.getLogger("discord.gateway").setLevel(logging.WARNING)
     logging.getLogger("discord.client").setLevel(logging.WARNING)
     logging.getLogger("asyncio").setLevel(logging.WARNING)
 
-    # Mark as initialized.
-    setattr(root_logger, "_lumen_logging_initialized", True)
+    setattr(root, "_lumen_logging_initialized", True)
 
-    # Log initialization summary using our own logger.
-    init_logger = logging.getLogger(__name__)
-    init_logger.info(
+    log = logging.getLogger(__name__)
+    log.info(
         "Logging initialized",
         extra={
             "environment": LOGGER_CONFIG.environment,
@@ -450,77 +415,78 @@ def setup_logging() -> None:
             "json": LOGGER_CONFIG.use_json,
             "colors": LOGGER_CONFIG.use_colors,
             "logs_dir": str(LOGGER_CONFIG.logs_dir),
-            "daily_basename": LOGGER_CONFIG.DAILY_BASENAME,
-            "daily_backup_count": LOGGER_CONFIG.DAILY_BACKUP_COUNT,
+            "queue_max_size": LOGGER_CONFIG.QUEUE_MAX_SIZE,
         },
     )
 
 
 def shutdown_logging() -> None:
-    """
-    Stop the QueueListener and flush/close handlers.
+    global _queue_listener, _log_queue
 
-    Should be called on graceful application shutdown, if possible.
-    """
-    global _queue_listener
-    if _queue_listener is not None:
-        _queue_listener.stop()
-        _queue_listener = None
+    root = logging.getLogger()
+    log = logging.getLogger(__name__)
+
+    if not getattr(root, "_lumen_logging_initialized", False):
+        return
+
+    log.info("Shutting down logging subsystem.")
+
+    if _queue_listener:
+        try:
+            _queue_listener.stop()
+        except Exception:
+            log.exception("Error while stopping logging queue listener.")
+        finally:
+            _queue_listener = None
+
+    for handler in list(root.handlers):
+        try:
+            handler.flush()
+        except Exception:
+            log.exception("Error while flushing logging handler.")
+        try:
+            handler.close()
+        except Exception:
+            log.exception("Error while closing logging handler.")
+        root.removeHandler(handler)
+
+    root.filters.clear()
+    setattr(root, "_lumen_logging_initialized", False)
+    _log_queue = None
+
+
+def get_logging_health() -> LoggingHealth:
+    initialized = bool(getattr(logging.getLogger(), "_lumen_logging_initialized", False))
+
+    queue_size = 0
+    max_size = 0
+    if _log_queue is not None:
+        try:
+            queue_size = _log_queue.qsize()
+        except Exception:
+            queue_size = -1
+        max_size = _log_queue.maxsize
+
+    return LoggingHealth(
+        initialized=initialized,
+        queue_size=queue_size,
+        queue_max_size=max_size,
+        records_enqueued=_logging_metrics.records_enqueued,
+        records_dropped=_logging_metrics.records_dropped,
+        listener_errors=_logging_metrics.listener_errors,
+    )
 
 
 # ============================================================================
-# Public Logger API
+# Public API
 # ============================================================================
 
 
 def get_logger(name: str) -> Logger:
-    """
-    Return a configured logger for the given module/component.
-
-    Parameters
-    ----------
-    name:
-        Module or component name (typically __name__).
-
-    Returns
-    -------
-    logging.Logger
-        Logger instance with full Config + LogContext integration.
-
-    Examples
-    --------
-    >>> logger = get_logger(__name__)
-    >>> logger.info("Service initialized", extra={"component": "player_service"})
-    """
     return logging.getLogger(name)
 
 
-# ============================================================================
-# LogContext Helpers
-# ============================================================================
-
-
 class LogContext:
-    """
-    Context manager for setting request context in logs.
-
-    Injects user, guild, command, component, operation and correlation_id
-    into all log records created within its scope.
-
-    Example
-    -------
-    >>> async with LogContext(
-    ...     user_id=123,
-    ...     guild_id=456,
-    ...     command="/fuse",
-    ...     component="fusion_service",
-    ...     operation="execute_fusion",
-    ... ):
-    ...     logger.info("Starting fusion")
-    ...     await fusion_service.execute()
-    ...     logger.info("Fusion complete")
-    """
-
     def __init__(
         self,
         user_id: Optional[int] = None,
@@ -532,11 +498,11 @@ class LogContext:
         request_id: Optional[str] = None,
         **extra: Any,
     ) -> None:
-        # Generate a short correlation ID if none is provided.
+
         if not correlation_id and not request_id:
             correlation_id = self._generate_correlation_id()
 
-        effective_correlation_id = correlation_id or request_id or self._generate_correlation_id()
+        effective = correlation_id or request_id or self._generate_correlation_id()
 
         self.context: Dict[str, Any] = {
             "user_id": str(user_id) if user_id is not None else "N/A",
@@ -544,15 +510,15 @@ class LogContext:
             "command": command or "N/A",
             "component": component,
             "operation": operation,
-            "correlation_id": effective_correlation_id,
-            "request_id": request_id or effective_correlation_id,
+            "correlation_id": effective,
+            "request_id": request_id or effective,
             **extra,
         }
-        self._token: Optional[object] = None
+
+        self._token: Optional[Token[Dict[str, Any]]] = None
 
     @staticmethod
     def _generate_correlation_id() -> str:
-        """Generate a short correlation ID for tracing."""
         return str(uuid.uuid4())[:8]
 
     def __enter__(self) -> "LogContext":
@@ -580,32 +546,8 @@ def set_log_context(
     request_id: Optional[str] = None,
     **extra: Any,
 ) -> None:
-    """
-    Imperatively set log context for the current async task.
 
-    Useful when a context manager cannot be used but contextual logging is still
-    required.
-
-    Parameters
-    ----------
-    user_id:
-        Discord user ID.
-    guild_id:
-        Discord guild ID.
-    command:
-        Command name (e.g. "/fuse").
-    component:
-        Logical component or service name.
-    operation:
-        Operation or workflow name.
-    correlation_id:
-        Correlation ID for cross-service tracing.
-    request_id:
-        Request ID; if provided, will be mirrored to correlation_id if missing.
-    extra:
-        Additional key/value pairs to attach to the log context.
-    """
-    current: Dict[str, Any] = _request_context.get({}).copy()
+    current = _request_context.get({}).copy()
 
     if user_id is not None:
         current["user_id"] = str(user_id)
@@ -630,9 +572,11 @@ def set_log_context(
 
 
 def clear_log_context() -> None:
-    """Clear log context for the current async task."""
     _request_context.set({})
 
 
-# Initialize logging on module import.
+# Initialize logging automatically
 setup_logging()
+
+
+

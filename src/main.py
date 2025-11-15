@@ -4,7 +4,6 @@ import sys
 from src.core.config.config import Config
 from src.core.logging.logger import get_logger
 from src.bot.lumen_bot import LumenBot
-from src.core.event.registry import register_all_event_listeners
 
 logger = get_logger(__name__)
 
@@ -18,9 +17,6 @@ async def main():
         sys.exit(1)
 
     bot = LumenBot()
-
-    # Register all event listeners
-    await register_all_event_listeners(bot)
 
     try:
         logger.info("🚀 Starting Lumen RPG...")

@@ -3,8 +3,8 @@ Bot Lifecycle Management for Lumen (2025)
 
 Purpose
 -------
-Handles bot startup, service initialization, health monitoring, and graceful shutdown.
-Separates lifecycle concerns from Discord integration logic.
+Handle bot startup, service initialization, health monitoring, and graceful
+shutdown. This separates lifecycle concerns from Discord integration logic.
 
 Responsibilities
 ----------------
@@ -12,36 +12,35 @@ Responsibilities
 - Service initialization with timing and error handling
 - Background health monitoring for critical services
 - Graceful shutdown with resource cleanup
-- Startup metrics tracking and logging
+- Startup and runtime metrics tracking
 
 Non-Responsibilities
 --------------------
 - Discord event handling (handled by LumenBot)
 - Command execution (handled by LumenBot)
-- Cog loading (handled by LumenBot)
+- Cog loading (handled by loader module)
 
 Lumen 2025 Compliance
 ---------------------
-- Observability: Structured logging for all lifecycle events
-- Graceful degradation: Non-blocking health checks
-- Error boundaries: Service failures don't crash bot
-- Metrics: Comprehensive startup and health metrics
+- Observability-first: structured logging for all lifecycle events
+- Graceful degradation: non-blocking health checks
+- Error boundaries: service failures do not crash bot unnecessarily
+- Config-driven tunables via ConfigManager
 
 Architecture Notes
 ------------------
-- BotLifecycle class manages all lifecycle concerns
-- ServiceHealth dataclass for health status tracking
-- StartupMetrics dataclass for initialization timing
-- Background asyncio task for health monitoring
-- ConfigManager integration for all tunables
+- BotLifecycle manages lifecycle only; it does not know about cogs.
+- ServiceHealth and StartupMetrics are dataclasses for clear state modeling.
+- Background health monitoring runs as an asyncio Task.
 """
 
 from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from src.core.config import ConfigManager
 from src.core.database.service import DatabaseService
@@ -99,11 +98,13 @@ class BotLifecycle:
     """
     Manages bot lifecycle: startup, health monitoring, and shutdown.
 
-    Handles service initialization with timing, background health monitoring,
-    and graceful shutdown with resource cleanup.
+    Handles:
+    - service initialization with timing
+    - background health monitoring
+    - graceful shutdown with resource cleanup
     """
 
-    def __init__(self, bot: commands.Bot) -> None:
+    def __init__(self, bot: "commands.Bot") -> None:
         """
         Initialize bot lifecycle manager.
 
@@ -114,26 +115,36 @@ class BotLifecycle:
         """
         self.bot = bot
         self.metrics = BotMetrics()
-        self._health_task: Optional[asyncio.Task] = None
+        self._health_task: Optional[asyncio.Task[None]] = None
         self._is_shutting_down = False
 
-        # Configuration
-        self._health_check_interval = ConfigManager.get(
-            "bot.health_check_interval_seconds", 60
+        # Configuration (config-driven with safe defaults)
+        self._health_check_interval: float = float(
+            ConfigManager.get("bot.health_check_interval_seconds", 60)
         )
-        self._startup_timeout = ConfigManager.get("bot.startup_timeout_seconds", 60)
+        self._startup_timeout: float = float(
+            ConfigManager.get("bot.startup_timeout_seconds", 60)
+        )
+        self._redis_degraded_latency_ms: float = float(
+            ConfigManager.get("bot.redis_degraded_latency_ms", 100.0)
+        )
+        self._slow_startup_threshold_ms: float = float(
+            ConfigManager.get("bot.startup_slow_threshold_ms", 10_000.0)
+        )
 
         logger.info(
             "BotLifecycle initialized",
             extra={
-                "health_check_interval": self._health_check_interval,
-                "startup_timeout": self._startup_timeout,
+                "health_check_interval_seconds": self._health_check_interval,
+                "startup_timeout_seconds": self._startup_timeout,
+                "redis_degraded_latency_ms": self._redis_degraded_latency_ms,
+                "slow_startup_threshold_ms": self._slow_startup_threshold_ms,
             },
         )
 
-    # ═════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════
     # STARTUP VALIDATION
-    # ═════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════
 
     async def validate_startup(self) -> None:
         """
@@ -146,14 +157,13 @@ class BotLifecycle:
         """
         logger.info("Validating bot startup configuration")
 
-        # Check required config
         required_keys = [
             "discord.token",
             "database.url",
             "redis.host",
         ]
 
-        missing_keys = []
+        missing_keys: List[str] = []
         for key in required_keys:
             try:
                 value = ConfigManager.get(key)
@@ -163,25 +173,22 @@ class BotLifecycle:
                 missing_keys.append(key)
 
         if missing_keys:
-            raise ValueError(
-                f"Missing required configuration: {', '.join(missing_keys)}"
-            )
+            raise ValueError(f"Missing required configuration: {', '.join(missing_keys)}")
 
-        # Validate bot token format (basic check)
         token = ConfigManager.get("discord.token")
         if not isinstance(token, str) or len(token) < 50:
             raise ValueError("Invalid Discord token format")
 
         logger.info("Startup validation passed")
 
-    # ═════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════
     # SERVICE INITIALIZATION
-    # ═════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════
 
     async def initialize_service(
         self,
         name: str,
-        init_coro: Coroutine[Any, Any, Any],
+        init_coro: "asyncio.Future[Any] | Coroutine[Any, Any, Any]",
         required: bool = True,
     ) -> float:
         """
@@ -207,29 +214,29 @@ class BotLifecycle:
             If a required service fails to initialize.
         """
         start_time = time.perf_counter()
-
-        logger.info(f"Initializing {name}...")
+        logger.info("Initializing service", extra={"service": name})
 
         try:
             await asyncio.wait_for(init_coro, timeout=self._startup_timeout)
 
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             logger.info(
-                f"{name} initialized successfully",
+                "Service initialized successfully",
                 extra={"service": name, "time_ms": round(elapsed_ms, 2)},
             )
-
             return elapsed_ms
 
         except asyncio.TimeoutError:
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             error_msg = f"{name} initialization timed out after {self._startup_timeout}s"
 
-            logger.error(error_msg, extra={"service": name, "time_ms": elapsed_ms})
+            logger.error(
+                "Service initialization timeout",
+                extra={"service": name, "time_ms": elapsed_ms},
+            )
 
             if required:
                 raise RuntimeError(error_msg)
-
             return elapsed_ms
 
         except Exception as exc:
@@ -237,10 +244,11 @@ class BotLifecycle:
             error_msg = f"{name} initialization failed: {exc}"
 
             logger.error(
-                error_msg,
+                "Service initialization failed",
                 extra={
                     "service": name,
                     "time_ms": elapsed_ms,
+                    "error": str(exc),
                     "error_type": type(exc).__name__,
                 },
                 exc_info=True,
@@ -248,7 +256,6 @@ class BotLifecycle:
 
             if required:
                 raise RuntimeError(error_msg) from exc
-
             return elapsed_ms
 
     def log_startup_summary(self, startup_metrics: StartupMetrics) -> None:
@@ -274,15 +281,18 @@ class BotLifecycle:
             },
         )
 
-        # Log warning if startup took too long
-        if startup_metrics.total_time_ms > 10000:  # 10 seconds
+        if startup_metrics.total_time_ms > self._slow_startup_threshold_ms:
             logger.warning(
-                f"Slow startup detected: {round(startup_metrics.total_time_ms / 1000, 2)}s"
+                "Slow startup detected",
+                extra={
+                    "total_time_ms": round(startup_metrics.total_time_ms, 2),
+                    "threshold_ms": self._slow_startup_threshold_ms,
+                },
             )
 
-    # ═════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════
     # HEALTH MONITORING
-    # ═════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════
 
     def start_health_monitoring(self) -> None:
         """Start background health monitoring task."""
@@ -322,38 +332,33 @@ class BotLifecycle:
         """
         Check health of all critical services.
 
-        Updates metrics and logs unhealthy services.
+        Updates metrics and logs unhealthy or degraded services.
         """
         self.metrics.health_checks_performed += 1
         self.metrics.last_health_check = time.time()
 
         services_checked: List[ServiceHealth] = []
 
-        # Check database
         db_health = await self._check_database_health()
         services_checked.append(db_health)
 
-        # Check Redis
         redis_health = await self._check_redis_health()
         services_checked.append(redis_health)
 
-        # Update metrics
         self.metrics.services_healthy = sum(1 for s in services_checked if s.healthy)
         self.metrics.services_degraded = sum(1 for s in services_checked if s.degraded)
         self.metrics.services_unhealthy = sum(
             1 for s in services_checked if not s.healthy and not s.degraded
         )
 
-        # Store service health
         for service in services_checked:
             self.metrics.service_health[service.name] = service
 
-        # Log unhealthy services
         unhealthy = [s for s in services_checked if not s.healthy]
         if unhealthy:
             for service in unhealthy:
                 logger.warning(
-                    f"Service unhealthy: {service.name}",
+                    "Service unhealthy",
                     extra={
                         "service": service.name,
                         "degraded": service.degraded,
@@ -376,10 +381,8 @@ class BotLifecycle:
                 degraded=False,
                 latency_ms=latency_ms,
             )
-
         except Exception as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
-
             return ServiceHealth(
                 name="database",
                 healthy=False,
@@ -395,9 +398,7 @@ class BotLifecycle:
         try:
             is_healthy = await RedisService.health_check()
             latency_ms = (time.perf_counter() - start_time) * 1000
-
-            # Check if degraded (high latency)
-            degraded = latency_ms > 100  # 100ms threshold
+            degraded = latency_ms > self._redis_degraded_latency_ms
 
             return ServiceHealth(
                 name="redis",
@@ -405,10 +406,8 @@ class BotLifecycle:
                 degraded=degraded,
                 latency_ms=latency_ms,
             )
-
         except Exception as exc:
             latency_ms = (time.perf_counter() - start_time) * 1000
-
             return ServiceHealth(
                 name="redis",
                 healthy=False,
@@ -417,9 +416,9 @@ class BotLifecycle:
                 latency_ms=latency_ms,
             )
 
-    # ═════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════
     # SHUTDOWN
-    # ═════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════
 
     async def shutdown(self) -> None:
         """
@@ -434,7 +433,6 @@ class BotLifecycle:
         self._is_shutting_down = True
         logger.info("Starting graceful shutdown")
 
-        # Stop health monitoring
         if self._health_task:
             self._health_task.cancel()
             try:
@@ -444,39 +442,42 @@ class BotLifecycle:
             self._health_task = None
             logger.debug("Health monitoring stopped")
 
-        # Close services
         shutdown_tasks = [
-            ("Database", DatabaseService.close()),
-            ("Redis", RedisService.close()),
+            ("Database", DatabaseService.shutdown()),
+            ("Redis", RedisService.shutdown()),
         ]
 
         for service_name, shutdown_coro in shutdown_tasks:
             try:
                 await asyncio.wait_for(shutdown_coro, timeout=5.0)
-                logger.info(f"{service_name} closed successfully")
+                logger.info("%s closed successfully", service_name)
             except asyncio.TimeoutError:
-                logger.warning(f"{service_name} shutdown timed out")
+                logger.warning("%s shutdown timed out", service_name)
             except Exception as exc:
                 logger.error(
-                    f"Error closing {service_name}: {exc}",
-                    extra={"error_type": type(exc).__name__},
+                    "Error closing service during shutdown",
+                    extra={
+                        "service": service_name,
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                    },
                     exc_info=True,
                 )
 
         logger.info("Graceful shutdown complete")
 
-    # ═════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════
     # METRICS
-    # ═════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════
 
     def get_metrics_snapshot(self) -> Dict[str, Any]:
         """
-        Get current metrics snapshot.
+        Get a snapshot of current metrics and service health.
 
         Returns
         -------
         Dict[str, Any]
-            Dictionary with all metrics and service health status.
+            Dictionary with metrics and service health status.
         """
         return {
             "commands_executed": self.metrics.commands_executed,
@@ -498,3 +499,5 @@ class BotLifecycle:
                 for name, health in self.metrics.service_health.items()
             },
         }
+
+

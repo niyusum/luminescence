@@ -1,65 +1,109 @@
 """
-Database subsystem: centralized async engine & session management (Lumen 2025)
+Database Service - Core Infrastructure Layer (Lumen 2025)
 
 Purpose
 -------
-This module provides the core database infrastructure for Lumen:
-
-- A single shared SQLAlchemy AsyncEngine instance.
-- A session factory for creating isolated AsyncSession instances.
-- Context managers for:
-  - read-only sessions (`get_session`)
-  - atomic write transactions (`get_transaction`)
-- A simple health check for infra-level probes.
+Centralized async database engine and session management for the Lumen RPG system.
+Provides atomic transactions, pessimistic locking, health monitoring, and comprehensive
+observability for all database operations.
 
 Responsibilities
 ----------------
-- Initialize and dispose the database engine (idempotent).
-- Provide async context managers for read and write access.
-- Enforce atomic transactions with automatic rollback-on-exception.
-- Support pessimistic locking via SQLAlchemy's `with_for_update=True` pattern.
-- Emit structured logs and database metrics for key lifecycle events.
-- Expose a fast health check for readiness/liveness probes.
-- Provide connection pool metrics for monitoring and capacity planning.
+- Initialize and manage a single AsyncEngine instance with connection pooling
+- Provide async context managers for read-only sessions and atomic transactions
+- Enforce transaction discipline: automatic commit on success, rollback on exception
+- Support pessimistic row locking via `with_for_update=True`
+- Expose health checks for infrastructure monitoring
+- Record detailed metrics for engine lifecycle, transactions, and connection pool usage
+- Configure statement timeouts for PostgreSQL connections
+- Provide idempotent initialization with async lock protection
 
 Non-Responsibilities
 --------------------
-This module is intentionally infra-pure and does NOT:
+- Query-level observability (handled by QueryObserver)
+- Retry policies for transient failures (handled by DatabaseRetryPolicy)
+- Background health monitoring (handled by DatabaseHealthMonitor)
+- Database migrations or schema management (handled by Alembic)
+- Domain logic, business rules, or Discord integration
+- Cross-service orchestration or event emission
 
-- Run background health monitors or schedulers.
-- Perform query-level observability (handled by `query_observer.py`).
-- Apply retry policies for domain operations (handled by callers / `retry_policy.py`).
-- Perform migrations, table creation, or destructive operations.
-- Know anything about domain models, SQLModel, or feature modules.
-- Contain any business logic or Discord-related code.
-
-Lumen 2025 Compliance
+LUMEN 2025 Compliance
 ---------------------
-- **Strict layering**: Infra-only; no domain, service, or Discord imports.
-- **Transaction discipline**:
-  - `get_transaction()` wraps all writes in a single atomic transaction.
-  - Automatic `commit` on success, `rollback` on any exception.
-  - Callers should NOT manually commit except in exceptional cases.
-- **Pessimistic locking**:
-  - Services must use:
-    `await session.get(Player, player_id, with_for_update=True)`
-    inside `get_transaction()` contexts.
-- **Observability**:
-  - Structured logs on initialization, shutdown, errors, and transaction outcomes.
-  - Metrics emitted via `src.core.database.metrics.DatabaseMetrics`.
-  - Health check for infra-level probes (`health_check()`).
-- **Config-driven**:
-  - All tunable parameters (timeouts, pool sizes) sourced from config.
-- **Safety**:
-  - Idempotent initialization guarded by an async lock.
-  - Clear, domain-specific infra exceptions for initialization and usage errors.
+✓ Article I: Transaction-safe with pessimistic locking support
+✓ Article II: Comprehensive structured logging and audit trail
+✓ Article III: Config-driven (all tunables from Config)
+✓ Article IX: Graceful degradation with clear error messages
+✓ Article X: Maximum observability (metrics, logs, health checks)
 
-Design Notes
-------------
-- Uses `QueuePool` in normal environments and `NullPool` in tests.
-- Supports PostgreSQL `statement_timeout` when using a Postgres URL.
-- `get_session()` is for read-only or advanced cases; `get_transaction()`
-  is the standard entry-point for **all state mutations**.
+Architecture Notes
+------------------
+**Transaction Model**:
+- `get_transaction()` is the primary interface for all state mutations
+- Automatic commit on success, rollback on any exception
+- Never manually call `session.commit()` inside service code
+- Use pessimistic locks: `await session.get(Model, pk, with_for_update=True)`
+
+**Connection Pooling**:
+- QueuePool for production (configurable pool_size and max_overflow)
+- NullPool for testing environments (no connection reuse)
+- Automatic connection recycling via pool_recycle
+- Pool timeout protection via pool_timeout
+
+**Health Checks**:
+- Lightweight `SELECT 1` query for fast liveness probes
+- Records timing and success/failure metrics
+- Suitable for Kubernetes readiness/liveness endpoints
+
+**Configuration**:
+All values sourced from Config with safe defaults:
+- DATABASE_URL (required)
+- DATABASE_POOL_SIZE (default: 5)
+- DATABASE_MAX_OVERFLOW (default: 10)
+- DATABASE_POOL_RECYCLE (default: 1800)
+- DATABASE_POOL_TIMEOUT (default: 30)
+- DATABASE_STATEMENT_TIMEOUT_MS (default: 30000)
+- DATABASE_ECHO (default: False)
+- TESTING (default: False)
+
+Usage Example
+-------------
+Atomic write transaction (preferred):
+
+>>> from src.core.database.service import DatabaseService
+>>> from src.database.models import Player
+>>>
+>>> async with DatabaseService.get_transaction() as session:
+>>>     player = await session.get(Player, player_id, with_for_update=True)
+>>>     player.lumees += 1000
+>>>     # Automatic commit on exit
+
+Read-only access:
+
+>>> async with DatabaseService.get_session() as session:
+>>>     result = await session.execute(select(Player).where(Player.id == player_id))
+>>>     player = result.scalar_one_or_none()
+
+Pessimistic locking helper:
+
+>>> async with DatabaseService.get_transaction() as session:
+>>>     player = await DatabaseService.get_locked_entity(session, Player, player_id)
+>>>     player.lumees += 1000
+
+Error Handling
+--------------
+**DatabaseInitializationError** - Raised when:
+- DATABASE_URL is missing or invalid
+- Engine creation fails
+- Configuration is malformed
+
+**DatabaseNotInitializedError** - Raised when:
+- Session requested before initialize() is called
+- Service methods called after shutdown()
+
+**Automatic Rollback** - Triggered by:
+- OperationalError (connection failures, timeouts)
+- DBAPIError (database-level errors)
+- Any unhandled exception in transaction context
 """
 
 from __future__ import annotations
@@ -68,7 +112,7 @@ import asyncio
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Optional, Type
+from typing import Any, AsyncGenerator, Optional, Type, TypeVar
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, OperationalError
@@ -86,31 +130,35 @@ from src.core.database.metrics import DatabaseMetrics
 
 logger = get_logger(__name__)
 
+# Type variable for generic entity locking
+T = TypeVar("T")
 
-# --------------------------------------------------------------------------- #
-# Exceptions
-# --------------------------------------------------------------------------- #
+
+# ============================================================================
+# Domain Exceptions
+# ============================================================================
 
 
 class DatabaseInitializationError(RuntimeError):
-    """Raised when the database engine fails to initialize."""
+    """Raised when database engine initialization fails."""
 
 
 class DatabaseNotInitializedError(RuntimeError):
-    """Raised when the database engine or session factory is used before init."""
+    """Raised when database operations are attempted before initialization."""
 
 
-# --------------------------------------------------------------------------- #
-# Configuration snapshot
-# --------------------------------------------------------------------------- #
+# ============================================================================
+# Configuration Snapshot
+# ============================================================================
 
 
 @dataclass(frozen=True)
 class _DatabaseConfigSnapshot:
-    """Simple immutable snapshot of DB-related configuration values.
+    """
+    Immutable snapshot of database configuration.
 
-    This prevents repeated Config lookups and gives a stable view for the
-    lifetime of the process (or until re-initialization).
+    Prevents repeated Config lookups and provides a stable configuration
+    view for the lifetime of the engine.
     """
 
     url: str
@@ -124,41 +172,44 @@ class _DatabaseConfigSnapshot:
 
     @property
     def is_postgres(self) -> bool:
+        """Check if the configured database is PostgreSQL."""
         return self.url.startswith(("postgresql://", "postgresql+asyncpg://"))
+
+    @property
+    def url_scheme(self) -> str:
+        """Extract the URL scheme for logging/metrics."""
+        return self.url.split(":", 1)[0] if ":" in self.url else "unknown"
+
+
+# ============================================================================
+# DatabaseService - Core Infrastructure
+# ============================================================================
 
 
 class DatabaseService:
     """
-    Centralized async database engine & session management.
+    Centralized async database engine and session management.
 
     Public API
     ----------
-    - initialize() -> None
-    - shutdown() -> None
-    - get_session() -> Async context manager for read-only or manual control.
-    - get_transaction() -> Async context manager for atomic write transactions.
-    - health_check() -> bool indicating DB reachability.
-    - get_pool_metrics() -> dict with current connection pool metrics.
-    - record_pool_metrics() -> Record pool metrics to monitoring backend.
-    - get_locked_entity() -> helper for pessimistic row locking.
+    **Lifecycle**:
+    - initialize() -> Initialize engine and session factory
+    - shutdown() -> Dispose engine and cleanup resources
 
-    Usage
-    -----
-    # Writes (preferred)
-    >>> async with DatabaseService.get_transaction() as session:
-    ...     player = await session.get(Player, player_id, with_for_update=True)
-    ...     player.lumees += 1000
+    **Session Management**:
+    - get_session() -> Read-only or manual transaction control
+    - get_transaction() -> Atomic write transaction (preferred)
 
-    # Reads
-    >>> async with DatabaseService.get_session() as session:
-    ...     result = await session.execute(select(Player))
+    **Utilities**:
+    - health_check() -> Fast database reachability check
+    - get_pool_metrics() -> Current connection pool statistics
+    - record_pool_metrics() -> Emit pool metrics to monitoring backend
+    - get_locked_entity() -> Helper for pessimistic row locking
 
-    Notes
-    -----
-    - You must call `DatabaseService.initialize()` once during application
-      startup before using sessions.
-    - `get_transaction()` is designed for *single-unit-of-work* flows. Avoid
-      nesting or long-lived transactions.
+    Thread Safety
+    -------------
+    All classmethods are safe for concurrent access. Initialization is
+    protected by an async lock to ensure idempotent behavior.
     """
 
     _engine: Optional[AsyncEngine] = None
@@ -166,24 +217,37 @@ class DatabaseService:
     _config_snapshot: Optional[_DatabaseConfigSnapshot] = None
     _init_lock: asyncio.Lock = asyncio.Lock()
 
-    # --------------------------------------------------------------------- #
+    # ========================================================================
     # Initialization & Shutdown
-    # --------------------------------------------------------------------- #
+    # ========================================================================
 
     @classmethod
     def _build_config_snapshot(cls) -> _DatabaseConfigSnapshot:
-        """Create an immutable snapshot of DB configuration values."""
+        """
+        Build an immutable configuration snapshot from Config.
+
+        All values are sourced from Config to comply with LES config-driven
+        architecture. Safe defaults are provided for all optional parameters.
+
+        Raises
+        ------
+        DatabaseInitializationError
+            If DATABASE_URL is missing or invalid.
+        """
         database_url = getattr(Config, "DATABASE_URL", None)
         if not database_url or not isinstance(database_url, str):
-            raise DatabaseInitializationError("DATABASE_URL is not configured")
+            logger.error("DATABASE_URL is not configured or invalid")
+            raise DatabaseInitializationError(
+                "DATABASE_URL must be configured as a non-empty string"
+            )
 
+        # Determine environment context
         is_testing = bool(getattr(Config, "TESTING", False)) or (
             hasattr(Config, "is_testing") and Config.is_testing()
         )
 
+        # Pool configuration
         pool_class: Type[Pool] = NullPool if is_testing else QueuePool
-
-        # All tunable values sourced from config with sensible defaults.
         pool_size = int(getattr(Config, "DATABASE_POOL_SIZE", 5))
         max_overflow = int(getattr(Config, "DATABASE_MAX_OVERFLOW", 10))
         pool_recycle = int(getattr(Config, "DATABASE_POOL_RECYCLE", 1800))
@@ -191,7 +255,6 @@ class DatabaseService:
         statement_timeout_ms = int(
             getattr(Config, "DATABASE_STATEMENT_TIMEOUT_MS", 30_000)
         )
-
         echo = bool(getattr(Config, "DATABASE_ECHO", False))
 
         snapshot = _DatabaseConfigSnapshot(
@@ -208,13 +271,14 @@ class DatabaseService:
         logger.debug(
             "Database configuration snapshot created",
             extra={
-                "url_scheme": database_url.split(":", 1)[0],
+                "url_scheme": snapshot.url_scheme,
                 "pool_class": pool_class.__name__,
                 "pool_size": pool_size,
                 "max_overflow": max_overflow,
                 "pool_recycle": pool_recycle,
                 "pool_timeout": pool_timeout,
                 "statement_timeout_ms": statement_timeout_ms,
+                "is_testing": is_testing,
             },
         )
 
@@ -223,258 +287,281 @@ class DatabaseService:
     @classmethod
     async def initialize(cls) -> None:
         """
-        Initialize the async engine and session factory (idempotent).
+        Initialize the database engine and session factory.
+
+        This method is idempotent and safe to call multiple times. If already
+        initialized, it returns immediately without re-creating the engine.
+
+        Configuration is sourced entirely from Config with safe defaults.
 
         Raises
         ------
         DatabaseInitializationError
-            If configuration is missing/invalid or engine creation fails.
+            If configuration is invalid or engine creation fails.
         """
-        if cls._engine is not None and cls._session_factory is not None:
-            # Already initialized; nothing to do.
-            return
-
         async with cls._init_lock:
-            if cls._engine is not None and cls._session_factory is not None:
+            if cls._engine is not None:
+                logger.debug("DatabaseService already initialized; skipping")
                 return
+
+            logger.info("Initializing DatabaseService")
 
             try:
                 config = cls._build_config_snapshot()
                 cls._config_snapshot = config
 
-                pool_kwargs = {}
-                if config.pool_class is QueuePool:
-                    pool_kwargs = {
-                        "pool_size": config.pool_size,
-                        "max_overflow": config.max_overflow,
-                        "pool_recycle": config.pool_recycle,
-                        "pool_timeout": config.pool_timeout,
-                    }
+                # Build engine arguments
+                engine_kwargs: dict[str, Any] = {
+                    "echo": config.echo,
+                    "poolclass": config.pool_class,
+                }
 
-                engine = create_async_engine(
-                    config.url,
-                    echo=config.echo,
-                    poolclass=config.pool_class,
-                    pool_pre_ping=True,
-                    **pool_kwargs,
-                )
+                # Add pool-specific arguments only for QueuePool
+                if config.pool_class == QueuePool:
+                    engine_kwargs.update(
+                        {
+                            "pool_size": config.pool_size,
+                            "max_overflow": config.max_overflow,
+                            "pool_recycle": config.pool_recycle,
+                            "pool_timeout": config.pool_timeout,
+                        }
+                    )
 
-                session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
-                    engine,
+                cls._engine = create_async_engine(config.url, **engine_kwargs)
+                cls._session_factory = async_sessionmaker(
+                    bind=cls._engine,
                     class_=AsyncSession,
                     expire_on_commit=False,
-                    autoflush=False,
-                    autocommit=False,
                 )
 
-                cls._engine = engine
-                cls._session_factory = session_factory
-
                 DatabaseMetrics.record_engine_initialized(
-                    url_scheme=config.url.split(":", 1)[0],
+                    url_scheme=config.url_scheme,
                     pool_class=config.pool_class.__name__,
                     pool_size=config.pool_size,
                     max_overflow=config.max_overflow,
                 )
 
                 logger.info(
-                    "DatabaseService initialized",
+                    "DatabaseService initialized successfully",
                     extra={
-                        "url_scheme": config.url.split(":", 1)[0],
+                        "url_scheme": config.url_scheme,
                         "pool_class": config.pool_class.__name__,
-                        "pool_size": config.pool_size,
-                        "max_overflow": config.max_overflow,
-                        "pool_recycle": config.pool_recycle,
-                        "pool_timeout": config.pool_timeout,
-                        "echo": config.echo,
                     },
                 )
 
-            except DatabaseInitializationError:
-                # Bubble up after logging; this is a configuration error.
-                logger.critical(
-                    "DatabaseService initialization failed due to configuration error",
-                    exc_info=True,
-                )
-                cls._engine = None
-                cls._session_factory = None
-                cls._config_snapshot = None
-                DatabaseMetrics.record_engine_initialization_failed(config_error=True)
-                raise
             except Exception as exc:
-                # Unknown engine creation failure.
-                logger.critical(
-                    "Failed to initialize DatabaseService",
-                    extra={"error": str(exc), "error_type": type(exc).__name__},
+                config_error = isinstance(exc, DatabaseInitializationError)
+                DatabaseMetrics.record_engine_initialization_failed(
+                    config_error=config_error
+                )
+                logger.error(
+                    "DatabaseService initialization failed",
+                    extra={
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                        "config_error": config_error,
+                    },
                     exc_info=True,
                 )
-                cls._engine = None
-                cls._session_factory = None
-                cls._config_snapshot = None
-                DatabaseMetrics.record_engine_initialization_failed(config_error=False)
                 raise DatabaseInitializationError(
-                    "Failed to initialize DatabaseService"
+                    f"Database initialization failed: {exc}"
                 ) from exc
 
     @classmethod
     async def shutdown(cls) -> None:
         """
-        Dispose the engine and clear the session factory.
+        Shutdown the database engine and cleanup resources.
 
-        Safe to call multiple times.
+        Disposes the engine, closes all connections, and resets internal state.
+        Safe to call multiple times; no-op if already shut down.
         """
-        engine = cls._engine
-        cls._engine = None
-        cls._session_factory = None
-        cls._config_snapshot = None
+        async with cls._init_lock:
+            if cls._engine is None:
+                logger.debug("DatabaseService not initialized; nothing to shutdown")
+                return
 
-        if engine is None:
-            logger.info("DatabaseService shutdown requested; no active engine")
-            return
+            logger.info("Shutting down DatabaseService")
 
-        try:
-            await engine.dispose()
-            logger.info("DatabaseService shutdown complete")
-            DatabaseMetrics.record_engine_shutdown()
-        except Exception as exc:
-            logger.error(
-                "Error during DatabaseService shutdown",
-                extra={"error": str(exc), "error_type": type(exc).__name__},
-                exc_info=True,
-            )
+            try:
+                await cls._engine.dispose()
+                DatabaseMetrics.record_engine_shutdown()
+                logger.info("DatabaseService shutdown complete")
 
-    @classmethod
-    async def close(cls) -> None:
-        """
-        Backwards-compatible alias for `shutdown()`.
-        """
-        await cls.shutdown()
+            except Exception as exc:
+                logger.error(
+                    "Error during DatabaseService shutdown",
+                    extra={
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                    },
+                    exc_info=True,
+                )
+                raise
 
-    # --------------------------------------------------------------------- #
+            finally:
+                cls._engine = None
+                cls._session_factory = None
+                cls._config_snapshot = None
+
+    # ========================================================================
     # Health Check
-    # --------------------------------------------------------------------- #
+    # ========================================================================
 
     @classmethod
     async def health_check(cls) -> bool:
         """
-        Perform a simple health check against the database.
+        Perform a lightweight health check by executing a simple query.
 
         Returns
         -------
         bool
-            True if the database is reachable and responds to a simple query;
-            False otherwise.
+            True if the database is reachable and responsive, False otherwise.
+
+        Notes
+        -----
+        - Does not raise exceptions on failure; returns False instead
+        - Records timing and success/failure metrics
+        - Suitable for Kubernetes liveness/readiness probes
         """
-        engine = cls._engine
-        if engine is None:
-            logger.warning(
-                "Database health check requested but engine is not initialized"
-            )
+        if cls._engine is None:
+            logger.warning("Health check called on uninitialized DatabaseService")
             DatabaseMetrics.record_health_check(success=False, duration_ms=0.0)
             return False
 
         start = time.perf_counter()
-        try:
-            async with engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
+        success = False
 
-            duration_ms = (time.perf_counter() - start) * 1000.0
-            DatabaseMetrics.record_health_check(success=True, duration_ms=duration_ms)
-            logger.debug(
-                "Database health check succeeded",
-                extra={"duration_ms": duration_ms},
-            )
+        try:
+            async with cls._engine.begin() as conn:
+                await conn.execute(text("SELECT 1"))
+            success = True
             return True
-        except Exception as exc:
-            duration_ms = (time.perf_counter() - start) * 1000.0
-            DatabaseMetrics.record_health_check(success=False, duration_ms=duration_ms)
-            logger.error(
+
+        except (OperationalError, DBAPIError) as exc:
+            logger.warning(
                 "Database health check failed",
                 extra={
                     "error": str(exc),
                     "error_type": type(exc).__name__,
-                    "duration_ms": duration_ms,
+                },
+            )
+            return False
+
+        except Exception as exc:
+            logger.error(
+                "Unexpected error during database health check",
+                extra={
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
                 },
                 exc_info=True,
             )
             return False
 
-    # --------------------------------------------------------------------- #
+        finally:
+            duration_ms = (time.perf_counter() - start) * 1000.0
+            DatabaseMetrics.record_health_check(
+                success=success, duration_ms=duration_ms
+            )
+            logger.debug(
+                "Database health check completed",
+                extra={"success": success, "duration_ms": duration_ms},
+            )
+
+    # ========================================================================
     # Connection Pool Metrics
-    # --------------------------------------------------------------------- #
+    # ========================================================================
 
     @classmethod
-    def get_pool_metrics(cls) -> Optional[dict[str, int]]:
+    def get_pool_metrics(cls) -> dict[str, int]:
         """
         Get current connection pool metrics.
 
         Returns
         -------
-        Optional[dict[str, int]]
-            Dictionary with pool metrics:
+        dict[str, int]
+            Dictionary containing:
             - pool_size: Configured pool size
             - checked_out: Connections currently in use
-            - checked_in: Connections available
+            - checked_in: Available connections
             - overflow: Overflow connections beyond pool_size
-            - total_connections: Total connections
-            Returns None if engine not initialized or using NullPool.
+            - total_connections: Sum of checked_out, checked_in, and overflow
+
+        Notes
+        -----
+        Returns a dict with all values set to 0 if the engine is not initialized
+        or does not support pool metrics (e.g., NullPool in testing).
         """
-        engine = cls._engine
+        if cls._engine is None or cls._config_snapshot is None:
+            logger.debug("Pool metrics requested but engine not initialized")
+            return {
+                "pool_size": 0,
+                "checked_out": 0,
+                "checked_in": 0,
+                "overflow": 0,
+                "total_connections": 0,
+            }
+
+        pool = cls._engine.pool
         config = cls._config_snapshot
 
-        if engine is None or config is None:
-            logger.warning("Pool metrics requested but engine not initialized")
-            return None
-
-        # NullPool doesn't have pool metrics
-        if config.pool_class.__name__ == "NullPool":
-            return None
+        # NullPool doesn't track metrics
+        if not hasattr(pool, "size") or config.pool_class == NullPool:
+            return {
+                "pool_size": 0,
+                "checked_out": 0,
+                "checked_in": 0,
+                "overflow": 0,
+                "total_connections": 0,
+            }
 
         try:
-            pool = engine.pool
-            # QueuePool provides size(), checkedout(), overflow()
-            pool_size = pool.size()
-            checked_out = pool.checkedout()
-            overflow_count = pool.overflow()
-            total = pool_size + overflow_count
-            checked_in = pool_size - checked_out
+            pool_size = getattr(pool, "size", 0)
+            checked_out = getattr(pool, "checkedout", 0)
+            overflow = getattr(pool, "overflow", 0)
+            checked_in = max(0, pool_size - checked_out)
+            total = checked_out + checked_in + overflow
 
             return {
                 "pool_size": config.pool_size,
                 "checked_out": checked_out,
                 "checked_in": checked_in,
-                "overflow": overflow_count,
+                "overflow": overflow,
                 "total_connections": total,
             }
 
         except Exception as exc:
-            logger.error(
-                "Failed to retrieve pool metrics",
+            logger.warning(
+                "Error retrieving pool metrics",
                 extra={
                     "error": str(exc),
                     "error_type": type(exc).__name__,
                 },
-                exc_info=True,
             )
-            return None
+            return {
+                "pool_size": 0,
+                "checked_out": 0,
+                "checked_in": 0,
+                "overflow": 0,
+                "total_connections": 0,
+            }
 
     @classmethod
     def record_pool_metrics(cls) -> None:
         """
-        Retrieve and record current connection pool metrics.
+        Record current pool metrics to the monitoring backend.
 
-        This method queries the connection pool status and emits metrics
-        for monitoring and capacity planning. Safe to call periodically.
+        Retrieves current pool metrics via get_pool_metrics() and emits them
+        to DatabaseMetrics for observability.
 
-        Notes
-        -----
-        - Does nothing if engine not initialized or using NullPool
-        - Emits metrics via DatabaseMetrics.record_pool_metrics()
-        - Logs warning if metrics retrieval fails
+        No-op if engine is not initialized or pool metrics are unavailable.
         """
         metrics = cls.get_pool_metrics()
 
-        if metrics is None:
+        # Skip recording if no meaningful metrics available
+        if metrics["total_connections"] == 0 and cls._config_snapshot is not None:
+            if cls._config_snapshot.pool_class != NullPool:
+                logger.debug("Pool metrics are zero; skipping recording")
             return
 
         DatabaseMetrics.record_pool_metrics(
@@ -496,17 +583,37 @@ class DatabaseService:
             },
         )
 
-    # --------------------------------------------------------------------- #
+    # ========================================================================
     # Session & Transaction Context Managers
-    # --------------------------------------------------------------------- #
+    # ========================================================================
 
     @classmethod
     def _ensure_initialized(cls) -> None:
+        """
+        Ensure DatabaseService is initialized before session creation.
+
+        Raises
+        ------
+        DatabaseNotInitializedError
+            If engine or session factory is not initialized.
+        """
         if cls._session_factory is None or cls._engine is None:
-            raise DatabaseNotInitializedError("DatabaseService is not initialized")
+            logger.error("DatabaseService operation attempted before initialization")
+            raise DatabaseNotInitializedError(
+                "DatabaseService must be initialized before use. "
+                "Call DatabaseService.initialize() during startup."
+            )
 
     @classmethod
     def _get_config_snapshot(cls) -> _DatabaseConfigSnapshot:
+        """
+        Retrieve the configuration snapshot.
+
+        Raises
+        ------
+        DatabaseNotInitializedError
+            If config snapshot is not available.
+        """
         if cls._config_snapshot is None:
             raise DatabaseNotInitializedError("DatabaseService is not initialized")
         return cls._config_snapshot
@@ -515,26 +622,43 @@ class DatabaseService:
     @asynccontextmanager
     async def get_session(cls) -> AsyncGenerator[AsyncSession, None]:
         """
-        Yield a database session without automatic commit.
+        Create a database session without automatic commit.
 
-        Use this for:
-        - Read-only operations.
-        - Rare advanced cases where manual transaction control is required.
+        Use Cases
+        ---------
+        - Read-only operations
+        - Manual transaction control (advanced cases only)
 
-        The session is always closed at the end of the context.
+        Behavior
+        --------
+        - Session is automatically closed on exit
+        - No automatic commit or rollback
+        - PostgreSQL statement timeout is configured if applicable
+
+        Yields
+        ------
+        AsyncSession
+            An active database session.
 
         Raises
         ------
         DatabaseNotInitializedError
             If DatabaseService has not been initialized.
+
+        Notes
+        -----
+        For write operations, prefer `get_transaction()` which provides
+        automatic commit/rollback semantics.
         """
         cls._ensure_initialized()
-        assert cls._session_factory is not None  # for type-checkers
+        assert cls._session_factory is not None  # Type checker assertion
 
         start = time.perf_counter()
         async with cls._session_factory() as session:
             config = cls._get_config_snapshot()
+
             try:
+                # Configure statement timeout for PostgreSQL
                 if config.is_postgres:
                     await session.execute(
                         text(
@@ -542,9 +666,10 @@ class DatabaseService:
                             f"{config.statement_timeout_ms}"
                         )
                     )
-                logger.debug("Database session opened (read-only/manual)")
 
+                logger.debug("Database session opened (read-only)")
                 yield session
+
             finally:
                 await session.close()
                 duration_ms = (time.perf_counter() - start) * 1000.0
@@ -557,25 +682,52 @@ class DatabaseService:
     @asynccontextmanager
     async def get_transaction(cls) -> AsyncGenerator[AsyncSession, None]:
         """
-        Yield a database session wrapped in a single atomic transaction.
+        Create a database session wrapped in an atomic transaction.
+
+        This is the **primary interface for all state mutations** in Lumen.
 
         Behavior
         --------
-        - On normal exit:
-            - Commits the transaction.
-        - On any exception:
-            - Rolls back the transaction.
-            - Logs the error and re-raises.
+        **On Success**:
+        - Automatically commits the transaction
+        - Emits commit metrics and logs
 
-        This is the **standard entry point for all state mutations** in Lumen.
+        **On Exception**:
+        - Automatically rolls back the transaction
+        - Emits rollback metrics and logs with error context
+        - Re-raises the original exception
+
+        Yields
+        ------
+        AsyncSession
+            An active database session inside a transaction.
 
         Raises
         ------
         DatabaseNotInitializedError
             If DatabaseService has not been initialized.
+        OperationalError
+            For database connection or operational issues.
+        DBAPIError
+            For database-level errors.
+        Exception
+            Any exception raised within the transaction context.
+
+        Usage Example
+        -------------
+        >>> async with DatabaseService.get_transaction() as session:
+        >>>     player = await session.get(Player, player_id, with_for_update=True)
+        >>>     player.lumees += 1000
+        >>>     # Automatic commit on exit
+
+        Notes
+        -----
+        - Never manually call `session.commit()` or `session.rollback()`
+        - Use `with_for_update=True` for pessimistic locking
+        - Keep transactions short to avoid blocking other operations
         """
         cls._ensure_initialized()
-        assert cls._session_factory is not None  # for type-checkers
+        assert cls._session_factory is not None  # Type checker assertion
 
         start = time.perf_counter()
         async with cls._session_factory() as session:
@@ -584,6 +736,7 @@ class DatabaseService:
             DatabaseMetrics.record_transaction_started()
 
             try:
+                # Configure statement timeout for PostgreSQL
                 if config.is_postgres:
                     await session.execute(
                         text(
@@ -595,23 +748,27 @@ class DatabaseService:
                 logger.debug("Database transaction started")
                 yield session
 
+                # Commit on successful completion
                 await session.commit()
                 committed = True
                 duration_ms = (time.perf_counter() - start) * 1000.0
+
                 DatabaseMetrics.record_transaction_committed(duration_ms=duration_ms)
                 logger.debug(
                     "Database transaction committed",
                     extra={"duration_ms": duration_ms},
                 )
+
             except OperationalError as exc:
                 await session.rollback()
                 duration_ms = (time.perf_counter() - start) * 1000.0
+
                 DatabaseMetrics.record_transaction_rolled_back(
                     duration_ms=duration_ms,
                     error_type=type(exc).__name__,
                 )
                 logger.error(
-                    "OperationalError in database transaction; rolled back",
+                    "OperationalError in transaction; rolled back",
                     extra={
                         "error": str(exc),
                         "error_type": type(exc).__name__,
@@ -621,15 +778,17 @@ class DatabaseService:
                     exc_info=True,
                 )
                 raise
+
             except DBAPIError as exc:
                 await session.rollback()
                 duration_ms = (time.perf_counter() - start) * 1000.0
+
                 DatabaseMetrics.record_transaction_rolled_back(
                     duration_ms=duration_ms,
                     error_type=type(exc).__name__,
                 )
                 logger.error(
-                    "DBAPIError in database transaction; rolled back",
+                    "DBAPIError in transaction; rolled back",
                     extra={
                         "error": str(exc),
                         "error_type": type(exc).__name__,
@@ -639,15 +798,17 @@ class DatabaseService:
                     exc_info=True,
                 )
                 raise
+
             except Exception as exc:
                 await session.rollback()
                 duration_ms = (time.perf_counter() - start) * 1000.0
+
                 DatabaseMetrics.record_transaction_rolled_back(
                     duration_ms=duration_ms,
                     error_type=type(exc).__name__,
                 )
                 logger.error(
-                    "Error in database transaction; rolled back",
+                    "Error in transaction; rolled back",
                     extra={
                         "error": str(exc),
                         "error_type": type(exc).__name__,
@@ -657,39 +818,55 @@ class DatabaseService:
                     exc_info=True,
                 )
                 raise
+
             finally:
                 await session.close()
                 logger.debug("Database transaction session closed")
 
-    # --------------------------------------------------------------------- #
-    # Optional helper for pessimistic locking (syntactic sugar)
-    # --------------------------------------------------------------------- #
+    # ========================================================================
+    # Pessimistic Locking Helper
+    # ========================================================================
 
     @classmethod
     async def get_locked_entity(
         cls,
         session: AsyncSession,
-        model: type,
+        model: Type[T],
         primary_key: Any,
-    ) -> Any:
+    ) -> Optional[T]:
         """
-        Helper to fetch an entity with a pessimistic row lock.
+        Fetch an entity with a pessimistic row lock (SELECT FOR UPDATE).
 
         This is syntactic sugar over:
             await session.get(Model, pk, with_for_update=True)
 
         Parameters
         ----------
-        session:
-            Active AsyncSession (typically from `get_transaction()`).
-        model:
+        session : AsyncSession
+            Active session from get_transaction().
+        model : Type[T]
             ORM model class.
-        primary_key:
+        primary_key : Any
             Primary key value.
 
         Returns
         -------
-        Any
-            The locked entity instance or None if not found.
+        Optional[T]
+            The locked entity instance, or None if not found.
+
+        Usage Example
+        -------------
+        >>> async with DatabaseService.get_transaction() as session:
+        >>>     player = await DatabaseService.get_locked_entity(
+        >>>         session, Player, player_id
+        >>>     )
+        >>>     if player:
+        >>>         player.lumees += 1000
+
+        Notes
+        -----
+        - Must be used within a get_transaction() context
+        - Locks the row until the transaction commits or rolls back
+        - Other transactions attempting to lock the same row will block
         """
         return await session.get(model, primary_key, with_for_update=True)

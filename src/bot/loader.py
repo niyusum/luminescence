@@ -6,154 +6,30 @@ Purpose
 Automatically discover and load all feature cogs from the features directory
 with production-grade observability, error handling, and performance tracking.
 
-This loader eliminates hardcoded cog lists, enabling plug-and-play feature
-development. Simply drop a `*_cog.py` file in `src/features/` and it will
-be automatically discovered and loaded on bot startup.
-
 Responsibilities
 ----------------
 - Discover all *_cog.py files in src/features/ directory
 - Validate cog modules before loading (check for setup() function)
-- Load cogs in parallel with timeout protection (30s per cog)
+- Load cogs with timeout protection
 - Track load timing and performance metrics per cog
-- Provide detailed error context with actionable suggestions
-- Log comprehensive loading summary with statistics
-- Maintain backward-compatible API
+- Provide detailed error context and suggestions
+- Log a comprehensive loading summary
 
 Non-Responsibilities
 --------------------
-- Cog implementation (handled by individual feature cogs)
-- Cog lifecycle management (handled by discord.py)
-- Bot initialization (handled by BotLifecycle)
+- Cog implementation (handled by feature cogs)
+- Bot lifecycle management (handled by BotLifecycle)
 - Error handling within cogs (handled by BaseCog)
 
-LUMEN LAW Compliance
---------------------
-- Article I.8: Dynamic discovery, zero hardcoded paths
-- Article I.2: Service modularity and separation
-- Article IX: Graceful degradation on loading failures
-- Article X: Comprehensive observability with structured logging
-
-Production Features
--------------------
-**Parallel Loading**:
-- All cogs loaded concurrently via asyncio.gather()
-- Significantly faster startup than sequential loading
-
-**Timeout Protection**:
-- 30-second timeout per cog prevents hanging on slow/broken cogs
-- Continues loading other cogs even if one times out
-
-**Pre-load Validation**:
-- Checks for required setup() function before loading
-- Validates module can be imported
-- Provides clear error messages for common issues
-
-**Rich Error Context**:
-- Captures error type, duration, and stack traces
-- Provides actionable suggestions based on error type
-- Error breakdown by type in summary
-
-**Performance Metrics**:
-- Total load time
-- Per-cog load timing
-- Fastest/slowest/average cog load times
-- Success rate percentage
-
-Architecture Notes
-------------------
-- **Discovery**: Uses pkgutil.walk_packages() for filesystem scanning
-- **Naming Convention**: Only loads files ending with `_cog.py`
-- **Package Structure**: Expects `src/features/<module>/<name>_cog.py`
-- **Load Results**: Returns dataclass with success, timing, and error info
-- **Backward Compatible**: Maintains legacy `load_all_features()` function
-
-Configuration
--------------
-- `LOAD_TIMEOUT`: 30 seconds per cog
-- `BASE_PATH`: src/features/
-- `BASE_PACKAGE`: "features"
-- `COG_SUFFIX`: "_cog"
-
-Usage Example
--------------
-Direct usage with FeatureLoader (recommended for access to stats):
-
->>> loader = FeatureLoader(bot)
->>> stats = await loader.load_all_features()
->>> print(f"Loaded {stats['loaded']}/{stats['discovered']} cogs")
->>> print(f"Total time: {stats['total_time_ms']:.0f}ms")
->>> print(f"Success rate: {stats['success_rate']:.1f}%")
->>>
->>> # Access timing details
->>> if 'timing' in stats:
->>>     timing = stats['timing']
->>>     print(f"Slowest: {timing['slowest_cog']} ({timing['slowest_time_ms']:.0f}ms)")
-
-Backward-compatible API (legacy):
-
->>> # In bot setup_hook():
->>> stats = await load_all_features(bot)
->>> logger.info(f"Loaded {stats['loaded']} cogs")
-
-Return Value Structure
-----------------------
-Stats dictionary returned by load_all_features():
-
->>> {
->>>     "total_time_ms": 1234.5,
->>>     "discovered": 10,
->>>     "loaded": 9,
->>>     "failed": 1,
->>>     "success_rate": 90.0,
->>>     "results": [LoadResult(...), ...],
->>>     "timing": {
->>>         "slowest_cog": "features.fusion.fusion_cog",
->>>         "slowest_time_ms": 234.5,
->>>         "fastest_cog": "features.help.help_cog",
->>>         "fastest_time_ms": 12.3,
->>>         "average_time_ms": 123.4
->>>     },
->>>     "error_breakdown": {
->>>         "ImportError": 1
->>>     }
->>> }
-
-Error Suggestions
------------------
-The loader provides context-aware suggestions based on error types:
-
-- **ImportError**: Check dependencies and module paths
-- **AttributeError**: Verify required attributes/methods exist
-- **SyntaxError**: Fix syntax errors in cog file
-- **TimeoutError**: Check for blocking operations in setup()
-- **ValueError**: Check configuration and function arguments
-
-Example: Creating a Feature Cog
---------------------------------
-To create a new feature cog that will be auto-discovered:
-
-1. Create file: `src/features/myfeature/myfeature_cog.py`
-2. Implement cog class extending BaseCog
-3. Add required setup() function:
-
->>> # src/features/myfeature/myfeature_cog.py
->>> from discord.ext import commands
->>> from src.bot.base_cog import BaseCog
->>>
->>> class MyFeatureCog(BaseCog):
->>>     def __init__(self, bot: commands.Bot):
->>>         super().__init__(bot, "MyFeatureCog")
->>>
->>>     @commands.command(name="mycommand")
->>>     async def my_command(self, ctx: commands.Context):
->>>         await self.send_info(ctx, "Hello!", "Feature working!")
->>>
->>> async def setup(bot: commands.Bot):
->>>     await bot.add_cog(MyFeatureCog(bot))
-
-4. Restart bot - cog will be automatically discovered and loaded
+Lumen 2025 Compliance
+---------------------
+- Dynamic discovery, zero hardcoded cog lists
+- Structured logging of timings and failures
+- Graceful degradation on loading failures
+- Config-driven timeouts
 """
+
+from __future__ import annotations
 
 import asyncio
 import importlib
@@ -161,8 +37,9 @@ import pkgutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Any, Dict, List, Optional
 
+from src.core.config import ConfigManager
 from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
@@ -171,6 +48,7 @@ logger = get_logger(__name__)
 @dataclass
 class LoadResult:
     """Result of loading a single cog."""
+
     name: str
     success: bool
     duration_ms: float
@@ -181,314 +59,345 @@ class LoadResult:
 class FeatureLoader:
     """
     Dynamic feature cog loader with production-grade observability.
-    
+
     Discovers and loads all *_cog.py files from src/features/ with:
-    - Parallel loading for speed
     - Timeout protection per cog
     - Validation before loading
-    - Comprehensive metrics
+    - Comprehensive metrics and structured logs
     """
-    
-    # Configuration
-    LOAD_TIMEOUT = 30.0  # seconds per cog
-    BASE_PATH = Path(__file__).parent.parent / "features"
-    BASE_PACKAGE = "features"
-    COG_SUFFIX = "_cog"
-    
-    def __init__(self, bot):
+
+    # Static configuration (config-driven where it matters)
+    BASE_PATH: Path = Path(__file__).parent.parent / "features"
+    BASE_PACKAGE: str = "features"
+    COG_SUFFIX: str = "_cog"
+
+    def __init__(self, bot) -> None:
         self.bot = bot
         self.load_results: List[LoadResult] = []
-    
-    async def load_all_features(self) -> dict:
+        self.load_timeout_seconds: float = float(
+            ConfigManager.get("bot.feature_load_timeout_seconds", 30.0)
+        )
+
+    async def load_all_features(self) -> Dict[str, object]:
         """
         Discover and load all feature cogs.
-        
+
         Returns:
-            Dictionary with load statistics and results
-            
-        Example:
-            >>> loader = FeatureLoader(bot)
-            >>> stats = await loader.load_all_features()
-            >>> print(f"Loaded {stats['loaded']} cogs in {stats['total_time_ms']:.0f}ms")
+            Dictionary with load statistics and results.
         """
         start_time = time.perf_counter()
-        
-        logger.info(f"🔍 Discovering feature cogs in {self.BASE_PATH}")
+
+        logger.info(
+            "Discovering feature cogs",
+            extra={"base_path": str(self.BASE_PATH)},
+        )
         cog_names = self._discover_cogs()
-        
+
         if not cog_names:
-            logger.warning(f"⚠️  No *{self.COG_SUFFIX}.py files found in {self.BASE_PATH}")
+            logger.warning(
+                "No cog files discovered",
+                extra={"pattern": f"*{self.COG_SUFFIX}.py"},
+            )
             return self._build_stats(start_time)
-        
-        logger.info(f"📦 Found {len(cog_names)} cog(s): {', '.join(cog_names)}")
-        
-        # Load all cogs in parallel with timeout protection
+
+        logger.info(
+            "Discovered feature cogs",
+            extra={"count": len(cog_names), "cogs": cog_names},
+        )
+
         tasks = [self._load_cog_with_timeout(name) for name in cog_names]
         self.load_results = await asyncio.gather(*tasks, return_exceptions=False)
-        
+
         stats = self._build_stats(start_time)
         self._log_summary(stats)
-        
         return stats
-    
+
     def _discover_cogs(self) -> List[str]:
         """
-        Discover all *_cog.py files in features directory.
-        
+        Discover all *_cog.py files in the features directory.
+
         Returns:
-            List of fully qualified module names
+            List of fully qualified module names.
         """
-        cog_names = []
-        
+        cog_names: List[str] = []
+
         try:
             for _, name, ispkg in pkgutil.walk_packages(
-                [str(self.BASE_PATH)], 
-                prefix=f"{self.BASE_PACKAGE}."
+                [str(self.BASE_PATH)],
+                prefix=f"{self.BASE_PACKAGE}.",
             ):
+                if ispkg:
+                    continue
                 if name.endswith(self.COG_SUFFIX):
                     cog_names.append(name)
-        except Exception as e:
-            logger.error(f"❌ Error discovering cogs: {e}", exc_info=True)
-        
-        return sorted(cog_names)  # Consistent ordering for logs
-    
+        except Exception as exc:
+            logger.error(
+                "Error discovering cogs",
+                extra={
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+                exc_info=True,
+            )
+
+        return sorted(cog_names)
+
     async def _load_cog_with_timeout(self, extension_name: str) -> LoadResult:
         """
         Load a single cog with timeout protection.
-        
+
         Args:
             extension_name: Full module path (e.g., "features.fusion.fusion_cog")
-            
+
         Returns:
-            LoadResult with timing and error info
+            LoadResult with timing and error info.
         """
         start_time = time.perf_counter()
-        
+
         try:
-            # Validate cog before loading
             validation_error = self._validate_cog(extension_name)
             if validation_error:
+                logger.error(
+                    "Cog validation failed",
+                    extra={
+                        "cog_name": extension_name,
+                        "error": str(validation_error),
+                        "error_type": type(validation_error).__name__,
+                    },
+                )
                 return LoadResult(
                     name=extension_name,
                     success=False,
-                    duration_ms=0,
+                    duration_ms=0.0,
                     error=validation_error,
-                    error_type="ValidationError"
+                    error_type="ValidationError",
                 )
-            
-            # Load with timeout
+
             await asyncio.wait_for(
                 self.bot.load_extension(extension_name),
-                timeout=self.LOAD_TIMEOUT
+                timeout=self.load_timeout_seconds,
             )
-            
+
             duration_ms = (time.perf_counter() - start_time) * 1000
-            logger.info(f"✅ Loaded {extension_name} ({duration_ms:.0f}ms)")
-            
+            logger.info(
+                "Cog loaded successfully",
+                extra={"cog_name": extension_name, "duration_ms": round(duration_ms, 2)},
+            )
+
             return LoadResult(
                 name=extension_name,
                 success=True,
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
             )
-            
+
         except asyncio.TimeoutError:
             duration_ms = (time.perf_counter() - start_time) * 1000
-            error = TimeoutError(f"Cog loading exceeded {self.LOAD_TIMEOUT}s timeout")
-            logger.error(
-                f"⏱️  {extension_name} timed out after {self.LOAD_TIMEOUT}s",
-                exc_info=False
+            error = TimeoutError(
+                f"Cog loading exceeded {self.load_timeout_seconds}s timeout"
             )
-            
+            logger.error(
+                "Cog load timeout",
+                extra={
+                    "cog_name": extension_name,
+                    "timeout_seconds": self.load_timeout_seconds,
+                    "duration_ms": round(duration_ms, 2),
+                },
+            )
             return LoadResult(
                 name=extension_name,
                 success=False,
                 duration_ms=duration_ms,
                 error=error,
-                error_type="TimeoutError"
+                error_type="TimeoutError",
             )
-            
-        except Exception as e:
+
+        except Exception as exc:
             duration_ms = (time.perf_counter() - start_time) * 1000
-            error_type = type(e).__name__
-            
-            # Enhanced error logging with suggestions
+            error_type = type(exc).__name__
+
             logger.error(
-                f"❌ Failed to load {extension_name} ({error_type}): {e}",
-                exc_info=True,
+                "Failed to load cog",
                 extra={
                     "cog_name": extension_name,
+                    "error": str(exc),
                     "error_type": error_type,
-                    "duration_ms": duration_ms,
-                    "suggestion": self._get_error_suggestion(e)
-                }
+                    "duration_ms": round(duration_ms, 2),
+                    "suggestion": self._get_error_suggestion(exc),
+                },
+                exc_info=True,
             )
-            
+
             return LoadResult(
                 name=extension_name,
                 success=False,
                 duration_ms=duration_ms,
-                error=e,
-                error_type=error_type
+                error=exc,
+                error_type=error_type,
             )
-    
+
     def _validate_cog(self, extension_name: str) -> Optional[Exception]:
         """
-        Validate that a cog module has required setup() function.
-        
+        Validate that a cog module has the required setup() function.
+
         Args:
-            extension_name: Full module path
-            
+            extension_name: Full module path.
+
         Returns:
-            Exception if validation fails, None if valid
+            Exception if validation fails, None if valid.
         """
         try:
-            # Import module to check for setup()
             module = importlib.import_module(extension_name)
-            
-            if not hasattr(module, 'setup'):
+
+            if not hasattr(module, "setup"):
                 return ValueError(
-                    f"Missing required setup() function. "
-                    f"Add: async def setup(bot): await bot.add_cog(YourCog(bot))"
+                    "Missing required setup() function. "
+                    "Expected: async def setup(bot): await bot.add_cog(YourCog(bot))"
                 )
-            
-            if not callable(getattr(module, 'setup')):
+
+            setup_fn = getattr(module, "setup")
+            if not callable(setup_fn):
                 return ValueError("setup must be a callable function")
-            
+
             return None
-            
-        except ImportError as e:
-            return ImportError(f"Cannot import module: {e}")
-        except Exception as e:
-            return e
-    
+
+        except ImportError as exc:
+            return ImportError(f"Cannot import module: {exc}")
+        except Exception as exc:  # pragma: no cover - defensive
+            return exc
+
     def _get_error_suggestion(self, error: Exception) -> str:
         """
         Get actionable suggestion based on error type.
-        
+
         Args:
-            error: Exception that occurred
-            
+            error: Exception that occurred.
+
         Returns:
-            Helpful suggestion string
+            Helpful suggestion string.
         """
         error_type = type(error).__name__
-        
+
         suggestions = {
-            "ImportError": "Check that all dependencies are installed and module paths are correct",
-            "AttributeError": "Verify all required attributes/methods exist in the cog",
-            "SyntaxError": "Fix syntax errors in the cog file",
-            "NameError": "Check for undefined variables or incorrect imports",
-            "TypeError": "Verify function signatures and type usage",
-            "TimeoutError": "Cog setup is taking too long - check for blocking operations",
-            "ValueError": "Check configuration values and function arguments",
+            "ImportError": "Check that all dependencies are installed and module paths are correct.",
+            "AttributeError": "Verify all required attributes/methods exist in the cog.",
+            "SyntaxError": "Fix syntax errors in the cog file.",
+            "NameError": "Check for undefined variables or incorrect imports.",
+            "TypeError": "Verify function signatures and type usage.",
+            "TimeoutError": "Cog setup is taking too long; check for blocking operations.",
+            "ValueError": "Check configuration values and function arguments.",
         }
-        
-        return suggestions.get(error_type, "Check cog implementation and logs for details")
-    
-    def _build_stats(self, start_time: float) -> dict:
+
+        return suggestions.get(error_type, "Check cog implementation and logs for details.")
+
+    def _build_stats(self, start_time: float) -> Dict[str, Any]:
         """
         Build statistics dictionary from load results.
-        
+
         Args:
-            start_time: When loading started (perf_counter)
-            
+            start_time: When loading started (perf_counter).
+
         Returns:
-            Dictionary with comprehensive statistics
+            Dictionary with comprehensive statistics.
         """
         total_time_ms = (time.perf_counter() - start_time) * 1000
-        
+
         successful = [r for r in self.load_results if r.success]
         failed = [r for r in self.load_results if not r.success]
-        
-        stats = {
+
+        stats: Dict[str, object] = {
             "total_time_ms": total_time_ms,
             "discovered": len(self.load_results),
             "loaded": len(successful),
             "failed": len(failed),
-            "success_rate": (len(successful) / len(self.load_results) * 100) if self.load_results else 0,
+            "success_rate": (
+                len(successful) / len(self.load_results) * 100
+                if self.load_results
+                else 0.0
+            ),
             "results": self.load_results,
         }
-        
-        # Add timing stats if any cogs loaded
+
         if successful:
             durations = [r.duration_ms for r in successful]
+            slowest = max(successful, key=lambda r: r.duration_ms)
+            fastest = min(successful, key=lambda r: r.duration_ms)
+
             stats["timing"] = {
-                "slowest_cog": max(successful, key=lambda r: r.duration_ms).name,
+                "slowest_cog": slowest.name,
                 "slowest_time_ms": max(durations),
-                "fastest_cog": min(successful, key=lambda r: r.duration_ms).name,
+                "fastest_cog": fastest.name,
                 "fastest_time_ms": min(durations),
                 "average_time_ms": sum(durations) / len(durations),
             }
-        
-        # Add error breakdown if any failures
+
         if failed:
-            error_types = {}
+            error_types: Dict[str, int] = {}
             for result in failed:
-                error_type = result.error_type or "Unknown"
-                error_types[error_type] = error_types.get(error_type, 0) + 1
+                etype = result.error_type or "Unknown"
+                error_types[etype] = error_types.get(etype, 0) + 1
             stats["error_breakdown"] = error_types
-        
+
         return stats
-    
-    def _log_summary(self, stats: dict) -> None:
+
+    def _log_summary(self, stats: Dict[str, Any]) -> None:
         """
         Log comprehensive loading summary.
-        
+
         Args:
-            stats: Statistics dictionary from _build_stats
+            stats: Statistics dictionary from _build_stats.
         """
         logger.info("=" * 60)
-        logger.info("🎯 FEATURE COG LOADING SUMMARY")
+        logger.info("FEATURE COG LOADING SUMMARY")
         logger.info("=" * 60)
-        logger.info(f"Total Time:     {stats['total_time_ms']:.0f}ms")
-        logger.info(f"Discovered:     {stats['discovered']} cogs")
-        logger.info(f"Loaded:         {stats['loaded']} cogs ✅")
-        logger.info(f"Failed:         {stats['failed']} cogs ❌")
-        logger.info(f"Success Rate:   {stats['success_rate']:.1f}%")
-        
-        # Log timing stats if available
+        logger.info("Total Time:     %.0fms", stats["total_time_ms"])
+        logger.info("Discovered:     %d cogs", stats["discovered"])
+        logger.info("Loaded:         %d cogs", stats["loaded"])
+        logger.info("Failed:         %d cogs", stats["failed"])
+        logger.info("Success Rate:   %.1f%%", stats["success_rate"])
+
         if "timing" in stats:
             timing = stats["timing"]
-            logger.info(f"Fastest Load:   {timing['fastest_cog']} ({timing['fastest_time_ms']:.0f}ms)")
-            logger.info(f"Slowest Load:   {timing['slowest_cog']} ({timing['slowest_time_ms']:.0f}ms)")
-            logger.info(f"Average Load:   {timing['average_time_ms']:.0f}ms")
-        
-        # Log error breakdown if any failures
+            logger.info(
+                "Fastest Load:   %s (%.0fms)",
+                timing["fastest_cog"],
+                timing["fastest_time_ms"],
+            )
+            logger.info(
+                "Slowest Load:   %s (%.0fms)",
+                timing["slowest_cog"],
+                timing["slowest_time_ms"],
+            )
+            logger.info(
+                "Average Load:   %.0fms",
+                timing["average_time_ms"],
+            )
+
         if "error_breakdown" in stats:
             logger.warning("Error Breakdown:")
             for error_type, count in stats["error_breakdown"].items():
-                logger.warning(f"  • {error_type}: {count}")
-        
+                logger.warning("  • %s: %d", error_type, count)
+
         logger.info("=" * 60)
-        
-        # Warning if success rate is low
-        if stats["success_rate"] < 80 and stats["discovered"] > 0:
+
+        if stats["success_rate"] < 80.0 and stats["discovered"] > 0:
             logger.warning(
-                f"⚠️  Low success rate ({stats['success_rate']:.1f}%). "
-                "Review error logs above for details."
+                "Low cog load success rate",
+                extra={"success_rate": stats["success_rate"]},
             )
 
 
 # Backward-compatible API
-async def load_all_features(bot):
+async def load_all_features(bot) -> Dict[str, object]:
     """
     Legacy function for backward compatibility.
-    
+
     Dynamically discover and load all feature cogs from src/features.
-    
-    This is the original API maintained for backward compatibility.
-    New code should use FeatureLoader directly for access to stats.
-    
-    LUMEN LAW:
-        • Dynamic discovery (Article I.8)
-        • Service modularity (Article I.2)
-        • No hard-coded paths
-    
-    Returns:
-        Dictionary with load statistics
+
+    New code should prefer using FeatureLoader directly for access to stats.
     """
     loader = FeatureLoader(bot)
     return await loader.load_all_features()
+
 
 
 

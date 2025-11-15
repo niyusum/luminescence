@@ -76,7 +76,7 @@ from src.core.config.metrics import (
     get_health_snapshot,
     get_metrics_snapshot,
 )
-from src.core.config.validator import ConfigWriteError, get_schema_for_top_key
+from src.core.config.validator import get_schema_for_top_key
 from src.core.logging.logger import get_logger
 from src.database.models.core.game_config import GameConfig
 
@@ -94,6 +94,10 @@ class ConfigManagerError(RuntimeError):
 
 class ConfigInitializationError(ConfigManagerError):
     """Raised when ConfigManager cannot initialize correctly."""
+
+
+class ConfigWriteError(ConfigManagerError):
+    """Raised when a configuration write or validation fails."""
 
 
 # Export ConfigWriteError from validator for backward compatibility
@@ -845,7 +849,7 @@ class ConfigManager:
             async with DatabaseService.get_transaction() as session:
                 stmt = (
                     select(GameConfig)
-                    .where(GameConfig.config_key == top_key)
+                    .where(GameConfig.config_key == top_key)  # type: ignore[arg-type]
                     .with_for_update()
                 )
                 result = await session.execute(stmt)
@@ -917,14 +921,18 @@ class ConfigManager:
 
             # Best-effort transaction log; failure here must not break writes.
             try:
-                await TransactionLogger.log_config_change(
-                    config_key=key,
-                    top_level_key=top_key,
-                    previous_value=previous_value,
-                    new_value=final_value,
-                    modified_by=modified_by,
-                    latency_ms=round(elapsed_ms, 2),
-                    source="ConfigManager",
+                await TransactionLogger.log_transaction(
+                    player_id=0,  # System transaction (no player)
+                    transaction_type="config_change",
+                    details={
+                        "config_key": key,
+                        "top_level_key": top_key,
+                        "previous_value": previous_value,
+                        "new_value": final_value,
+                        "latency_ms": round(elapsed_ms, 2),
+                    },
+                    context="ConfigManager",
+                    meta={"modified_by": modified_by},
                 )
             except Exception as log_exc:
                 cls._metrics.errors += 1
@@ -941,9 +949,9 @@ class ConfigManager:
             # Optional EventBus publish.
             if emit_event and cls._emit_events:
                 try:
-                    from src.core.event.bus import EventBus
+                    from src.core.event import event_bus
 
-                    await EventBus.publish(
+                    await event_bus.publish(
                         "config.changed",
                         {
                             "config_key": key,
@@ -1001,7 +1009,7 @@ class ConfigManager:
         logger.info("ConfigManager cache cleared")
 
     @classmethod
-    def get_metrics(cls) -> Dict[str, Any]:
+    async def get_metrics(cls) -> Dict[str, Any]:
         """
         Return a snapshot of ConfigManager performance metrics.
 
@@ -1012,12 +1020,12 @@ class ConfigManager:
 
         Examples
         --------
-        >>> metrics = ConfigManager.get_metrics()
+        >>> metrics = await ConfigManager.get_metrics()
         >>> metrics["cache_hit_rate"]
         >>> metrics["avg_get_time_ms"]
         >>> metrics["stale_reads"]
         """
-        return get_metrics_snapshot(
+        return await get_metrics_snapshot(
             metrics=cls._metrics,
             initialized=cls._initialized,
             cached_configs=len(cls._cache),
@@ -1025,9 +1033,9 @@ class ConfigManager:
         )
 
     @classmethod
-    def reset_metrics(cls) -> None:
+    async def reset_metrics(cls) -> None:
         """Reset all metrics counters to zero."""
-        cls._metrics.reset()
+        await cls._metrics.reset()
         logger.info("ConfigManager metrics reset")
 
     @classmethod

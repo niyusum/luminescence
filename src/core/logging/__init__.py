@@ -1,7 +1,13 @@
 """
-Logging infrastructure and utilities.
+Lumen Logging Infrastructure
 
-Provides structured logging with context tracking and log management.
+Exports the structured logging subsystem, log context helpers,
+and configuration interface.
+
+This module provides:
+- Production-grade JSON logging
+- ContextVar-based contextual logging (`LogContext`)
+- Setup and teardown helpers for the global logging system
 """
 
 from src.core.logging.logger import (
@@ -15,14 +21,12 @@ from src.core.logging.logger import (
 )
 
 __all__ = [
-    # Logger setup
     "setup_logging",
     "shutdown_logging",
     "get_logger",
-    # Context management
     "LogContext",
     "set_log_context",
     "clear_log_context",
-    # Configuration
     "LoggerConfig",
 ]
+

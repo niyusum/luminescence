@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from src.database.models.core.maiden import Maiden
-from src.database.models.core.maiden_base import MaidenBase
+from database.models.core.maiden_base import MaidenBase
 from src.core.logging.logger import get_logger
 from src.ui.emojis import Emojis
 from src.ui.formatters import CombatFormatters, ProgressFormatters

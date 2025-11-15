@@ -28,7 +28,7 @@ import secrets
 
 from src.database.models.core.player import Player
 from src.database.models.core.maiden import Maiden
-from src.database.models.core.maiden_base import MaidenBase
+from database.models.core.maiden_base import MaidenBase
 from src.core.config import ConfigManager
 from src.core.infra.transaction_logger import TransactionLogger
 from src.core.exceptions import CombatError

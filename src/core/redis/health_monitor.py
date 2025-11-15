@@ -87,14 +87,14 @@ class RedisHealthMonitor:
     automatic degradation detection and recovery tracking.
     """
     
-    def __init__(self, redis_service: RedisService) -> None:
+    def __init__(self, redis_service: type[RedisService]) -> None:
         """
         Initialize health monitor.
-        
+
         Parameters
         ----------
-        redis_service : RedisService
-            The Redis service to monitor
+        redis_service : type[RedisService]
+            The RedisService singleton type to monitor
         """
         self._redis_service = redis_service
         self._state: HealthState = HealthState.HEALTHY

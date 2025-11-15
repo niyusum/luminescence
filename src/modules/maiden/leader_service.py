@@ -2,7 +2,7 @@
 from typing import Dict
 from src.database.models.core.player import Player
 from src.database.models.core.maiden import Maiden
-from src.database.models.core.maiden_base import MaidenBase
+from database.models.core.maiden_base import MaidenBase
 from src.core.infra.database_service import DatabaseService
 from src.core.logging.logger import get_logger
 
