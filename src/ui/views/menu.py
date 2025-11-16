@@ -83,7 +83,11 @@ class DropdownMenuView(BaseView):
             return
 
         # Get selected value
-        select_menu = interaction.data.get("values", [])[0] if interaction.data.get("values") else None
+        if interaction.data:
+            values = interaction.data.get("values", [])
+            select_menu = values[0] if values else None
+        else:
+            select_menu = None
 
         if select_menu and self.select_callback:
             await self.select_callback(interaction, select_menu)
@@ -148,7 +152,9 @@ class ButtonMenuView(BaseView):
         )
 
         # Store button ID mapping
-        self.button_ids[button.custom_id] = button_id
+        if button.custom_id:
+            custom_id_str: str = button.custom_id
+            self.button_ids[custom_id_str] = button_id
 
         # Set callback
         button.callback = self._on_button_press
@@ -160,8 +166,10 @@ class ButtonMenuView(BaseView):
             return
 
         # Get button ID from custom_id
-        custom_id = interaction.data.get("custom_id")
-        button_id = self.button_ids.get(custom_id)
-
-        if button_id and self.button_callback:
-            await self.button_callback(interaction, button_id)
+        if interaction.data:
+            data = interaction.data
+            custom_id = data.get("custom_id")
+            if isinstance(custom_id, str):
+                button_id = self.button_ids.get(custom_id)
+                if button_id and self.button_callback:
+                    await self.button_callback(interaction, button_id)

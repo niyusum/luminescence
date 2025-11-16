@@ -1,0 +1,87 @@
+# Maiden Power Scaling Configuration
+# LUMEN LAW I.6: All tunable game parameters externalized
+#
+# Controls how maiden stats scale with tier upgrades
+
+tier_scaling:
+  # Scaling formula type
+  # Options: "linear", "exponential", "polynomial"
+  formula: "linear"
+
+  # Multiplier for scaling calculation
+  # Linear: base_stat * (1 + (tier - 1) * 0.2)
+  # Exponential: base_stat * (multiplier ^ (tier - 1))
+  # Polynomial: base_stat * (1 + (tier^2) * 0.05)
+  multiplier: 1.2
+
+  # Tier limits
+  min_tier: 1
+  max_tier: 12
+
+  # Stat bonuses per tier
+  # These are percentages applied on top of base formula
+  tier_bonuses:
+    tier_5:
+      attack_bonus_pct: 0.05  # +5% at tier 5
+      defense_bonus_pct: 0.05
+    tier_10:
+      attack_bonus_pct: 0.15  # +15% at tier 10
+      defense_bonus_pct: 0.15
+    tier_12:
+      attack_bonus_pct: 0.25  # +25% at max tier
+      defense_bonus_pct: 0.25
+
+# Leader Effect System
+leader_effects:
+  # Whether leader effects are enabled globally
+  enabled: true
+
+  # Maximum number of leader effects that can stack
+  max_stack: 1
+
+  # Valid leader effect types
+  valid_types:
+    - "atk_boost"
+    - "def_boost"
+    - "hp_boost"
+    - "energy_boost"
+    - "element_boost"
+    - "tier_boost"
+
+# Element System
+elements:
+  # Valid element types
+  valid_elements:
+    - "fire"
+    - "water"
+    - "earth"
+    - "air"
+    - "light"
+    - "dark"
+    - "neutral"
+
+  # Element advantage bonuses (damage multipliers)
+  advantage_multiplier: 1.2   # +20% damage
+  disadvantage_multiplier: 0.8 # -20% damage
+
+  # Element matchups (who beats who)
+  advantages:
+    fire: "earth"
+    water: "fire"
+    earth: "air"
+    air: "water"
+    light: "dark"
+    dark: "light"
+    neutral: null  # No advantages
+
+# Fusion System Integration
+fusion:
+  # Minimum quantity needed to fuse
+  min_fusable_quantity: 2
+
+  # Maximum tier that can be fused
+  # (tier 12 is max and cannot be fused further)
+  max_fusable_tier: 11
+
+  # Whether locked maidens can be fused
+  allow_locked_fusion: false

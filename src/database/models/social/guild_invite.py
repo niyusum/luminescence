@@ -1,42 +1,71 @@
-from __future__ import annotations
-from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Optional
+"""
+GuildInvite — persistent invitation to a guild.
+Pure schema (LUMEN LAW 2025).
+"""
 
-from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Boolean, DateTime, func
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
+
+from sqlalchemy import DateTime, BigInteger, ForeignKey, Index
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from src.core.database.base import Base, IdMixin, SoftDeleteMixin, TimestampMixin
 
 if TYPE_CHECKING:
-    from src.database.models.social.guild import Guild
+    from .guild import Guild
 
 
-class GuildInvite(SQLModel, table=True):
+class GuildInvite(Base, IdMixin, TimestampMixin, SoftDeleteMixin):
     """
-    Persistent guild invitation model.
+    Guild invitation from one player to another.
 
-    LUMEN LAW Compliance:
-        - De-duplication via unique (guild_id, target_player_id)
-        - Lifecycle control via `active` flag
-        - Expiry timestamps for auto-clean tasks
+    Schema-only:
+    - guild_id (FK to guilds)
+    - inviter_player_id (FK to player_core.discord_id)
+    - target_player_id (FK to player_core.discord_id)
+    - expires_at (invite expiration timestamp)
+    - created_at / updated_at (from TimestampMixin)
+    - deleted_at (from SoftDeleteMixin for soft-deletion)
     """
+
     __tablename__ = "guild_invites"
+    __table_args__ = (
+        Index("ix_guild_invites_guild_target", "guild_id", "target_player_id"),
+        Index("ix_guild_invites_inviter", "inviter_player_id"),
+    )
 
-    id: Optional[int] = Field(default=None, primary_key=True)
-    guild_id: int = Field(foreign_key="guilds.id", index=True)
-    inviter_player_id: int = Field(index=True)
-    target_player_id: int = Field(index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    expires_at: datetime = Field(default_factory=lambda: datetime.utcnow() + timedelta(days=3))
-    active: bool = Field(default=True)
+    guild_id: Mapped[int] = mapped_column(
+        ForeignKey("guilds.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
-    guild: Optional["Guild"] = Relationship(back_populates="invites")
+    inviter_player_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("player_core.discord_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
-    def revoke(self):
-        """Mark invite as inactive."""
-        self.active = False
+    target_player_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("player_core.discord_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
-    def is_expired(self) -> bool:
-        """Return True if invite has passed expiry."""
-        return not self.active or (self.expires_at and self.expires_at < datetime.utcnow())
+    version: Mapped[int] = mapped_column(
+        nullable=False,
+        default=1,
+        doc="Optimistic locking version",
+    )
 
-    def __repr__(self):
-        return f"<GuildInvite guild={self.guild_id} target={self.target_player_id} active={self.active}>"
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.utcnow() + timedelta(days=3),
+        nullable=False,
+    )
+
+    guild: Mapped["Guild"] = relationship("Guild", back_populates="invites")

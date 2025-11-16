@@ -45,7 +45,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set, NoReturn
 import json
 
-from src.core.exceptions import ValidationError
+from src.modules.shared.exceptions import ValidationError
 from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)

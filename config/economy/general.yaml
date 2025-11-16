@@ -1,0 +1,23 @@
+# Economy General Configuration
+# LUMEN LAW I.6: All tunable game parameters externalized
+#
+# General economy settings including transaction logging and auditing
+
+economy:
+  # Transaction log retention
+  transaction_log_retention_days: 90  # Keep logs for 90 days
+
+  # Currency limits
+  max_lumees: 999999999  # ~1 billion cap
+  max_lumenite: 99999    # Premium currency cap
+  max_auric_coin: 99999  # Premium currency cap
+
+  # Transfer limits (to prevent abuse)
+  max_transfer_amount: 1000000  # 1 million per transfer
+  transfer_cooldown_minutes: 60  # 1 hour between transfers
+
+  # Daily limits
+  max_daily_earnings: 500000  # Soft cap on daily earnings (for audit flagging)
+
+  # Inflation control
+  lumees_sink_rate: 0.05  # 5% tax on certain transactions

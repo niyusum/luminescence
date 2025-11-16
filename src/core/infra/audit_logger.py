@@ -158,7 +158,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional
 
 from src.core.event import EventPayload, event_bus
-from src.core.exceptions import ValidationError
+from src.modules.shared.exceptions import ValidationError
 from src.core.logging.logger import get_logger
 from src.core.validation import TransactionValidator
 

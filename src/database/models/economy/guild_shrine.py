@@ -1,30 +1,32 @@
+"""
+GuildShrine — guild-wide shrine structure for yield generation.
+Pure schema only (LUMEN LAW 2025).
+"""
+
 from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
-from sqlmodel import SQLModel, Field, Column
-from sqlalchemy import Integer, BigInteger, String, DateTime, Index, UniqueConstraint, func, Boolean
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from src.core.database.base import Base, IdMixin, SoftDeleteMixin, TimestampMixin
+from ..enums import ShrineType
 
 
-class GuildShrine(SQLModel, table=True):
+class GuildShrine(Base, IdMixin, TimestampMixin, SoftDeleteMixin):
     """
-    Cooperative guild-wide shrine for collective yield generation.
+    Cooperative guild shrine used for collective passive yield generation.
 
-    LUMEN LAW:
-      - Immutable historical yield log (ring buffer, size 25)
-      - Atomic upgrade and collection transactions (handled in service)
-      - Treasury integration: shrine yields flow to guild treasury
-      - Config-driven: shrine type behavior defined in ConfigManager
-
-    Fields:
-      guild_id: owning guild FK
-      shrine_type: e.g. 'lesser', 'radiant'
-      level: current shrine level
-      last_collected_at: UTC timestamp for cooldown enforcement
-      is_active: lifecycle toggle (soft delete)
-      yield_history: JSONB ring buffer of past yields
-      created_at / updated_at: server-managed timestamps
+    Schema-only:
+    - guild_id: guild foreign reference
+    - shrine_type: e.g. 'lesser', 'radiant'
+    - level: upgrade level
+    - is_active: soft lifecycle toggle
+    - last_collected_at: cooldown timestamp
+    - yield_history: JSONB ring buffer (list[dict])
     """
 
     __tablename__ = "guild_shrines"
@@ -35,20 +37,44 @@ class GuildShrine(SQLModel, table=True):
         Index("ix_guild_shrines_active", "is_active"),
     )
 
-    id: Optional[int] = Field(default=None, primary_key=True)
-    guild_id: int = Field(sa_column=Column(BigInteger, nullable=False))
-    shrine_type: str = Field(sa_column=Column(String(24), nullable=False))
-    level: int = Field(default=1)
-    last_collected_at: Optional[datetime] = Field(default=None)
-    is_active: bool = Field(default=True, sa_column=Column(Boolean, nullable=False))
-
-    yield_history: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
-    created_at: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    )
-    updated_at: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    guild_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("guilds.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
-    def __repr__(self) -> str:
-        return f"<GuildShrine(guild={self.guild_id}, type={self.shrine_type}, lvl={self.level})>"
+    version: Mapped[int] = mapped_column(
+        nullable=False,
+        default=1,
+        doc="Optimistic locking version",
+    )
+
+    shrine_type: Mapped[str] = mapped_column(
+        String(24),
+        nullable=False,
+        index=True,
+    )
+
+    level: Mapped[int] = mapped_column(
+        nullable=False,
+        default=1,
+    )
+
+    last_collected_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        index=True,
+    )
+
+    yield_history: Mapped[List[Dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+    )

@@ -1,0 +1,23 @@
+# Drop Charge System Configuration
+# LUMEN LAW I.6: All tunable game parameters externalized
+#
+# Controls drop charge regeneration and capacity
+
+drop_charges:
+  # Starting drop charge capacity for new players
+  starting_max_charges: 1
+
+  # Drop charge capacity increase per milestone
+  # (e.g., every 10 levels, every ascension tier, etc.)
+  capacity_increase_per_tier: 1
+
+  # Maximum drop charge capacity (hard cap)
+  max_capacity: 10
+
+  # Regeneration time per charge (in seconds)
+  # Default: 3600 seconds = 1 hour per charge
+  regen_seconds: 3600
+
+  # Whether to allow charge regeneration while at max
+  # (false = stops regen at max, true = continues counting)
+  continue_regen_at_max: false

@@ -46,14 +46,17 @@ from discord.ext import commands
 
 from src.core.database.service import DatabaseService
 from src.core.logging.logger import LogContext, get_logger
-from src.core.exceptions import (
-    CooldownError,
+from src.modules.shared.exceptions import (
+    CooldownActiveError,
     InsufficientResourcesError,
     InvalidOperationError,
     NotFoundError,
     RateLimitError,
 )
-from src.utils.embed_builder import EmbedBuilder
+from src.ui.utils.embed_builder import EmbedBuilder
+
+# Legacy alias for backward compatibility
+CooldownError = CooldownActiveError
 
 
 class BaseCog(commands.Cog):

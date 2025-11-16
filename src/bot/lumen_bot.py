@@ -38,15 +38,18 @@ from src.bot.loader import load_all_features
 from src.core.config import ConfigManager
 from src.core.config.config import Config
 from src.core.database.service import DatabaseService
-from src.core.exceptions import (
+from src.modules.shared.exceptions import (
     InsufficientResourcesError,
-    LumenException,
+    LumenDomainException,
     RateLimitError,
 )
 from src.core.logging.logger import LogContext, get_logger
 from src.core.redis.service import RedisService
 from src.core.event import event_bus, initialize_event_system, shutdown_event_system
-from src.utils.embed_builder import EmbedBuilder
+from src.ui.utils.embed_builder import EmbedBuilder
+
+# Legacy alias for backward compatibility
+LumenException = LumenDomainException
 
 logger = get_logger(__name__)
 

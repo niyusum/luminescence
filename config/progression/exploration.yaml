@@ -1,0 +1,49 @@
+# Exploration & Mastery Configuration
+# =====================================
+# Sector exploration rewards and mastery rank system
+
+exploration:
+  # Base rewards per sector (scaled by sector/sublevel)
+  base_lumees_per_sector: 100
+  base_xp_per_sector: 50
+
+  # Sector and sublevel scaling multipliers
+  sector_multiplier: 0.2      # +20% per sector
+  sublevel_multiplier: 0.1    # +10% per sublevel
+
+# Exploration Mastery System (3 ranks per sector)
+exploration_mastery:
+  # Rank requirements (can be defined per sector in future)
+  rank_1_requirement:
+    description: "Complete sector 100%"
+
+  rank_2_requirement:
+    description: "Complete all sublevels + defeat miniboss"
+
+  rank_3_requirement:
+    description: "Perfect clear (no defeats, all maidens purified)"
+
+  # Rewards for each mastery rank
+  rank_1_rewards:
+    lumees: 1000
+    xp: 500
+    title: "Sector Explorer"
+
+  rank_2_rewards:
+    lumees: 2500
+    xp: 1250
+    lumenite: 50
+    title: "Sector Master"
+
+  rank_3_rewards:
+    lumees: 5000
+    xp: 2500
+    lumenite: 150
+    auric_coin: 25
+    title: "Sector Legend"
+
+  # Mastery bonuses (applied to exploration rewards)
+  rank_bonuses:
+    rank_1: 0.05    # +5% bonus
+    rank_2: 0.10    # +10% bonus
+    rank_3: 0.15    # +15% bonus

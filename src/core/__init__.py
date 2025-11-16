@@ -44,20 +44,37 @@ from __future__ import annotations
 
 from src.core.config import Config, ConfigManager
 from src.core.database import DatabaseService, initialize_database_subsystem
+
+# Infrastructure exceptions (from core)
 from src.core.exceptions import (
+    CacheError,
+    CircuitBreakerError,
     ConfigurationError,
-    CooldownError,
     DatabaseError,
+    ErrorSeverity,
+    EventBusError,
+    LumenInfrastructureException,
+    PlayerNotFoundError,
+    RedisConnectionError,
+)
+
+# Domain exceptions (from shared module) - re-exported for backward compatibility
+from src.modules.shared.exceptions import (
+    CooldownActiveError,
     InsufficientResourcesError,
     InvalidFusionError,
     InvalidOperationError,
-    LumenException,
+    LumenDomainException,
     MaidenNotFoundError,
     NotFoundError,
-    PlayerNotFoundError,
     RateLimitError,
     ValidationError,
 )
+
+# Legacy aliases for backward compatibility
+LumenException = LumenDomainException  # Old name for domain exception base
+CooldownError = CooldownActiveError  # Old name for cooldown exception
+
 from src.core.infra import HealthStatus, UnifiedHealthCheck
 from src.core.logging import get_logger, setup_logging
 from src.core.redis import RedisService
@@ -81,17 +98,26 @@ __all__ = [
     # Health
     "UnifiedHealthCheck",
     "HealthStatus",
-    # Exceptions
-    "LumenException",
+    # Infrastructure Exceptions
+    "LumenInfrastructureException",
+    "ConfigurationError",
+    "DatabaseError",
+    "PlayerNotFoundError",
+    "RedisConnectionError",
+    "CacheError",
+    "CircuitBreakerError",
+    "EventBusError",
+    "ErrorSeverity",
+    # Domain Exceptions (backward compatibility)
+    "LumenDomainException",
+    "LumenException",  # Legacy alias
     "ValidationError",
     "NotFoundError",
     "MaidenNotFoundError",
-    "PlayerNotFoundError",
     "InsufficientResourcesError",
     "InvalidOperationError",
     "InvalidFusionError",
-    "CooldownError",
-    "ConfigurationError",
-    "DatabaseError",
+    "CooldownActiveError",
+    "CooldownError",  # Legacy alias
     "RateLimitError",
 ]

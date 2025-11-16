@@ -1,28 +1,27 @@
 """
-Domain exceptions for Lumen RPG Bot.
+Infrastructure exceptions for Lumen RPG Bot.
 
 Purpose
 -------
-Define the structured, domain-specific exception hierarchy for Lumen. These
-exceptions are raised primarily by services and infra, and translated into
-user-facing responses by cogs/views.
+Define the structured exception hierarchy for infrastructure-level concerns:
+database failures, configuration errors, system integrity violations, and other
+engineering-level issues that require immediate technical attention.
 
 LUMEN LAW / LES 2025 Compliance
 -------------------------------
-- Domain exceptions only (no Discord imports or UI concerns)
-- Clear base class (`LumenException`) with structured, serializable metadata
+- Infrastructure exceptions only (no game logic)
+- Clear base class (`LumenInfrastructureException`) with structured metadata
 - Severity levels for logging and alerting decisions
 - Retry hints and error codes for programmatic handling
-- Cogs/services can use these to:
-  - Decide user-facing messaging
-  - Drive observability (logs, metrics, alerts)
+- Services/infra components use these for technical failures
+- Cogs translate these into user-facing error embeds
 
 Design Notes
 ------------
-- All custom exceptions inherit from `LumenException`.
+- All infrastructure exceptions inherit from `LumenInfrastructureException`.
 - Each exception carries:
   - `message`: human-readable description
-  - `details`: additional structured context (dict-like)
+  - `details`: additional structured context (dict)
   - `severity`: `ErrorSeverity` value for logging/alerting
   - `is_retryable`: whether the operation can be retried
   - `error_code`: short, stable identifier for programmatic use
@@ -38,29 +37,33 @@ from typing import Any, Dict, Optional
 
 class ErrorSeverity(Enum):
     """Error severity levels for logging and alerting."""
-    DEBUG = "debug"       # Expected, not concerning (e.g., cooldowns)
-    INFO = "info"         # Normal operation (e.g., validation failures)
-    WARNING = "warning"   # Concerning but handled (e.g., retryable errors)
-    ERROR = "error"       # Unexpected errors requiring attention
-    CRITICAL = "critical" # System-level failures requiring immediate action
+
+    DEBUG = "debug"  # Expected, not concerning (e.g., cooldowns)
+    INFO = "info"  # Normal operation (e.g., validation failures)
+    WARNING = "warning"  # Concerning but handled (e.g., retryable errors)
+    ERROR = "error"  # Unexpected errors requiring attention
+    CRITICAL = "critical"  # System-level failures requiring immediate action
 
 
-class LumenException(Exception):
+class LumenInfrastructureException(Exception):
     """
-    Base exception for all Lumen RPG errors.
+    Base exception for all Lumen infrastructure-level errors.
 
-    Provides structured error information with details for logging and user
-    display. All custom Lumen exceptions should inherit from this base class.
+    Provides structured error information with details for logging and alerting.
+    All infrastructure exceptions should inherit from this base class.
 
     Args:
         message: Human-readable error message
-        details: Additional structured data about the error (dict-like)
+        details: Additional structured data about the error
         severity: Error severity level for logging handlers
         is_retryable: Whether the operation can be retried
         error_code: Optional code for programmatic handling
 
     Example:
-        >>> raise LumenException("Something went wrong", {"context": "fusion"})
+        >>> raise LumenInfrastructureException(
+        ...     "Database connection failed",
+        ...     {"host": "localhost", "port": 5432}
+        ... )
     """
 
     # Default severity and retry behavior (subclasses can override)
@@ -112,162 +115,19 @@ class LumenException(Exception):
         )
 
 
-class InsufficientResourcesError(LumenException):
-    """Raised when a player lacks required resources for an action."""
-
-    DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected user error
-    DEFAULT_RETRYABLE = False
-
-    def __init__(self, resource: str, required: int, current: int) -> None:
-        self.resource = resource
-        self.required = required
-        self.current = current
-        message = f"Insufficient {resource}: need {required:,}, have {current:,}"
-        super().__init__(
-            message,
-            details={
-                "resource": resource,
-                "required": required,
-                "current": current,
-                "deficit": required - current,
-            },
-            error_code=f"INSUFFICIENT_{resource.upper()}",
-        )
-
-
-class NotFoundError(LumenException):
-    """Raised when a requested resource cannot be found."""
-
-    DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected user error
-    DEFAULT_RETRYABLE = False
-
-    def __init__(self, resource_type: str, identifier: Optional[Any] = None) -> None:
-        self.resource_type = resource_type
-        self.identifier = identifier
-
-        if identifier is not None:
-            message = f"{resource_type} not found: {identifier}"
-        else:
-            message = f"{resource_type} not found"
-
-        super().__init__(
-            message,
-            details={
-                "resource_type": resource_type,
-                "identifier": identifier,
-            },
-            error_code=f"{resource_type.upper()}_NOT_FOUND",
-        )
-
-
-class MaidenNotFoundError(LumenException):
-    """Raised when a maiden cannot be found in the player's collection."""
-
-    DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected user error
-    DEFAULT_RETRYABLE = False
-
-    def __init__(
-        self,
-        maiden_id: Optional[int] = None,
-        maiden_name: Optional[str] = None,
-    ) -> None:
-        self.maiden_id = maiden_id
-        self.maiden_name = maiden_name
-        message = f"Maiden not found: {maiden_name or f'ID {maiden_id}'}"
-        super().__init__(
-            message,
-            details={
-                "maiden_id": maiden_id,
-                "maiden_name": maiden_name,
-            },
-            error_code="MAIDEN_NOT_FOUND",
-        )
-
-
-class PlayerNotFoundError(LumenException):
-    """Raised when a player cannot be found in the database."""
-
-    DEFAULT_SEVERITY = ErrorSeverity.WARNING  # Should exist, investigate
-    DEFAULT_RETRYABLE = False
-
-    def __init__(self, discord_id: int) -> None:
-        self.discord_id = discord_id
-        message = f"Player not found: {discord_id}"
-        super().__init__(
-            message,
-            details={"discord_id": discord_id},
-            error_code="PLAYER_NOT_FOUND",
-        )
-
-
-class ValidationError(LumenException):
-    """Raised when user input fails validation."""
-
-    DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected user error
-    DEFAULT_RETRYABLE = False
-
-    def __init__(self, field: str, message: str) -> None:
-        self.field = field
-        self.validation_message = message
-        error_message = f"Validation error for {field}: {message}"
-        super().__init__(
-            error_message,
-            details={
-                "field": field,
-                "validation_message": message,
-            },
-            error_code=f"VALIDATION_{field.upper()}",
-        )
-
-
-class InvalidFusionError(LumenException):
-    """Raised when a fusion operation fails for business logic reasons."""
-
-    DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected business rule
-    DEFAULT_RETRYABLE = False
-
-    def __init__(self, reason: str) -> None:
-        self.reason = reason
-        message = f"Fusion failed: {reason}"
-        super().__init__(
-            message,
-            details={"reason": reason},
-            error_code="FUSION_FAILED",
-        )
-
-
-class CooldownError(LumenException):
-    """Raised when an action is on cooldown."""
-
-    DEFAULT_SEVERITY = ErrorSeverity.DEBUG  # Expected rate limiting
-    DEFAULT_RETRYABLE = True  # Can retry after cooldown
-
-    def __init__(self, action: str, remaining_seconds: float) -> None:
-        self.action = action
-        self.remaining_seconds = remaining_seconds
-        message = f"{action} is on cooldown: {remaining_seconds:.1f}s remaining"
-        super().__init__(
-            message,
-            details={
-                "action": action,
-                "remaining": remaining_seconds,
-                "retry_after": remaining_seconds,
-            },
-            error_code="COOLDOWN_ACTIVE",
-            is_retryable=True,
-        )
-
-
-class ConfigurationError(LumenException):
+class ConfigurationError(LumenInfrastructureException):
     """
     Raised when a configuration key is invalid or missing.
+
+    This represents a critical system misconfiguration that prevents
+    normal operation and requires immediate engineering attention.
 
     Args:
         config_key: The configuration key that has issues
         message: Description of the configuration problem
     """
 
-    DEFAULT_SEVERITY = ErrorSeverity.CRITICAL  # System configuration issue
+    DEFAULT_SEVERITY = ErrorSeverity.CRITICAL
     DEFAULT_RETRYABLE = False
 
     def __init__(self, config_key: str, message: str) -> None:
@@ -283,10 +143,19 @@ class ConfigurationError(LumenException):
         )
 
 
-class DatabaseError(LumenException):
-    """Raised when database operations fail."""
+class DatabaseError(LumenInfrastructureException):
+    """
+    Raised when database operations fail.
 
-    DEFAULT_SEVERITY = ErrorSeverity.ERROR  # Infrastructure failure
+    Represents infrastructure-level database failures that may be transient
+    (connection issues, timeouts) or persistent (schema errors, constraints).
+
+    Args:
+        operation: Description of the database operation that failed
+        original_error: The underlying database exception
+    """
+
+    DEFAULT_SEVERITY = ErrorSeverity.ERROR
     DEFAULT_RETRYABLE = True  # Many DB errors are transient
 
     def __init__(self, operation: str, original_error: Exception) -> None:
@@ -305,58 +174,171 @@ class DatabaseError(LumenException):
         )
 
 
-class RateLimitError(LumenException):
-    """Raised when a command rate limit is exceeded."""
+class PlayerNotFoundError(LumenInfrastructureException):
+    """
+    Raised when a player cannot be found in the database.
 
-    DEFAULT_SEVERITY = ErrorSeverity.DEBUG  # Expected rate limiting
-    DEFAULT_RETRYABLE = True  # Can retry after delay
+    This is treated as an infrastructure concern because players should always
+    exist after registration. A missing player suggests a data integrity issue
+    or system corruption that requires investigation.
 
-    def __init__(self, command: str, retry_after: float) -> None:
-        self.command = command
-        self.retry_after = retry_after
-        message = f"Rate limit exceeded for {command}: retry after {retry_after:.1f}s"
+    Args:
+        discord_id: The Discord user ID that was not found
+    """
+
+    DEFAULT_SEVERITY = ErrorSeverity.WARNING
+    DEFAULT_RETRYABLE = False
+
+    def __init__(self, discord_id: int) -> None:
+        self.discord_id = discord_id
+        message = f"Player not found: {discord_id}"
+        super().__init__(
+            message,
+            details={"discord_id": discord_id},
+            error_code="PLAYER_NOT_FOUND",
+        )
+
+
+class RedisConnectionError(LumenInfrastructureException):
+    """
+    Raised when Redis connection or operations fail.
+
+    Args:
+        operation: Description of the Redis operation that failed
+        original_error: The underlying Redis exception
+    """
+
+    DEFAULT_SEVERITY = ErrorSeverity.ERROR
+    DEFAULT_RETRYABLE = True
+
+    def __init__(self, operation: str, original_error: Exception) -> None:
+        self.operation = operation
+        self.original_error = original_error
+        message = f"Redis error during {operation}: {str(original_error)}"
         super().__init__(
             message,
             details={
-                "command": command,
-                "retry_after": retry_after,
+                "operation": operation,
+                "error": str(original_error),
+                "error_type": type(original_error).__name__,
             },
-            error_code="RATE_LIMIT_EXCEEDED",
+            error_code="REDIS_ERROR",
             is_retryable=True,
         )
 
 
-class InvalidOperationError(LumenException):
+class CacheError(LumenInfrastructureException):
     """
-    Raised when a player attempts an action that is not allowed
-    or violates game rules.
+    Raised when cache operations fail.
 
     Args:
-        action: Description of the invalid action
-        reason: Explanation of why it's not allowed
-
-    Example:
-        >>> raise InvalidOperationError("ascend_floor", "Player has not cleared previous floor")
+        operation: Description of the cache operation that failed
+        cache_key: The cache key involved in the failure
+        original_error: The underlying exception (if any)
     """
 
-    DEFAULT_SEVERITY = ErrorSeverity.INFO  # Expected game rule violation
-    DEFAULT_RETRYABLE = False
+    DEFAULT_SEVERITY = ErrorSeverity.WARNING
+    DEFAULT_RETRYABLE = True
 
-    def __init__(self, action: str, reason: str) -> None:
-        self.action = action
-        self.reason = reason
-        message = f"Invalid operation '{action}': {reason}"
+    def __init__(
+        self,
+        operation: str,
+        cache_key: str,
+        original_error: Optional[Exception] = None,
+    ) -> None:
+        self.operation = operation
+        self.cache_key = cache_key
+        self.original_error = original_error
+        error_msg = str(original_error) if original_error else "Cache operation failed"
+        message = f"Cache error during {operation} for key '{cache_key}': {error_msg}"
         super().__init__(
             message,
             details={
-                "action": action,
-                "reason": reason,
+                "operation": operation,
+                "cache_key": cache_key,
+                "error": error_msg,
+                "error_type": (
+                    type(original_error).__name__ if original_error else None
+                ),
             },
-            error_code=f"INVALID_{action.upper()}",
+            error_code="CACHE_ERROR",
+            is_retryable=True,
+        )
+
+
+class CircuitBreakerError(LumenInfrastructureException):
+    """
+    Raised when a circuit breaker is open and blocking operations.
+
+    Args:
+        service: Name of the service with an open circuit breaker
+        failure_count: Number of consecutive failures that opened the circuit
+        retry_after: Seconds until circuit breaker can be retried
+    """
+
+    DEFAULT_SEVERITY = ErrorSeverity.WARNING
+    DEFAULT_RETRYABLE = True
+
+    def __init__(
+        self, service: str, failure_count: int, retry_after: float
+    ) -> None:
+        self.service = service
+        self.failure_count = failure_count
+        self.retry_after = retry_after
+        message = (
+            f"Circuit breaker open for {service} "
+            f"({failure_count} failures, retry after {retry_after:.1f}s)"
+        )
+        super().__init__(
+            message,
+            details={
+                "service": service,
+                "failure_count": failure_count,
+                "retry_after": retry_after,
+            },
+            error_code="CIRCUIT_BREAKER_OPEN",
+            is_retryable=True,
+        )
+
+
+class EventBusError(LumenInfrastructureException):
+    """
+    Raised when event bus operations fail.
+
+    Args:
+        operation: Description of the event operation that failed
+        event_type: Type of event involved
+        original_error: The underlying exception
+    """
+
+    DEFAULT_SEVERITY = ErrorSeverity.ERROR
+    DEFAULT_RETRYABLE = True
+
+    def __init__(
+        self, operation: str, event_type: str, original_error: Exception
+    ) -> None:
+        self.operation = operation
+        self.event_type = event_type
+        self.original_error = original_error
+        message = (
+            f"Event bus error during {operation} "
+            f"for event '{event_type}': {str(original_error)}"
+        )
+        super().__init__(
+            message,
+            details={
+                "operation": operation,
+                "event_type": event_type,
+                "error": str(original_error),
+                "error_type": type(original_error).__name__,
+            },
+            error_code="EVENT_BUS_ERROR",
+            is_retryable=True,
         )
 
 
 # Utility functions for exception handling patterns
+
 
 def is_transient_error(exc: Exception) -> bool:
     """
@@ -368,7 +350,7 @@ def is_transient_error(exc: Exception) -> bool:
     Returns:
         True if error is retryable, False otherwise.
     """
-    if isinstance(exc, LumenException):
+    if isinstance(exc, LumenInfrastructureException):
         return exc.is_retryable
     return False
 
@@ -383,7 +365,7 @@ def get_error_severity(exc: Exception) -> ErrorSeverity:
     Returns:
         ErrorSeverity level.
     """
-    if isinstance(exc, LumenException):
+    if isinstance(exc, LumenInfrastructureException):
         return exc.severity
     return ErrorSeverity.ERROR  # Default for unknown exceptions
 

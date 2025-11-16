@@ -1,40 +1,34 @@
 from __future__ import annotations
-from typing import Optional, Dict, Any, Tuple
-from sqlmodel import SQLModel, Field, Column
+
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
 from sqlalchemy import Index, String, Text
 from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.ui.emojis import Emojis
+from src.core.database.base import Base, IdMixin
+
+if TYPE_CHECKING:
+    from .maiden import Maiden
 
 
-class MaidenBase(SQLModel, table=True):
+class MaidenBase(Base, IdMixin):
     """
-    💠 **MaidenBase** — Archetypal Maiden Definition
+    Archetypal maiden definition (base template).
 
-    Shared immutable template for all maidens of a specific archetype.
-    Player-owned maidens (`Maiden` model) reference this base for
-    their fundamental attributes, visual metadata, and leader effects.
+    Represents immutable template data shared by all maidens of this archetype.
+    Player-owned maidens reference this entity via `Maiden.maiden_base_id`.
 
-    ---
-    ⚖️ LUMEN LAW Compliance:
-        - Article I.4 → All tier, element, and rarity metadata sourced via constants
-        - Article II → Indexed for query optimization (element, tier, name)
-        - Article V → Supports dynamic gacha weighting and rarity schemas
-        - Article IX → Schema self-validates via tier-based stat checks
-    ---
-
-    Attributes:
-        id (int): Primary key.
-        name (str): Unique maiden name.
-        element (str): Elemental type (e.g., infernal, umbral, earth, tempest, radiant, abyssal).
-        base_tier (int): Starting tier when summoned (1–12).
-        base_atk (int): Base attack stat.
-        base_def (int): Base defense stat.
-        leader_effect (dict): Optional JSON payload for leader skill data.
-        description (str): Lore or flavor text.
-        image_url (str): Artwork URL for this maiden.
-        rarity_weight (float): Gacha weight (lower = rarer).
-        is_premium (bool): Flag indicating premium/limited availability.
+    Fields (schema only):
+    - name: unique maiden name
+    - element: elemental type (string key)
+    - base_tier: starting tier when summoned
+    - base_atk / base_def: base stats
+    - leader_effect: JSON payload describing leader skill
+    - description: lore / flavor text
+    - image_url: artwork URL
+    - rarity_weight: gacha weighting (lower = rarer)
+    - is_premium: flags limited / premium availability
     """
 
     __tablename__ = "maiden_bases"
@@ -44,132 +38,68 @@ class MaidenBase(SQLModel, table=True):
         Index("ix_maiden_bases_base_tier", "base_tier"),
     )
 
-    # ────────────────────────────────────────────────────────────────
-    # Core Identity
-    # ────────────────────────────────────────────────────────────────
+    name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
 
-    id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(sa_column=Column(String(100), nullable=False, unique=True, index=True))
-    element: str = Field(sa_column=Column(String(20), nullable=False, index=True))
-    base_tier: int = Field(default=1, ge=1, le=12, index=True)
+    element: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        index=True,
+    )
 
-    # ────────────────────────────────────────────────────────────────
-    # Core Stats
-    # ────────────────────────────────────────────────────────────────
+    base_tier: Mapped[int] = mapped_column(
+        nullable=False,
+        default=1,
+    )
 
-    base_atk: int = Field(default=10, ge=1)
-    base_def: int = Field(default=10, ge=1)
+    # Core stats
+    base_atk: Mapped[int] = mapped_column(
+        nullable=False,
+        default=10,
+    )
 
-    # ────────────────────────────────────────────────────────────────
-    # Metadata & Lore
-    # ────────────────────────────────────────────────────────────────
+    base_def: Mapped[int] = mapped_column(
+        nullable=False,
+        default=10,
+    )
 
-    leader_effect: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
-    description: str = Field(sa_column=Column(Text), nullable=False)
-    image_url: str = Field(sa_column=Column(String(500)), nullable=False)
+    # Metadata & lore
+    leader_effect: Mapped[Dict[str, Any]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
 
-    # ────────────────────────────────────────────────────────────────
-    # Gacha & Economy
-    # ────────────────────────────────────────────────────────────────
+    description: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
 
-    rarity_weight: float = Field(default=1.0, ge=0.0)
-    is_premium: bool = Field(default=False)
+    image_url: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+    )
 
-    # ────────────────────────────────────────────────────────────────
-    # Derived Computations
-    # ────────────────────────────────────────────────────────────────
+    # Gacha & economy
+    rarity_weight: Mapped[float] = mapped_column(
+        nullable=False,
+        default=1.0,
+    )
 
-    def get_base_power(self) -> int:
-        """Total intrinsic power = ATK + DEF."""
-        return self.base_atk + self.base_def
+    is_premium: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
+    )
 
-    # ────────────────────────────────────────────────────────────────
-    # Tier Formatting Helpers
-    # ────────────────────────────────────────────────────────────────
+    # Relationships
+    maidens: Mapped[List["Maiden"]] = relationship(
+        "Maiden",
+        back_populates="maiden_base",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
-    def get_tier_display(self) -> str:
-        """Full tier display (e.g., 'Tier VII – Legendary')."""
-        from src.modules.maiden.constants import Tier
-        if tier_data := Tier.get(self.base_tier):
-            return tier_data.display_name
-        return f"Tier {self.base_tier}"
-
-    def get_tier_short_display(self) -> str:
-        """Short tier display (e.g., 'T7 Legendary')."""
-        from src.modules.maiden.constants import Tier
-        if tier_data := Tier.get(self.base_tier):
-            return tier_data.short_display
-        return f"T{self.base_tier}"
-
-    def get_tier_color(self) -> int:
-        """Discord embed color for this tier."""
-        from src.modules.maiden.constants import Tier
-        if tier_data := Tier.get(self.base_tier):
-            return tier_data.color
-        return 0x2C2D31
-
-    def get_rarity_tier_name(self) -> str:
-        """Human-readable rarity name (e.g., 'Legendary', 'Ethereal')."""
-        from src.modules.maiden.constants import Tier
-        if tier_data := Tier.get(self.base_tier):
-            return tier_data.name
-        return "Unknown"
-
-    # ────────────────────────────────────────────────────────────────
-    # Element Formatting Helpers
-    # ────────────────────────────────────────────────────────────────
-
-    def get_element_emoji(self) -> str:
-        """Emoji representing this element."""
-        from src.modules.maiden.constants import Element
-        if element_obj := Element.from_string(self.element):
-            return element_obj.emoji
-        return Emojis.HELP
-
-    def get_element_color(self) -> int:
-        """Discord embed color for this element."""
-        from src.modules.maiden.constants import Element
-        if element_obj := Element.from_string(self.element):
-            return element_obj.color
-        return 0x2C2D31
-
-    # ────────────────────────────────────────────────────────────────
-    # Validation & Range Helpers
-    # ────────────────────────────────────────────────────────────────
-
-    def get_stat_range(self) -> Tuple[int, int]:
-        """Expected (min, max) stat range for this tier."""
-        from src.modules.maiden.constants import Tier
-        if tier_data := Tier.get(self.base_tier):
-            return tier_data.stat_range
-        return (0, 0)
-
-    def is_stats_valid_for_tier(self) -> bool:
-        """Validate if total stats fall within tier-defined range."""
-        from src.modules.maiden.constants import Tier
-        if not (tier_data := Tier.get(self.base_tier)):
-            return False
-
-        total_stats = self.base_atk + self.base_def
-        min_stats, max_stats = tier_data.stat_range
-        return min_stats <= total_stats <= max_stats
-
-    # ────────────────────────────────────────────────────────────────
-    # Leader Skill Logic
-    # ────────────────────────────────────────────────────────────────
-
-    def has_leader_effect(self) -> bool:
-        """Check if a leader effect is defined."""
-        return bool(self.leader_effect and self.leader_effect.get("type"))
-
-    # ────────────────────────────────────────────────────────────────
-    # Representation
-    # ────────────────────────────────────────────────────────────────
-
-    def __repr__(self) -> str:
-        """Developer-facing representation."""
-        return (
-            f"<MaidenBase(id={self.id}, name='{self.name}', "
-            f"element={self.element}, tier={self.base_tier}, "
-            f"power={self.get_base_power()})>"
-        )

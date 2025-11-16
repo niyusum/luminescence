@@ -1,0 +1,44 @@
+# Tutorial Configuration
+# ======================
+# Tutorial step definitions, progression order, and rewards
+
+tutorial:
+  # Sequential order of tutorial steps (must be completed in order)
+  step_order:
+    - "create_account"
+    - "first_summon"
+    - "view_maiden"
+    - "first_exploration"
+    - "join_guild"
+    - "complete_daily_quest"
+
+  # Rewards for each tutorial step
+  rewards:
+    create_account:
+      lumees: 500
+      lumenite: 0
+
+    first_summon:
+      lumees: 100
+      maiden_tickets: 1
+
+    view_maiden:
+      lumees: 50
+
+    first_exploration:
+      lumees: 200
+      xp: 100
+
+    join_guild:
+      lumees: 300
+
+    complete_daily_quest:
+      lumees: 500
+      lumenite: 50
+      auric_coin: 10
+
+  # Full completion bonus
+  completion_bonus:
+    lumees: 1000
+    lumenite: 100
+    auric_coin: 50

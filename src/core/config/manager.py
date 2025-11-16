@@ -894,7 +894,7 @@ class ConfigManager:
                 else:
                     cfg.config_value = final_value
                     cfg.modified_by = modified_by
-                    cfg.last_modified = datetime.now(timezone.utc)
+                    cfg.updated_at = datetime.now(timezone.utc)
 
             # Transaction committed successfully at this point.
 

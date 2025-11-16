@@ -214,7 +214,7 @@ class RedisResilience:
         operation: Callable[[], Any],
         operation_name: str,
         max_attempts: Optional[int] = None,
-    ) -> T:
+    ) -> Any:
         """
         Execute Redis operation with circuit breaker and retry logic.
 

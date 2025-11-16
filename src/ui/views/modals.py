@@ -249,7 +249,9 @@ class MultiFieldModal(Modal):
         # Build values dict
         values = {}
         for i, key in enumerate(self.field_keys):
-            values[key] = self.children[i].value
+            child = self.children[i]
+            if isinstance(child, discord.ui.TextInput):
+                values[key] = child.value
 
         # Call callback with values dict
         await self.submit_callback(interaction, values)

@@ -1,10 +1,15 @@
 """
-Ascension system module initialization.
+Ascension Module - LES 2025 Compliant
+======================================
 
-Exports public API for ascension tower progression, token management,
-and boss encounters.
+Domain: Infinite ascension tower progression
 
-LUMEN LAW Compliance:
-- Article V: Centralized exports
-- Article VII: Clean module boundaries
+Services:
+- ProgressService: Tower floor progression, statistics, and rewards
 """
+
+from .progress_service import AscensionProgressService
+
+__all__ = [
+    "AscensionProgressService",
+]

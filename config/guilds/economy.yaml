@@ -41,3 +41,29 @@ guilds:
 
   # Emblem change cost (lumees)
   emblem_change_cost: 5000
+
+# Guild Shrine Configuration
+guild_shrines:
+  # Global settings
+  starting_level: 1
+  max_yield_history: 100  # Guild shrines keep more history
+  upgrade_cost_multiplier: 1.8
+
+  # Guild Lesser Shrine
+  lesser:
+    base_upgrade_cost: 5000
+    level_multiplier: 0.15  # 15% per level
+    cooldown_hours: 12
+    base_yield: 200  # Higher base than player shrines
+    max_level: 20
+
+  # Guild Radiant Shrine
+  radiant:
+    base_upgrade_cost: 25000
+    level_multiplier: 0.2  # 20% per level
+    cooldown_hours: 24
+    base_yield: 0.1  # Premium currency
+    max_level: 20
+
+  # Member bonus (added yield per guild member)
+  member_bonus_per_member: 0.02  # 2% bonus per member

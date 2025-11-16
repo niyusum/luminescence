@@ -63,8 +63,8 @@ from __future__ import annotations
 
 from typing import Any, List, Optional, Sequence, NoReturn
 
-from src.core.exceptions import ValidationError
-from src.core.constants import MAX_POINTS_PER_STAT, MAX_TIER_NUMBER
+from src.modules.shared.exceptions import ValidationError
+from src.modules.shared.constants import MAX_POINTS_PER_STAT, MAX_TIER_NUMBER
 from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)

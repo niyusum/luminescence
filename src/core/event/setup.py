@@ -73,14 +73,7 @@ async def initialize_event_system() -> None:
     # Import listener modules to trigger their subscriptions
     # ═══════════════════════════════════════════════════════════════════════
 
-    # Tutorial event listeners
-    try:
-        import src.modules.tutorial.listener  # noqa: F401
-        logger.info("✓ Tutorial event listeners loaded")
-    except ImportError as e:
-        logger.warning(f"Tutorial listener module not found: {e}")
-    except Exception as e:
-        logger.error(f"Failed to load tutorial listeners: {e}", exc_info=True)
+    # (No active listeners at this time)
 
     # ═══════════════════════════════════════════════════════════════════════
     # Initialize and start event consumers

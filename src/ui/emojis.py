@@ -97,6 +97,7 @@ class Emojis:
     NEW = "🆕"
     NEXT = "▶️"
     BACK = "◀"
+    PREVIOUS = "◀"  # Alias for BACK
     SKIP = "⏩"
     FINISH = "✓"
     REGENERATING = "⏳"

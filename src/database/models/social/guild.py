@@ -1,83 +1,92 @@
+"""
+Guild — Social guild entity for players.
+Pure schema (LUMEN LAW 2025).
+"""
+
 from __future__ import annotations
-from typing import TYPE_CHECKING, Optional, Dict, Any, List
+
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from datetime import datetime
-from sqlmodel import SQLModel, Field, Relationship, Column
+
+from sqlalchemy import String, Integer, DateTime, Index, BigInteger, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import Boolean, String, Integer, DateTime, Index, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from src.core.database.base import Base, IdMixin, SoftDeleteMixin, TimestampMixin
 
 if TYPE_CHECKING:
-    from src.database.models.social.guild_member import GuildMember
-    from src.database.models.social.guild_invite import GuildInvite
-    from src.database.models.social.guild_audit import GuildAudit
+    from .guild_member import GuildMember
+    from .guild_invite import GuildInvite
+    from .guild_audit import GuildAudit
 
 
-class Guild(SQLModel, table=True):
+class Guild(Base, IdMixin, TimestampMixin, SoftDeleteMixin):
     """
-    Guild (social organization) model.
-    
-    Represents a player-created guild with treasury, upgrades,
-    and community functionality. Fully LUMEN LAW compliant:
-    - No logic here; schema-only
-    - Indexed for performance and query speed
-    - JSONB fields for flexible perks and audit history
+    Player-created guild.
+
+    Schema-only:
+    - name, owner, description, emblem
+    - level, xp, treasury
+    - perks JSONB
+    - activity_log JSONB
+    - meta JSONB for extensibility
     """
+
     __tablename__ = "guilds"
     __table_args__ = (
         Index("ix_guilds_name", "name", unique=True),
         Index("ix_guilds_owner_id", "owner_id"),
         Index("ix_guilds_level", "level"),
         Index("ix_guilds_treasury", "treasury"),
+        Index("ix_guilds_perks_gin", "perks", postgresql_using="gin"),
+        Index("ix_guilds_activity_log_gin", "activity_log", postgresql_using="gin"),
     )
 
-    id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(index=True, unique=True, nullable=False)
-    owner_id: int = Field(index=True, nullable=False)
-    description: Optional[str] = Field(default="A new guild begins.", max_length=250)
-    emblem_url: Optional[str] = Field(default=None, max_length=512)
-    is_active: bool = Field(default=True)
-
-    level: int = Field(default=1)
-    experience: int = Field(default=0)
-    treasury: int = Field(default=0, ge=0)
-
-    member_count: int = Field(default=1, ge=0)
-    max_members: int = Field(default=10, ge=1)
-
-    perks: Dict[str, int] = Field(
-        default_factory=lambda: {"xp_boost": 0, "income_boost": 0},
-        sa_column=Column(JSONB, nullable=False),
-    )
-    activity_log: List[Dict[str, Any]] = Field(
-        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    owner_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("player_core.discord_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
-    created_at: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    version: Mapped[int] = mapped_column(
+        nullable=False,
+        default=1,
+        doc="Optimistic locking version",
     )
-    updated_at: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    description: Mapped[Optional[str]] = mapped_column(String(250), default="A new guild begins.")
+    emblem_url: Mapped[Optional[str]] = mapped_column(String(512), default=None)
+
+    level: Mapped[int] = mapped_column(Integer, default=1)
+    experience: Mapped[int] = mapped_column(Integer, default=0)
+    treasury: Mapped[int] = mapped_column(Integer, default=0)
+
+    member_count: Mapped[int] = mapped_column(Integer, default=1)
+    max_members: Mapped[int] = mapped_column(Integer, default=10)
+
+    perks: Mapped[Dict[str, int]] = mapped_column(JSONB, default=dict)
+    activity_log: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, default=list)
+
+    meta: Mapped[Optional[dict]] = mapped_column(
+        JSONB,
+        nullable=True,
+        default=None,
+        doc="Flexible metadata storage for guild-specific data",
     )
 
-    members: List["GuildMember"] = Relationship(back_populates="guild")
-    invites: List["GuildInvite"] = Relationship(back_populates="guild")
-    audits: List["GuildAudit"] = Relationship(back_populates="guild")
-
-    def add_activity(self, action: str, user: str, meta: Optional[Dict[str, Any]] = None) -> None:
-        """
-        Append activity entry (capped at 25).
-        """
-        item = {
-            "ts": datetime.utcnow().isoformat(),
-            "user": user,
-            "action": action,
-        }
-        if meta:
-            item["meta"] = meta
-        self.activity_log.insert(0, item)
-        if len(self.activity_log) > 25:
-            del self.activity_log[25:]
-
-    def __repr__(self) -> str:
-        return f"<Guild name={self.name!r} lvl={self.level} members={self.member_count}>"
-
+    # Relationships
+    members: Mapped[List["GuildMember"]] = relationship(
+        back_populates="guild",
+        lazy="selectin",
+    )
+    invites: Mapped[List["GuildInvite"]] = relationship(
+        back_populates="guild",
+        lazy="selectin",
+    )
+    audits: Mapped[List["GuildAudit"]] = relationship(
+        back_populates="guild",
+        lazy="selectin",
+    )
 

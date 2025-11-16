@@ -1,260 +1,46 @@
-from typing import Optional, Dict
-from sqlmodel import SQLModel, Field, Column
-from sqlalchemy import BigInteger
-from sqlalchemy.dialects.postgresql import JSON
+"""
+TutorialProgress — onboarding tutorial tracking.
+Schema only (LUMEN LAW 2025).
+"""
+
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Dict, Optional
+
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from src.core.database.base import Base, IdMixin, TimestampMixin
 
 
-class TutorialProgress(SQLModel, table=True):
+class TutorialProgress(Base, IdMixin, TimestampMixin):
     """
-    Player tutorial progress and reward tracking.
-    
-    Tracks completion of tutorial steps and reward claims.
-    Tutorial serves as onboarding experience teaching core mechanics.
-    
-    Tutorial Steps:
-        - register_account: Complete registration
-        - first_drop: Use /drop command
-        - first_summon: Use /summon command
-        - first_fusion: Attempt fusion
-        - view_collection: Check /maidens
-        - set_leader: Set a leader maiden
-        - complete_daily_quest: Finish all daily objectives
-    
-    Rewards per step (core.configurable):
-        - AuricCoin, Lumees, or XP rewards
-        - Unlocking features
-        - Guidance popups
-    
-    Attributes:
-        player_id: Owner's Discord ID
-        steps_completed: Dict tracking which steps are done
-        rewards_claimed: Dict tracking which rewards taken
-        started_at: When tutorial began
-        completed_at: When all steps finished (nullable)
+    Tutorial step & reward tracking for players.
     """
-    
+
     __tablename__ = "tutorial_progress"
-    
-    id: Optional[int] = Field(default=None, primary_key=True)
-    player_id: int = Field(
-        sa_column=Column(BigInteger, nullable=False, unique=True, index=True),
-        foreign_key="players.discord_id"
+    __table_args__ = (
+        Index("ix_tutorial_progress_steps_gin", "steps_completed", postgresql_using="gin"),
+        Index("ix_tutorial_progress_rewards_gin", "rewards_claimed", postgresql_using="gin"),
     )
-    
-    steps_completed: Dict[str, bool] = Field(
-        default_factory=lambda: {
-            "register_account": False,
-            "first_drop": False,
-            "first_summon": False,
-            "first_fusion": False,
-            "view_collection": False,
-            "set_leader": False,
-            "complete_daily_quest": False
-        },
-        sa_column=Column(JSON)
+
+    player_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("player_core.discord_id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
     )
-    
-    rewards_claimed: Dict[str, bool] = Field(
-        default_factory=lambda: {
-            "register_account": False,
-            "first_drop": False,
-            "first_summon": False,
-            "first_fusion": False,
-            "view_collection": False,
-            "set_leader": False,
-            "complete_daily_quest": False
-        },
-        sa_column=Column(JSON)
+
+    steps_completed: Mapped[Dict[str, bool]] = mapped_column(
+        JSONB, nullable=False, default=dict
     )
-    
-    started_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-    completed_at: Optional[datetime] = Field(default=None)
-    
-    def is_step_complete(self, step: str) -> bool:
-        """
-        Check if specific tutorial step is completed.
-        
-        Args:
-            step: Tutorial step name
-        
-        Returns:
-            True if step completed, False otherwise
-        
-        Example:
-            >>> if tutorial.is_step_complete("first_drop"):
-            ...     print("DROP step done!")
-        """
-        return self.steps_completed.get(step, False)
-    
-    def is_reward_claimed(self, step: str) -> bool:
-        """
-        Check if reward for step has been claimed.
-        
-        Args:
-            step: Tutorial step name
-        
-        Returns:
-            True if reward claimed, False otherwise
-        
-        Example:
-            >>> if not tutorial.is_reward_claimed("first_summon"):
-            ...     print("Reward available!")
-        """
-        return self.rewards_claimed.get(step, False)
-    
-    def complete_step(self, step: str) -> bool:
-        """
-        Mark tutorial step as completed.
-        
-        Args:
-            step: Tutorial step name
-        
-        Returns:
-            True if step was newly completed, False if already done
-        
-        Example:
-            >>> if tutorial.complete_step("first_fusion"):
-            ...     print("Step newly completed!")
-        """
-        if step not in self.steps_completed:
-            return False
-        
-        if self.steps_completed[step]:
-            return False
-        
-        self.steps_completed[step] = True
-        
-        if self.is_tutorial_complete() and not self.completed_at:
-            self.completed_at = datetime.utcnow()
-        
-        return True
-    
-    def claim_reward(self, step: str) -> bool:
-        """
-        Mark reward as claimed for step.
-        
-        Validates that step is completed before allowing claim.
-        
-        Args:
-            step: Tutorial step name
-        
-        Returns:
-            True if reward newly claimed, False if already claimed or step not done
-        
-        Example:
-            >>> if tutorial.claim_reward("set_leader"):
-            ...     print("Reward claimed!")
-        """
-        if step not in self.rewards_claimed:
-            return False
-        
-        if not self.is_step_complete(step):
-            return False
-        
-        if self.rewards_claimed[step]:
-            return False
-        
-        self.rewards_claimed[step] = True
-        return True
-    
-    def get_progress_count(self) -> int:
-        """
-        Get number of completed tutorial steps.
-        
-        Returns:
-            Count of completed steps (0-7)
-        
-        Example:
-            >>> progress = tutorial.get_progress_count()
-            >>> print(f"Tutorial: {progress}/7 steps")
-        """
-        return sum(1 for completed in self.steps_completed.values() if completed)
-    
-    def get_progress_percentage(self) -> float:
-        """
-        Calculate tutorial completion percentage.
-        
-        Returns:
-            Percentage (0-100)
-        
-        Example:
-            >>> percent = tutorial.get_progress_percentage()
-            >>> print(f"Tutorial {percent:.1f}% complete")
-        """
-        total = len(self.steps_completed)
-        completed = self.get_progress_count()
-        return (completed / total) * 100 if total > 0 else 0.0
-    
-    def is_tutorial_complete(self) -> bool:
-        """
-        Check if all tutorial steps are completed.
-        
-        Returns:
-            True if all steps done, False otherwise
-        
-        Example:
-            >>> if tutorial.is_tutorial_complete():
-            ...     print("Tutorial finished!")
-        """
-        return all(self.steps_completed.values())
-    
-    def get_unclaimed_rewards(self) -> list[str]:
-        """
-        Get list of steps with unclaimed rewards.
-        
-        Returns:
-            List of step names with rewards available
-        
-        Example:
-            >>> unclaimed = tutorial.get_unclaimed_rewards()
-            >>> print(f"Unclaimed rewards: {len(unclaimed)}")
-        """
-        return [
-            step for step, completed in self.steps_completed.items()
-            if completed and not self.rewards_claimed.get(step, False)
-        ]
-    
-    def get_next_step(self) -> Optional[str]:
-        """
-        Get next incomplete tutorial step.
-        
-        Returns steps in order:
-        1. register_account
-        2. first_drop
-        3. first_summon
-        4. first_fusion
-        5. view_collection
-        6. set_leader
-        7. complete_daily_quest
-        
-        Returns:
-            Step name or None if all complete
-        
-        Example:
-            >>> next_step = tutorial.get_next_step()
-            >>> if next_step:
-            ...     print(f"Next: {next_step}")
-        """
-        step_order = [
-            "register_account",
-            "first_drop",
-            "first_summon",
-            "first_fusion",
-            "view_collection",
-            "set_leader",
-            "complete_daily_quest"
-        ]
-        
-        for step in step_order:
-            if not self.steps_completed.get(step, False):
-                return step
-        
-        return None
-    
-    def __repr__(self) -> str:
-        return (
-            f"<TutorialProgress(player={self.player_id}, "
-            f"progress={self.get_progress_count()}/7, "
-            f"complete={self.is_tutorial_complete()})>"
-        )
+
+    rewards_claimed: Mapped[Dict[str, bool]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

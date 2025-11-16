@@ -1,0 +1,53 @@
+# Ascension Tower Configuration
+# ==============================
+# Infinite tower progression system with exponential scaling
+
+ascension:
+  # Base rewards per floor
+  base_lumees_per_floor: 50
+  base_xp_per_floor: 25
+
+  # Exponential scaling for rewards
+  # reward = base * (floor ^ exponent)
+  reward_scaling_exponent: 1.1
+
+  # Floor difficulty scaling
+  difficulty_scaling:
+    enemy_hp_multiplier: 1.15        # +15% HP per floor
+    enemy_attack_multiplier: 1.12    # +12% attack per floor
+    enemy_count_growth: 0.1          # +10% more enemies every 10 floors
+
+  # Milestone rewards (awarded at specific floors)
+  milestone_rewards:
+    floor_10:
+      lumenite: 100
+      title: "Tower Initiate"
+
+    floor_25:
+      lumenite: 250
+      auric_coin: 50
+      title: "Tower Adept"
+
+    floor_50:
+      lumenite: 500
+      auric_coin: 100
+      maiden_ticket: 5
+      title: "Tower Master"
+
+    floor_100:
+      lumenite: 1000
+      auric_coin: 250
+      maiden_ticket: 10
+      title: "Tower Legend"
+
+    floor_250:
+      lumenite: 2500
+      auric_coin: 500
+      maiden_ticket: 25
+      title: "Tower Conqueror"
+
+  # Leaderboard integration
+  leaderboard:
+    enabled: true
+    category: "ascension"
+    update_on_new_high_floor: true

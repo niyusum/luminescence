@@ -1,0 +1,30 @@
+# Leaderboard Configuration
+# ==========================
+# Leaderboard categories and update schedules
+
+leaderboards:
+  # Available leaderboard categories
+  categories:
+    - "ascension"       # Highest floor reached in ascension tower
+    - "collection"      # Total unique maidens owned
+    - "wealth"          # Total lumees + lumenite value
+    - "combat"          # Total battles won
+
+  # Category display names
+  category_names:
+    ascension: "Ascension Tower"
+    collection: "Maiden Collection"
+    wealth: "Total Wealth"
+    combat: "Battle Victories"
+
+  # How many players to show per page
+  entries_per_page: 25
+
+  # Maximum entries to track per category
+  max_entries_per_category: 1000
+
+  # Auto-regeneration schedule (in hours)
+  regeneration_interval_hours: 6
+
+  # Snapshot retention (how many versions to keep)
+  snapshot_retention: 10

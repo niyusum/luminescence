@@ -93,6 +93,22 @@ class Base(DeclarativeBase):
 # OPTIONAL MIXINS
 # ============================================================================
 
+class IdMixin:
+    """
+    Adds a standard auto-incrementing integer primary key to a model.
+
+    Notes
+    -----
+    - Use this for models that need a simple integer primary key.
+    - Models with natural keys (like PlayerCore using discord_id) should not use this mixin.
+    """
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        doc="Auto-incrementing primary key.",
+    )
+
+
 class TimestampMixin:
     """
     Adds created_at and updated_at fields to a model.

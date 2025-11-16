@@ -21,7 +21,7 @@ Usage:
 
 import discord
 from discord.ui import Button
-from typing import Optional, Callable, Awaitable
+from typing import Optional, Callable, Awaitable, cast
 
 from src.ui.views.base import BaseView
 from src.ui.emojis import Emojis
@@ -101,7 +101,9 @@ class ConfirmationView(BaseView):
 
         # Disable buttons
         for child in self.children:
-            child.disabled = True
+            if isinstance(child, discord.ui.Button):
+                button = cast(discord.ui.Button, child)
+                button.disabled = True
 
         if self.on_confirm_callback:
             await self.on_confirm_callback(interaction)
@@ -117,7 +119,9 @@ class ConfirmationView(BaseView):
 
         # Disable buttons
         for child in self.children:
-            child.disabled = True
+            if isinstance(child, discord.ui.Button):
+                button = cast(discord.ui.Button, child)
+                button.disabled = True
 
         if self.on_cancel_callback:
             await self.on_cancel_callback(interaction)
@@ -185,7 +189,9 @@ class AgreementView(BaseView):
             return
 
         # Disable agree button
-        self.children[0].disabled = True
+        if isinstance(self.children[0], discord.ui.Button):
+            button = cast(discord.ui.Button, self.children[0])
+            button.disabled = True
 
         if self.on_agree_callback:
             await self.on_agree_callback(interaction)

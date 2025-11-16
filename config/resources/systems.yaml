@@ -37,9 +37,13 @@ stamina_system:
 
 resource_system:
   # Maximum caps for resources (null = unlimited)
-  auric_coin_max_cap: 999999
-  lumees_max_cap: null  # Unlimited
-  lumenite_max_cap: null  # Unlimited
+  max_auric_coin: 999999
+  max_lumees: 999999999  # 999 million cap
+  max_lumenite: 999999999  # 999 million cap
+
+  # Resource transfer fee (percentage)
+  # 0.0 = no fee, 0.05 = 5% fee
+  resource_transfer_fee_pct: 0.0
 
   # How modifiers stack (multiplicative vs additive)
   modifier_stacking: "multiplicative"

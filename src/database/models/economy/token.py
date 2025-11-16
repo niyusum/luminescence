@@ -1,46 +1,43 @@
 """
-Token inventory for maiden redemption.
-Tokens are earned from ascension and redeemed for random maidens in tier range.
-
-LUMEN LAW Compliance:
-- Article I: Economy domain model
-- Article II: Audit trail fields
-- Article VII: Pure schema only, no business logic
+Token — player token inventory for redemption.
+Pure schema; no business logic.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
-from sqlmodel import SQLModel, Field, Column, String, DateTime, UniqueConstraint, ForeignKey
+from sqlalchemy import BigInteger, DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+from src.core.database.base import Base, IdMixin, TimestampMixin
 
 
-class Token(SQLModel, table=True):
+class Token(Base, IdMixin, TimestampMixin):
     """
     Player token inventory.
 
-    Tokens redeem for maidens in specific tier ranges.
-    Pure schema — business logic in TokenService.
+    Tokens redeem for maidens (tier-based). Pure schema definition.
     """
+
     __tablename__ = "tokens"
-
-    id: int = Field(default=None, primary_key=True)
-    player_id: int = Field(
-        sa_column=Column(ForeignKey("players.discord_id"), index=True, nullable=False)
-    )
-    token_type: str = Field(
-        sa_column=Column(String(50), index=True, nullable=False)
-    )  # bronze, silver, gold, platinum, diamond
-    quantity: int = Field(default=0, nullable=False)
-
-    # Audit trail (LUMEN LAW Article II)
-    created_at: datetime = Field(
-        sa_column=Column(DateTime, default=datetime.utcnow, nullable=False)
-    )
-    updated_at: datetime = Field(
-        sa_column=Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    )
-
     __table_args__ = (
         UniqueConstraint("player_id", "token_type", name="uq_player_token_type"),
     )
 
-    def __repr__(self) -> str:
-        return f"<Token(player_id={self.player_id}, type={self.token_type}, quantity={self.quantity})>"
+    player_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("player_core.discord_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    token_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+    )
+
+    quantity: Mapped[int] = mapped_column(
+        nullable=False,
+        default=0,
+    )

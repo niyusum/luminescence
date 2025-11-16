@@ -1,0 +1,66 @@
+# Token System Configuration
+# LUMEN LAW I.6: All tunable game parameters externalized
+#
+# Tokens are used to summon maidens with tier-based ranges
+# Different token types have different tier ranges and costs
+
+tokens:
+  # Valid multi-pull counts
+  valid_multi_pull_counts:
+    - 10
+
+  # Standard Token (Common to Rare maidens)
+  standard:
+    # Cost per single summon
+    cost_per_summon: 1
+
+    # Tier range for summons
+    tier_range:
+      min_tier: 1
+      max_tier: 3
+
+    # Multi-pull discounts
+    multi_pull_10_discount: 0.0  # No discount for standard
+
+    # Multi-pull guarantees
+    multi_pull_10_guarantees:
+      min_tier_3_count: 1  # At least 1 tier 3 in 10-pull
+
+  # Premium Token (Rare to Epic maidens)
+  premium:
+    cost_per_summon: 1
+
+    tier_range:
+      min_tier: 3
+      max_tier: 5
+
+    multi_pull_10_discount: 0.0
+
+    multi_pull_10_guarantees:
+      min_tier_4_count: 1  # At least 1 tier 4+ in 10-pull
+
+  # Special Token (Epic to Legendary maidens)
+  special:
+    cost_per_summon: 1
+
+    tier_range:
+      min_tier: 4
+      max_tier: 6
+
+    multi_pull_10_discount: 0.0
+
+    multi_pull_10_guarantees:
+      min_tier_5_count: 1  # At least 1 tier 5+ in 10-pull
+
+  # Event Token (All tiers with boosted rates)
+  event:
+    cost_per_summon: 1
+
+    tier_range:
+      min_tier: 1
+      max_tier: 6
+
+    multi_pull_10_discount: 0.1  # 10% discount
+
+    multi_pull_10_guarantees:
+      min_tier_4_count: 2  # At least 2 tier 4+ in 10-pull

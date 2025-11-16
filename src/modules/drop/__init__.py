@@ -1,10 +1,13 @@
 """
-DROP system module initialization.
+Drop Module
+===========
 
-Exports public API for drop mechanics, auric coin generation,
-and cooldown management.
+Business logic for drop charge system and auric coin rewards.
 
-LUMEN LAW Compliance:
-- Article V: Centralized exports
-- Article VII: Clean module boundaries
+Exports:
+- DropChargeService: Drop charge management and execution
 """
+
+from .charge_service import DropChargeService
+
+__all__ = ["DropChargeService"]

@@ -1,36 +1,36 @@
+"""
+PlayerShrine — personal passive-yield shrine.
+Pure schema only (LUMEN LAW 2025).
+"""
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from sqlmodel import SQLModel, Field, Column
-from sqlalchemy import BigInteger, String, Integer, DateTime, Boolean, Index, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from src.core.database.base import Base, IdMixin, SoftDeleteMixin, TimestampMixin
+from ..enums import ShrineType
 
 
-class PlayerShrine(SQLModel, table=True):
+class PlayerShrine(Base, IdMixin, TimestampMixin, SoftDeleteMixin):
     """
-    Player-owned Shrine (personal passive-yield structure).
+    Player-owned shrine instance.
 
-    LUMEN LAW:
-      - Pure schema (no business logic here).
-      - Indexed for hot paths (player lookups, type filtering).
-      - JSONB ring buffer for quick UI history without heavy joins.
-
-    Uniqueness:
-      A player can own up to N shrines *per type*, tracked by `slot`.
-      (N is config-driven: `shrines.<type>.max_shrines`)
-
-    Fields:
-      player_id: Discord/user PK (BigInt) — owner of the shrine
-      shrine_type: e.g. 'lesser', 'radiant' (defined by ConfigManager)
-      slot: 1..N (multiple shrines of same type)
-      level: upgrade level (>=1)
-      last_collected_at: UTC timestamp for cooldown gating (nullable = never collected)
-      is_active: soft-delete / resale marker
-      yield_history: [{'ts': iso, 'amount': int}] last 10 entries for UI
-      metadata: free-form (e.g., cosmetics, counters)
+    Schema-only:
+    - player_id
+    - shrine_type
+    - slot
+    - level
+    - is_active
+    - last_collected_at
+    - yield_history
+    - metadata
     """
+
     __tablename__ = "player_shrines"
     __table_args__ = (
         UniqueConstraint("player_id", "shrine_type", "slot", name="uq_player_shrine_slot"),
@@ -39,26 +39,57 @@ class PlayerShrine(SQLModel, table=True):
         Index("ix_player_shrines_active", "is_active"),
     )
 
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    player_id: int = Field(sa_column=Column(BigInteger, nullable=False))
-    shrine_type: str = Field(sa_column=Column(String(24), nullable=False))
-    slot: int = Field(default=1, sa_column=Column(Integer, nullable=False))
-
-    level: int = Field(default=1)
-    last_collected_at: Optional[datetime] = Field(default=None)
-    is_active: bool = Field(default=True, sa_column=Column(Boolean, nullable=False))
-
-    created_at: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    )
-    updated_at: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    player_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("player_core.discord_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
-    yield_history: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
+    version: Mapped[int] = mapped_column(
+        nullable=False,
+        default=1,
+        doc="Optimistic locking version",
+    )
 
-    # -------- Convenience (non-mutating) --------
-    def __repr__(self) -> str:
-        return f"<PlayerShrine(player={self.player_id}, type={self.shrine_type}, slot={self.slot}, lvl={self.level})>"
+    shrine_type: Mapped[str] = mapped_column(
+        String(24),
+        nullable=False,
+        index=True,
+    )
+
+    slot: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+
+    level: Mapped[int] = mapped_column(
+        nullable=False,
+        default=1,
+    )
+
+    last_collected_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        index=True,
+    )
+
+    yield_history: Mapped[List[Dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+    )
+
+    metadata: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+

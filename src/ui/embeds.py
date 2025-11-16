@@ -431,7 +431,7 @@ class EmbedFactory:
         Returns:
             Combat encounter embed
         """
-        from src.utils.combat_utils import CombatUtils
+        from src.ui.utils.combat_utils import CombatUtils
 
         color = ColorTheme.get_color("combat")
         embed = discord.Embed(

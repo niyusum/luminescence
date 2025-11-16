@@ -1,0 +1,36 @@
+# Player Registration Default Values
+# ==================================
+# Default values applied when a new player registers for the first time.
+# These values initialize all 5 player component records.
+
+# Starting Currencies
+# -------------------
+# Economic resources given to new players
+starting_lumees: 1000          # Basic currency for common transactions
+starting_lumenite: 0           # Premium currency (players start with none)
+starting_auric_coin: 50        # Special currency for mid-tier purchases
+
+# Starting Progression
+# --------------------
+# Initial level and XP values
+starting_level: 1              # Players always start at level 1
+starting_xp: 0                 # No XP on registration
+
+# Starting Stats
+# --------------
+# Base resource pool values before any stat allocation
+# These values are defined in progression/stats.yaml under stat_allocation
+# but can be overridden here for initial registration if needed
+
+# Drop Charges
+# ------------
+# Initial drop charges for new players
+drop_charges:
+  initial_charges: 10          # Full charges on registration
+
+# Tutorial and Onboarding
+# -----------------------
+# Tutorial state initialization (future use)
+tutorial:
+  enabled: true
+  starting_quest: "welcome"

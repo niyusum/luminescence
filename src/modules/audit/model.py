@@ -295,7 +295,7 @@ class AuditLog(Base):
         """
         return {
             "id": self.id,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at is not None else None,
             "user_id": self.user_id,
             "guild_id": self.guild_id,
             "channel_id": self.channel_id,

@@ -1,90 +1,59 @@
-from typing import Optional, Dict
-from sqlmodel import SQLModel, Field, Column
-from sqlalchemy import BigInteger, Index
-from sqlalchemy.dialects.postgresql import JSON
+"""
+DailyQuest — daily quest state for each player.
+Schema only (LUMEN LAW 2025).
+"""
+
+from __future__ import annotations
+
 from datetime import datetime, date
+from typing import Dict, Optional
+
+from sqlalchemy import BigInteger, Date, Index, Boolean, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from src.core.database.base import Base, IdMixin, TimestampMixin
 
 
-class DailyQuest(SQLModel, table=True):
+class DailyQuest(Base, IdMixin, TimestampMixin):
     """
-    Daily quest progress tracking for a player.
-    
-    One row per player per day. Tracks completion of 5 daily objectives
-    and progress toward each. Rewards claimed separately to prevent double-claiming.
-    
-    Quest Types:
-        - drop_performed: Use /drop at least once
-        - summon_maiden: Summon at least one maiden
-        - attempt_fusion: Attempt fusion at least once
-        - spend_energy: Spend energy on quests
-        - spend_stamina: Spend stamina on battles
-    
-    Attributes:
-        player_id: Owner's Discord ID
-        quest_date: Date for this quest set
-        quests_completed: Boolean flags for each quest
-        quest_progress: Integer counters for each quest
-        rewards_claimed: Whether rewards have been collected
-        bonus_streak: Consecutive days completed (for bonuses)
-    
-    Indexes:
-        - (player_id, quest_date) composite for fast lookups
+    Daily quest tracking for players.
+    One row per player per day.
     """
-    
+
     __tablename__ = "daily_quests"
     __table_args__ = (
         Index("ix_daily_quests_player_date", "player_id", "quest_date"),
+        Index("ix_daily_quests_completed_gin", "quests_completed", postgresql_using="gin"),
+        Index("ix_daily_quests_progress_gin", "quest_progress", postgresql_using="gin"),
     )
-    
-    id: Optional[int] = Field(default=None, primary_key=True)
-    player_id: int = Field(
-        sa_column=Column(BigInteger, nullable=False, index=True),
-        foreign_key="players.discord_id"
+
+    player_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("player_core.discord_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
-    quest_date: date = Field(default_factory=date.today, nullable=False, index=True)
-    
-    quests_completed: Dict[str, bool] = Field(
-        default_factory=lambda: {
-            "drop_performed": False,
-            "summon_maiden": False,
-            "attempt_fusion": False,
-            "spend_energy": False,
-            "spend_stamina": False,
-        },
-        sa_column=Column(JSON)
+
+    version: Mapped[int] = mapped_column(
+        nullable=False,
+        default=1,
+        doc="Optimistic locking version",
     )
-    
-    quest_progress: Dict[str, int] = Field(
-        default_factory=lambda: {
-            "drops_done": 0,
-            "summons_done": 0,
-            "fusions_attempted": 0,
-            "energy_spent": 0,
-            "stamina_spent": 0,
-        },
-        sa_column=Column(JSON)
+
+    quest_date: Mapped[date] = mapped_column(Date, nullable=False, index=True, default=date.today)
+
+    quests_completed: Mapped[Dict[str, bool]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
     )
-    
-    rewards_claimed: bool = Field(default=False)
-    bonus_streak: int = Field(default=0)
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-    
-    def is_complete(self) -> bool:
-        """Check if all daily quests are completed."""
-        return all(self.quests_completed.values())
-    
-    def get_completion_count(self) -> int:
-        """Count how many quests are completed."""
-        return sum(1 for completed in self.quests_completed.values() if completed)
-    
-    def get_completion_percent(self) -> float:
-        """Calculate completion percentage (0-100)."""
-        total = len(self.quests_completed)
-        completed = self.get_completion_count()
-        return (completed / total) * 100 if total > 0 else 0.0
-    
-    def __repr__(self) -> str:
-        return (
-            f"<DailyQuest(player={self.player_id}, date={self.quest_date}, "
-            f"complete={self.is_complete()}, streak={self.bonus_streak})>"
-        )
+
+    quest_progress: Mapped[Dict[str, int]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
+    rewards_claimed: Mapped[bool] = mapped_column(Boolean, default=False)
+    bonus_streak: Mapped[int] = mapped_column(default=0)

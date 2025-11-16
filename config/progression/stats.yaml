@@ -1,0 +1,55 @@
+# Player Stat Allocation Configuration
+# LUMEN LAW I.6: All tunable game parameters externalized
+#
+# Controls stat point allocation and resource pool scaling
+
+stat_allocation:
+  # Stat points awarded per level up
+  points_per_level: 5
+
+  # Base resource values at level 1 (before any stat allocation)
+  base_energy: 100
+  base_stamina: 50
+  base_hp: 500
+
+  # Resource increase per stat point allocated
+  energy_per_point: 10
+  stamina_per_point: 5
+  hp_per_point: 100
+
+  # Maximum stat points that can be allocated to a single resource
+  # null = unlimited
+  max_points_per_resource: null
+
+# XP Curve Configuration
+xp_curve:
+  # Type of XP curve formula
+  # Options: "exponential", "polynomial", "logarithmic", "linear"
+  type: "exponential"
+
+  # Base XP required (used in all formulas)
+  base: 100
+
+  # Exponent/multiplier for curve scaling
+  exponent: 1.5
+
+# Class System
+classes:
+  # Valid class names
+  valid_classes:
+    - "destroyer"
+    - "adapter"
+    - "invoker"
+
+  # Class-specific bonuses (applied to stats)
+  destroyer:
+    hp_bonus_pct: 0.20      # +20% HP
+    attack_bonus_pct: 0.15  # +15% attack
+
+  adapter:
+    stamina_bonus_pct: 0.20 # +20% stamina
+    defense_bonus_pct: 0.15 # +15% defense
+
+  invoker:
+    energy_bonus_pct: 0.20  # +20% energy
+    power_bonus_pct: 0.10   # +10% total power

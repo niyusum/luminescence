@@ -18,7 +18,7 @@ Usage:
 
 import discord
 from discord.ui import Button
-from typing import List, Callable, Awaitable, Optional
+from typing import List, Callable, Awaitable, Optional, cast
 
 from src.ui.views.base import BaseView
 from src.ui.emojis import Emojis
@@ -103,8 +103,12 @@ class PaginatedView(BaseView):
         embed = await self.page_builder(self.current_page)
 
         # Update button states
-        self.children[0].disabled = self.current_page <= 1  # Previous button
-        self.children[1].disabled = self.current_page >= self.total_pages  # Next button
+        if isinstance(self.children[0], discord.ui.Button):
+            prev_button = cast(discord.ui.Button, self.children[0])
+            prev_button.disabled = self.current_page <= 1
+        if isinstance(self.children[1], discord.ui.Button):
+            next_button = cast(discord.ui.Button, self.children[1])
+            next_button.disabled = self.current_page >= self.total_pages
 
         # Update message
         await interaction.response.edit_message(embed=embed, view=self)
@@ -199,8 +203,12 @@ class PaginatedListView(BaseView):
         embed = self.build_embed()
 
         # Update button states
-        self.children[0].disabled = self.current_page <= 1  # Previous button
-        self.children[1].disabled = self.current_page >= self.total_pages  # Next button
+        if isinstance(self.children[0], discord.ui.Button):
+            prev_button = cast(discord.ui.Button, self.children[0])
+            prev_button.disabled = self.current_page <= 1
+        if isinstance(self.children[1], discord.ui.Button):
+            next_button = cast(discord.ui.Button, self.children[1])
+            next_button.disabled = self.current_page >= self.total_pages
 
         await interaction.response.edit_message(embed=embed, view=self)
 

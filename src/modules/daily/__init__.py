@@ -1,10 +1,15 @@
 """
-Daily quest system module initialization.
+Daily Module - LES 2025 Compliant
+==================================
 
-Exports public API for daily quest generation, tracking,
-and reward distribution.
+Domain: Daily quest system with streaks and resets
 
-LUMEN LAW Compliance:
-- Article V: Centralized exports
-- Article VII: Clean module boundaries
+Services:
+- QuestService: Daily quest management, progress tracking, and rewards
 """
+
+from .quest_service import DailyQuestService
+
+__all__ = [
+    "DailyQuestService",
+]

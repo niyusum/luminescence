@@ -1,0 +1,44 @@
+# Daily Quest Configuration
+# ==========================
+# Quest definitions, rewards, and streak bonuses
+
+daily_quests:
+  # Pool of possible daily quests
+  quest_pool:
+    - id: "explore_3_times"
+      name: "Explorer"
+      description: "Complete 3 explorations"
+      goal: 3
+
+    - id: "summon_5_maidens"
+      name: "Summoner"
+      description: "Summon 5 maidens"
+      goal: 5
+
+    - id: "win_3_battles"
+      name: "Warrior"
+      description: "Win 3 battles"
+      goal: 3
+
+    - id: "fuse_2_maidens"
+      name: "Alchemist"
+      description: "Fuse 2 maidens"
+      goal: 2
+
+    - id: "earn_1000_lumees"
+      name: "Merchant"
+      description: "Earn 1000 lumees"
+      goal: 1000
+
+  # Base rewards for completing all daily quests
+  base_rewards:
+    lumees: 500
+    xp: 250
+    auric_coin: 5
+
+  # Streak bonus percentage per consecutive day
+  # 0.1 = 10% bonus per day of streak
+  streak_bonus_pct: 0.1
+
+  # Maximum streak multiplier (10 days = 100% bonus)
+  max_streak_multiplier: 2.0
