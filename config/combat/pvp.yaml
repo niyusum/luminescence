@@ -1,0 +1,27 @@
+# PvP Combat Configuration
+# LUMEN LAW I.6: All tunable game parameters externalized
+
+# Player HP Configuration
+player_base_hp: 1500
+
+# HP Scaling (unit damage → player HP)
+hp_scale_factor: 0.003
+min_damage: 1
+
+# Defense Effectiveness
+defense_effectiveness: 0.65
+
+# Critical Hits
+crit_chance: 0.05          # 5% crit chance
+crit_multiplier: 1.5       # 1.5x damage on crit
+enable_crit: false         # Disabled for deterministic combat
+
+# Combat Limits
+max_turns_per_battle: 100
+
+# Rewards
+rewards:
+  victory_lumees: 50
+  victory_xp: 25
+  defeat_lumees: 10
+  defeat_xp: 5

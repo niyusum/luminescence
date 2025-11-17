@@ -1,0 +1,33 @@
+# Ascension Combat Configuration
+# LUMEN LAW I.6: All tunable game parameters externalized
+
+# Player HP Configuration
+player_hp_base: 1000
+player_hp_per_level: 25
+
+# HP Scaling (unit damage → player HP)
+hp_scale_factor: 0.005
+min_player_damage: 1
+
+# Defense Effectiveness
+defense_effectiveness: 0.7
+
+# Monster Scaling per Floor
+monster:
+  base_attack: 250
+  scaling_per_floor: 1.18  # Exponential: atk * (1.18 ^ (floor-1))
+  
+  base_defense: 100
+  defense_scaling: 1.12
+  
+  base_hp: 1000
+  hp_scaling: 1.20
+
+# Reward Scaling
+rewards:
+  lumees_per_floor: 15      # Base lumees
+  xp_per_floor: 10           # Base XP
+  scaling_exponent: 1.1      # reward = base * (floor ^ 1.1)
+
+# Combat Limits
+max_turns_per_battle: 100

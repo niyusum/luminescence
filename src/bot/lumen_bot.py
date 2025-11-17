@@ -3,11 +3,21 @@ Lumen RPG Discord Bot - Main Bot Class (2025)
 
 Purpose
 -------
-Provide the production-grade Discord bot implementation for Lumen, responsible for:
+Production-grade Discord bot implementation with dependency injection.
+
+Responsibilities
+----------------
 - Discord integration (events, commands, presence)
-- Delegating lifecycle to BotLifecycle
-- Delegating feature loading to FeatureLoader
+- Bot-level lifecycle (via injected BotLifecycle)
+- Feature loading (via FeatureLoader)
 - Global error handling for prefix commands
+- Discord event handlers (on_ready, on_guild_join, etc.)
+
+Non-Responsibilities
+--------------------
+- Infrastructure initialization (delegated to ApplicationContext)
+- Service initialization (delegated to ServiceContainer)
+- Dependency injection orchestration (delegated to ApplicationContext)
 
 LUMEN LAW Compliance
 --------------------
@@ -18,35 +28,38 @@ LUMEN LAW Compliance
 - Graceful degradation on service failures
 - Structured audit logging with Discord context
 
-Architecture
-------------
-- LumenBot is the only concrete discord.ext.commands.Bot implementation.
-- Lifecycle (startup, health monitoring, shutdown) is delegated to BotLifecycle.
-- Cog loading is delegated to FeatureLoader / load_all_features.
+Architecture Notes
+------------------
+- LumenBot receives all dependencies via constructor (DI)
+- BotLifecycle handles bot-specific health monitoring
+- ApplicationContext handles application-level initialization
+- Cog loading delegated to FeatureLoader
 """
 
 from __future__ import annotations
 
 import time
-from typing import Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Dict, List, Optional, cast
 
 import discord
 from discord.ext import commands
 
 from src.bot.lifecycle import BotLifecycle, StartupMetrics
 from src.bot.loader import load_all_features
-from src.core.config import ConfigManager
 from src.core.config.config import Config
-from src.core.database.service import DatabaseService
+from src.core.event import initialize_event_system, shutdown_event_system
+from src.core.logging.logger import LogContext, get_logger
 from src.modules.shared.exceptions import (
     InsufficientResourcesError,
     LumenDomainException,
     RateLimitError,
 )
-from src.core.logging.logger import LogContext, get_logger
-from src.core.redis.service import RedisService
-from src.core.event import event_bus, initialize_event_system, shutdown_event_system
 from src.ui.utils.embed_builder import EmbedBuilder
+
+if TYPE_CHECKING:
+    from src.core.config.manager import ConfigManager
+    from src.core.event.bus import EventBus
+    from src.core.services.container import ServiceContainer
 
 # Legacy alias for backward compatibility
 LumenException = LumenDomainException
@@ -56,19 +69,40 @@ logger = get_logger(__name__)
 
 class LumenBot(commands.Bot):
     """
-    Lumen RPG Discord Bot - Production-Grade Implementation.
+    Lumen RPG Discord Bot - Production-Grade Implementation with DI.
 
     Handles:
     - Discord integration, events, and prefix commands
     - Cog loading and presence
     - Global error handling for prefix commands
+    - Bot-specific health monitoring
 
-    Delegates:
-    - Startup validation, service init, and health monitoring to BotLifecycle
-    - Cog discovery and loading to FeatureLoader
+    Dependencies (Injected):
+    - config_manager: Application configuration
+    - service_container: Domain services
+    - event_bus: Event system for cross-module communication
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        config_manager: ConfigManager,
+        service_container: ServiceContainer,
+        event_bus: EventBus,
+    ) -> None:
+        """
+        Initialize LumenBot with dependency injection.
+
+        Args:
+            config_manager: Application configuration manager
+            service_container: Domain service container
+            event_bus: Event bus for cross-module communication
+        """
+        # Store injected dependencies
+        self._config_manager = config_manager
+        self._service_container = service_container
+        self._event_bus = event_bus
+
+        # Configure Discord intents
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
@@ -83,12 +117,16 @@ class LumenBot(commands.Bot):
             description=Config.BOT_DESCRIPTION,
         )
 
+        # Initialize bot-specific lifecycle management
         self.lifecycle = BotLifecycle(self)
 
+        # Bot state
         self.startup_metrics: Optional[StartupMetrics] = None
         self.bot_ready: bool = False
         self.degraded_mode: bool = False
         self.errors_by_type: Dict[str, int] = {}
+
+        logger.debug("LumenBot initialized with dependency injection")
 
     # --------------------------------------------------------------- #
     # Prefix Handling
@@ -98,6 +136,7 @@ class LumenBot(commands.Bot):
         """
         Smart dynamic prefix with flexible whitespace.
 
+        Supports:
         - ;, ; , ;  , ;   (semi-colon prefixes)
         - lumen, lumen , lumen  , lumen   (word prefixes)
         """
@@ -113,67 +152,60 @@ class LumenBot(commands.Bot):
         )(bot, message)
 
     # --------------------------------------------------------------- #
-    # Startup and Initialization (Delegates to BotLifecycle)
+    # Startup and Initialization
     # --------------------------------------------------------------- #
 
     async def setup_hook(self) -> None:
         """
-        Initialize all core systems and load all features.
+        Initialize bot-specific systems and load features.
 
-        Delegates lifecycle management to BotLifecycle:
-        - Startup validation
-        - Service initialization with timing
-        - Health monitoring
-        - Startup metrics collection
+        Bot-level responsibilities:
+        - Load feature cogs
+        - Initialize event system
+        - Start health monitoring
+        - Collect startup metrics
 
-        Handles Discord-specific concerns:
-        - Cog loading
-        - Publishing bot setup event
+        Infrastructure initialization handled by ApplicationContext.
         """
         startup_start = time.perf_counter()
         logger.info("=" * 60)
-        logger.info("LUMEN RPG BOT STARTUP")
+        logger.info("LUMEN BOT SETUP")
         logger.info("=" * 60)
 
         try:
-            await self.lifecycle.validate_startup()
-
-            db_time = await self.lifecycle.initialize_service(
-                "Database", DatabaseService.initialize()
-            )
-            redis_time = await self.lifecycle.initialize_service(
-                "Redis", RedisService.initialize(), required=False
-            )
-            config_time = await self.lifecycle.initialize_service(
-                "ConfigManager", ConfigManager.initialize()
-            )
-
+            # Check for degraded mode from lifecycle
             if (
                 self.lifecycle.metrics.services_unhealthy > 0
                 or self.lifecycle.metrics.services_degraded > 0
             ):
                 self.degraded_mode = True
+                logger.warning("Bot starting in degraded mode")
 
+            # Load feature cogs
             cogs_start = time.perf_counter()
             cog_stats = await load_all_features(self)
             cogs_time = (time.perf_counter() - cogs_start) * 1000
+            logger.info("✓ Feature cogs loaded (%.2fms)", cogs_time)
 
             # Initialize event system (listeners and consumers)
+            event_start = time.perf_counter()
             await initialize_event_system()
+            event_time = (time.perf_counter() - event_start) * 1000
+            logger.info("✓ Event system initialized (%.2fms)", event_time)
 
-            await event_bus.publish("bot.setup_complete", {"bot": self})
-            logger.info("Bot setup complete event published")
+            # Publish bot setup complete event
+            await self._event_bus.publish("bot.setup_complete", {"bot": self})
+            logger.debug("Bot setup complete event published")
 
-            sync_time_ms = 0.0  # Slash commands removed; prefix-only
-
+            # Collect startup metrics
             total_time_ms = (time.perf_counter() - startup_start) * 1000
             self.startup_metrics = StartupMetrics(
                 total_time_ms=total_time_ms,
-                database_time_ms=db_time,
-                redis_time_ms=redis_time,
-                config_time_ms=config_time,
+                database_time_ms=0.0,  # Handled by ApplicationContext
+                redis_time_ms=0.0,  # Handled by ApplicationContext
+                config_time_ms=0.0,  # Handled by ApplicationContext
                 cogs_time_ms=cogs_time,
-                sync_time_ms=sync_time_ms,
+                sync_time_ms=0.0,  # Prefix-only, no slash commands
                 cogs_loaded=cast(int, cog_stats.get("loaded", 0)),
                 cogs_failed=cast(int, cog_stats.get("failed", 0)),
             )
@@ -181,16 +213,20 @@ class LumenBot(commands.Bot):
             self.lifecycle.log_startup_summary(self.startup_metrics)
             self.lifecycle.start_health_monitoring()
 
+            logger.info("=" * 60)
+            logger.info("✓ Bot setup complete")
+            logger.info("=" * 60)
+
         except Exception as exc:
             logger.critical(
-                "FATAL: Bot setup failed",
+                "Bot setup failed",
                 extra={"error": str(exc), "error_type": type(exc).__name__},
                 exc_info=True,
             )
             raise
 
     # --------------------------------------------------------------- #
-    # Events
+    # Discord Events
     # --------------------------------------------------------------- #
 
     async def on_ready(self) -> None:
@@ -367,44 +403,63 @@ class LumenBot(commands.Bot):
         self.lifecycle.metrics.commands_executed += 1
 
     # --------------------------------------------------------------- #
-    # Graceful Shutdown (Delegates to BotLifecycle)
+    # Graceful Shutdown
     # --------------------------------------------------------------- #
 
     async def close(self) -> None:
         """
-        Gracefully close services before bot shutdown.
+        Gracefully close bot-specific resources.
 
-        Delegates service cleanup to BotLifecycle:
-        - Health monitoring shutdown
-        - Service closure with error handling
-        - Metrics logging
+        Application-level shutdown handled by ApplicationContext.
         """
         logger.info("=" * 60)
-        logger.info("LUMEN RPG BOT SHUTDOWN")
+        logger.info("LUMEN BOT SHUTDOWN")
         logger.info("=" * 60)
 
+        # Log final command statistics
         metrics = self.lifecycle.get_metrics_snapshot()
         total_commands = metrics["commands_executed"] + metrics["commands_failed"]
         if total_commands > 0:
             success_rate = (metrics["commands_executed"] / total_commands) * 100
-            logger.info("Final command stats:")
+            logger.info("Final command statistics:")
             logger.info("  Commands Executed: %d", metrics["commands_executed"])
             logger.info("  Commands Failed:   %d", metrics["commands_failed"])
             logger.info("  Success Rate:      %.1f%%", success_rate)
             logger.info("  Errors Handled:    %d", metrics["errors_handled"])
 
-        # Shutdown event system first (flush consumers, stop tasks)
+        # Shutdown event system (flush consumers, stop tasks)
         await shutdown_event_system()
+        logger.info("✓ Event system shut down")
 
+        # Shutdown bot lifecycle (health monitoring)
         await self.lifecycle.shutdown()
+        logger.info("✓ Bot lifecycle shut down")
+
+        # Call parent close
         await super().close()
 
         logger.info("=" * 60)
-        logger.info("Lumen RPG shutdown complete")
+        logger.info("✓ Bot shutdown complete")
         logger.info("=" * 60)
 
+    # --------------------------------------------------------------- #
+    # Dependency Access (for cogs that need services)
+    # --------------------------------------------------------------- #
 
+    @property
+    def config_manager(self) -> ConfigManager:
+        """Access injected config manager."""
+        return self._config_manager
 
+    @property
+    def service_container(self) -> ServiceContainer:
+        """Access injected service container."""
+        return self._service_container
+
+    @property
+    def event_bus(self) -> EventBus:
+        """Access injected event bus."""
+        return self._event_bus
 
 
 

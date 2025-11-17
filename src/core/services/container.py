@@ -14,6 +14,12 @@ Responsibilities
 - Provide easy access to services throughout the application
 - Ensure single instances (singleton pattern)
 
+Non-Responsibilities
+--------------------
+- Application-level lifecycle orchestration (delegated to ApplicationContext)
+- Bot initialization (delegated to LumenBot)
+- Infrastructure initialization order (delegated to ApplicationContext)
+
 LUMEN 2025 COMPLIANCE
 ---------------------
 ✓ Separation of concerns - infrastructure only
@@ -21,12 +27,18 @@ LUMEN 2025 COMPLIANCE
 ✓ Config-driven service initialization
 ✓ Fail-fast on critical services (all services are critical)
 ✓ Minimal observability (timing + health check)
+
+Architecture Notes
+------------------
+- ServiceContainer is instantiated and initialized by ApplicationContext
+- Receives dependencies (ConfigManager, EventBus) via constructor injection
+- All domain services follow the same constructor pattern: (config_manager, event_bus, logger)
 """
 
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from src.core.config.manager import ConfigManager
 from src.core.logging.logger import get_logger
@@ -157,7 +169,7 @@ class ServiceContainer:
         self._initialized = False
 
         # Minimal observability (LES 2025)
-        self._service_init_times: dict[str, float] = {}
+        self._service_init_times: Dict[str, float] = {}
         self._init_start: Optional[float] = None
         self._init_end: Optional[float] = None
 
@@ -309,7 +321,7 @@ class ServiceContainer:
             self._init_end = time.perf_counter()
             self._initialized = True
 
-            extra_data: dict[str, Any] = {
+            extra_data: Dict[str, Any] = {
                 "total_time_seconds": round(self._init_end - self._init_start, 3),
                 "service_count": len(self._service_init_times),
             }
@@ -386,7 +398,7 @@ class ServiceContainer:
         self._initialized = False
         self._logger.info("Service container shut down")
 
-    async def health_check(self) -> dict[str, bool | float | int | None]:
+    async def health_check(self) -> Dict[str, bool | float | int | None]:
         """
         Internal LES-compliant health snapshot for /status or admin diagnostics.
         """
@@ -578,80 +590,3 @@ class ServiceContainer:
     def is_initialized(self) -> bool:
         """Check if container is initialized."""
         return self._initialized
-
-
-# ============================================================================
-# Global Container Instance
-# ============================================================================
-
-_global_container: Optional[ServiceContainer] = None
-
-
-def initialize_service_container(
-    config_manager: ConfigManager,
-    event_bus: EventBus,
-    logger: Optional["Logger"] = None,
-) -> ServiceContainer:
-    """
-    Initialize the global service container.
-
-    Args:
-        config_manager: Application configuration manager
-        event_bus: Event bus for cross-module communication (global singleton)
-        logger: Optional logger (defaults to module logger)
-
-    Returns:
-        Initialized ServiceContainer instance
-
-    Example:
-        >>> from src.core.config.manager import ConfigManager
-        >>> from src.core.event import event_bus
-        >>> config = ConfigManager(...)
-        >>> container = initialize_service_container(config, event_bus)
-        >>> await container.initialize()
-    """
-    global _global_container
-
-    if _global_container is not None:
-        logger_instance = logger or get_logger(__name__)
-        logger_instance.warning(
-            "Service container already initialized, returning existing instance",
-        )
-        return _global_container
-
-    container = ServiceContainer(
-        config_manager=config_manager,
-        event_bus=event_bus,
-        logger=logger or get_logger(__name__),
-    )
-
-    _global_container = container
-    return container
-
-
-def get_service_container() -> ServiceContainer:
-    """
-    Get the global service container instance.
-
-    Raises:
-        RuntimeError: If container not initialized
-    """
-    if _global_container is None:
-        raise RuntimeError(
-            "Service container not initialized. "
-            "Call initialize_service_container() first.",
-        )
-    return _global_container
-
-
-async def shutdown_service_container() -> None:
-    """
-    Shutdown the global service container.
-
-    Call this during application shutdown.
-    """
-    global _global_container
-
-    if _global_container is not None:
-        await _global_container.shutdown()
-        _global_container = None

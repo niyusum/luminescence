@@ -1,0 +1,55 @@
+# PvE Combat Configuration (Exploration, World Boss, Raids)
+# LUMEN LAW I.6: All tunable game parameters externalized
+
+# General Combat Settings
+hits_per_attack: 1
+defense_effectiveness: 0.7
+hp_scale_factor: 0.005
+min_damage: 1
+
+# Exploration Monster Settings
+exploration:
+  player_base_hp: 1000
+  scaling_per_level: 15
+  
+  monster_base_attack: 150
+  monster_base_defense: 80
+  monster_base_hp: 800
+  
+  attack_scaling: 1.15      # Per player level
+  defense_scaling: 1.10
+  hp_scaling: 1.18
+
+# World Boss Settings
+world_boss:
+  base_hp: 500000           # 500k HP for level 1 boss
+  hp_growth: 1.25           # Exponential HP scaling
+  
+  base_attack: 500
+  attack_growth: 1.18
+  
+  base_defense: 300
+  defense_growth: 1.12
+  
+  reward_multiplier: 1.5    # 1.5x rewards vs exploration
+  entry_cost: 1             # Stamina/energy cost
+
+# Raid Boss Settings
+raid:
+  base_hp: 10000000         # 10M HP for tier 1 raid
+  hp_growth: 1.5            # Massive HP scaling
+  
+  base_attack: 800
+  attack_growth: 1.20
+  
+  base_defense: 500
+  defense_growth: 1.15
+  
+  max_participants: 50
+  duration_hours: 24
+  reward_multiplier: 3.0    # 3x rewards vs exploration
+
+# Combat Limits
+max_turns_exploration: 50
+max_turns_world_boss: 1000
+max_turns_raid: 10000       # Very long battles possible

@@ -1,0 +1,22 @@
+# Combat Damage Formulas Configuration
+# LUMEN LAW I.6: All tunable game parameters externalized
+
+# Core Damage Formula
+# damage = max(attacker_atk - (defender_def * defense_reduction_factor), min_damage)
+defense_reduction_factor: 0.7
+min_damage: 1
+
+# Critical Hits (global toggle)
+enable_crit: false
+default_crit_chance: 0.0
+default_crit_multiplier: 1.5
+
+# Element Advantage
+# (Configured in maiden/power.yaml - element advantages section)
+
+# Multi-Hit Attacks
+default_hits_per_attack: 1
+
+# Variance (future feature)
+enable_damage_variance: false
+variance_range: 0.1         # ±10% damage variance

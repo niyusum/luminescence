@@ -1,16 +1,38 @@
 """
-Lumen RPG - Application Entry Point
-====================================
+Lumen RPG - Application Entry Point (LES 2025)
+===============================================
 
-LES 2025 Compliant Bootstrap
------------------------------
-- Config validation
+Purpose
+-------
+Minimal bootstrap entrypoint that:
+- Validates configuration
+- Initializes database infrastructure
+- Creates and runs ApplicationContext (Kernel)
+- Handles graceful shutdown
+
+Responsibilities
+----------------
+- Early config validation
 - Database initialization
-- Event Bus (global singleton)
-- ConfigManager initialization
-- Service container initialization
-- Bot lifecycle management
-- Graceful shutdown
+- Event loop setup
+- Signal handler installation
+- ApplicationContext orchestration
+- Graceful and emergency shutdown
+
+Non-Responsibilities
+--------------------
+- Service initialization (delegated to ApplicationContext)
+- Bot lifecycle (delegated to LumenBot via ApplicationContext)
+- Dependency injection (delegated to ApplicationContext)
+- Business logic (delegated to domain services)
+
+Lumen 2025 Compliance
+---------------------
+- Clean separation: infra bootstrap only
+- ApplicationContext handles all DI and lifecycle
+- Structured logging throughout
+- Fail-fast on critical errors
+- Cross-platform signal handling
 """
 
 import asyncio
@@ -18,15 +40,9 @@ import signal
 import sys
 
 from src.core.config.config import Config
-from src.core.config.manager import ConfigManager
-from src.core.logging.logger import get_logger
 from src.core.database.service import DatabaseService
-from src.core.event import event_bus                           
-from src.core.services.container import (
-    initialize_service_container,
-    shutdown_service_container,
-)
-from src.bot.lumen_bot import LumenBot
+from src.core.infra.application_context import ApplicationContext
+from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -35,151 +51,116 @@ logger = get_logger(__name__)
 # Application Bootstrap
 # ============================================================================
 
-async def _startup() -> LumenBot:
-    """Initialize all infrastructure components before launching the bot."""
-    logger.info("========== LUMEN RPG INITIALIZATION START ==========")
-
-    # Step 1: Validate configuration early
-    try:
-        Config.validate()
-        logger.info("✓ Configuration validated")
-    except Exception as exc:
-        logger.critical(f"Configuration validation failed: {exc}")
-        raise
-
-    # Step 2: Initialize database service
-    try:
-        await DatabaseService.initialize()
-        logger.info("✓ Database service initialized")
-    except Exception as exc:
-        logger.critical(f"Database initialization failed: {exc}", exc_info=True)
-        raise
-
-    # Step 3: Event bus 
-    try:
-        logger.info("✓ Event bus available")
-    except Exception as exc:
-        logger.critical(f"Event bus access failed: {exc}", exc_info=True)
-        raise
-
-    # Step 4: Initialize config manager
-    try:
-        config_manager = ConfigManager()
-        await config_manager.initialize()
-        logger.info("✓ Config manager initialized")
-    except Exception as exc:
-        logger.critical(f"Config manager initialization failed: {exc}", exc_info=True)
-        raise
-
-    # Step 5: Initialize service container
-    try:
-        container = initialize_service_container(
-            config_manager=config_manager,
-            event_bus=event_bus,        # <-- USE GLOBAL BUS
-            logger=get_logger("src.core.services.container"),
-        )
-        await container.initialize()
-        logger.info("✓ Service container initialized")
-    except Exception as exc:
-        logger.critical(f"Service container initialization failed: {exc}", exc_info=True)
-        raise
-
-    # Step 6: Initialize bot
-    try:
-        bot = LumenBot()
-        logger.info("✓ Bot initialized")
-    except Exception as exc:
-        logger.critical(f"Bot initialization failed: {exc}", exc_info=True)
-        raise
-
-    logger.info("========== INFRASTRUCTURE INITIALIZED SUCCESSFULLY ==========")
-    return bot
-
-
-# ============================================================================
-# Application Shutdown
-# ============================================================================
-
-async def _shutdown(bot: LumenBot | None) -> None:
-    """Gracefully shut down the bot and infrastructure services."""
-    logger.info("========== LUMEN RPG SHUTDOWN START ==========")
-
-    # Step 1: Close bot if active
-    if bot and not bot.is_closed():
-        try:
-            await bot.close()
-            logger.info("✓ Bot closed")
-        except Exception as exc:
-            logger.error(f"Error while closing bot: {exc}", exc_info=True)
-
-    # Step 2: Shutdown service container
-    try:
-        await shutdown_service_container()
-        logger.info("✓ Service container shut down")
-    except Exception as exc:
-        logger.error(f"Service container shutdown error: {exc}", exc_info=True)
-
-    # Step 3: Shutdown database
-    try:
-        await DatabaseService.shutdown()
-        logger.info("✓ Database service shut down")
-    except Exception as exc:
-        logger.error(f"Database service shutdown error: {exc}", exc_info=True)
-
-    logger.info("========== SHUTDOWN COMPLETE ==========")
-
-
-# ============================================================================
-# Application Entrypoint
-# ============================================================================
-
 async def main() -> None:
     """
-    Lumen RPG Entry Point (LES 2025 Compliant).
+    Lumen RPG application entry point.
 
     Lifecycle:
         1. Validate configuration
-        2. Initialize infrastructure (DB, EventBus, ConfigManager, Services)
-        3. Start bot
-        4. Handle shutdown gracefully
+        2. Initialize database infrastructure
+        3. Create and initialize ApplicationContext
+        4. Run bot (blocks until shutdown)
+        5. Graceful shutdown via ApplicationContext
     """
-    bot: LumenBot | None = None
+    context: ApplicationContext | None = None
 
     try:
-        bot = await _startup()
+        logger.info("========== LUMEN RPG STARTUP ==========")
 
-        logger.info("Starting Lumen RPG Discord bot...")
-        await bot.start(Config.DISCORD_TOKEN)
+        # Step 1: Validate configuration
+        try:
+            Config.validate()
+            logger.info("✓ Configuration validated")
+        except Exception as exc:
+            logger.critical(
+                "Configuration validation failed",
+                extra={"error": str(exc)},
+                exc_info=True,
+            )
+            raise
+
+        # Step 2: Initialize database infrastructure
+        try:
+            await DatabaseService.initialize()
+            logger.info("✓ Database infrastructure initialized")
+        except Exception as exc:
+            logger.critical(
+                "Database initialization failed",
+                extra={"error": str(exc)},
+                exc_info=True,
+            )
+            raise
+
+        # Step 3: Create and initialize ApplicationContext (Kernel)
+        try:
+            context = ApplicationContext()
+            await context.initialize()
+            logger.info("✓ Application context initialized")
+        except Exception as exc:
+            logger.critical(
+                "Application context initialization failed",
+                extra={"error": str(exc)},
+                exc_info=True,
+            )
+            raise
+
+        # Step 4: Run bot (blocks until bot stops)
+        logger.info("========== BOT STARTING ==========")
+        await context.run_bot()
 
     except asyncio.CancelledError:
-        logger.warning("Asyncio task cancellation received; shutting down gracefully.")
+        logger.warning("Asyncio task cancelled, shutting down gracefully")
         raise
 
     except KeyboardInterrupt:
-        logger.info("Manual shutdown via keyboard interrupt.")
+        logger.info("Manual shutdown via keyboard interrupt")
 
     except Exception as exc:
-        logger.critical(f"Fatal startup error: {exc}", exc_info=True)
+        logger.critical(
+            "Fatal application error",
+            extra={"error": str(exc), "error_type": type(exc).__name__},
+            exc_info=True,
+        )
         sys.exit(1)
 
     finally:
-        await _shutdown(bot)
+        # Step 5: Graceful shutdown
+        if context:
+            try:
+                await context.shutdown()
+            except Exception as exc:
+                logger.error(
+                    "Error during shutdown",
+                    extra={"error": str(exc)},
+                    exc_info=True,
+                )
+
+        logger.info("========== LUMEN RPG SHUTDOWN COMPLETE ==========")
 
 
 # ============================================================================
-# Process Startup
+# Signal Handling
 # ============================================================================
 
 def _install_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:
     """
-    Install signal handlers for graceful shutdown in production.
+    Install signal handlers for graceful shutdown.
+
+    Handles:
+        - SIGTERM (production deployments)
+        - SIGINT (handled by KeyboardInterrupt)
     """
     try:
         loop.add_signal_handler(signal.SIGTERM, loop.stop)
-        logger.debug("SIGTERM handler installed")
+        logger.debug("✓ SIGTERM handler installed")
     except NotImplementedError:
-        logger.debug("SIGTERM not supported on this platform (likely Windows)")
+        # Windows doesn't support add_signal_handler
+        logger.debug("Signal handlers not supported on this platform (Windows)")
 
+
+# ============================================================================
+# Process Entry Point
+# ============================================================================
 
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
@@ -189,10 +170,14 @@ if __name__ == "__main__":
     try:
         loop.run_until_complete(main())
     except KeyboardInterrupt:
-        logger.info("Bot manually stopped via keyboard interrupt.")
+        logger.info("Shutdown via keyboard interrupt")
     except Exception as exc:
-        logger.critical(f"Startup failure: {exc}", exc_info=True)
+        logger.critical(
+            "Application startup failure",
+            extra={"error": str(exc)},
+            exc_info=True,
+        )
         sys.exit(1)
     finally:
         loop.close()
-        logger.info("Event loop closed.")
+        logger.info("Event loop closed")

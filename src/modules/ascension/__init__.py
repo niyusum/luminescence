@@ -5,11 +5,14 @@ Ascension Module - LES 2025 Compliant
 Domain: Infinite ascension tower progression
 
 Services:
-- ProgressService: Tower floor progression, statistics, and rewards
+- AscensionProgressService: Floor progression and statistics
+- AscensionTokenService: Token reward distribution
 """
 
 from .progress_service import AscensionProgressService
+from .token_service import AscensionTokenService
 
 __all__ = [
     "AscensionProgressService",
+    "AscensionTokenService",
 ]

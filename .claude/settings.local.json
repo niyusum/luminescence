@@ -12,7 +12,9 @@
       "Bash(test:*)",
       "Bash(python -m py_compile:*)",
       "Bash(python -m pyright:*)",
-      "Bash(python3 -m pyright:*)"
+      "Bash(python3 -m pyright:*)",
+      "Bash(del:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
