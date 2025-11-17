@@ -46,7 +46,7 @@ Dependencies
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, List, Tuple
+from typing import TYPE_CHECKING, Dict, List, Sequence, Tuple
 
 from src.core.logging.logger import get_logger
 from src.core.validation.input_validator import InputValidator
@@ -64,6 +64,7 @@ if TYPE_CHECKING:
     from src.modules.combat.shared.hp_scaling import HPScalingCalculator
     from src.modules.maiden.leader_skill_service import LeaderSkillService
     from src.modules.maiden.power_service import PowerCalculationService
+    from src.modules.player.progression_service import PlayerProgressionService
 
 logger = get_logger(__name__)
 
@@ -99,10 +100,11 @@ class ElementalTeamEngine:
         element_resolver: ElementResolver,
         combat_formulas: CombatFormulas,
         hp_scaling: HPScalingCalculator,
+        player_progression_service: PlayerProgressionService,
     ) -> None:
         """
         Initialize elemental team engine.
-        
+
         Args:
             config_manager: Application configuration
             power_service: Power calculation service
@@ -110,6 +112,7 @@ class ElementalTeamEngine:
             element_resolver: Element advantage resolver
             combat_formulas: Damage calculation formulas
             hp_scaling: HP scaling calculator
+            player_progression_service: Player progression service for level data
         """
         self._config = config_manager
         self._power = power_service
@@ -117,6 +120,7 @@ class ElementalTeamEngine:
         self._elements = element_resolver
         self._formulas = combat_formulas
         self._hp_scaling = hp_scaling
+        self._player_progression = player_progression_service
         self._logger = logger
 
         # Load config
@@ -256,8 +260,8 @@ class ElementalTeamEngine:
         # Build player team
         team = await self.build_player_team(player_id)
 
-        # Calculate player HP (TODO: get from player level)
-        player_level = 1  # Placeholder - should come from PlayerCore
+        # Calculate player HP from player level
+        player_level = await self._player_progression.get_player_level(player_id)
         player_max_hp = self._player_hp_base + (player_level * self._player_hp_per_level)
 
         # Calculate monster stats
@@ -309,7 +313,7 @@ class ElementalTeamEngine:
     # ========================================================================
 
     async def calculate_team_stats(
-        self, team: List[MaidenStats], player_id: int
+        self, team: Sequence[MaidenStats], player_id: int
     ) -> Tuple[int, int]:
         """
         Calculate aggregate team ATK/DEF with leader bonuses.

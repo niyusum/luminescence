@@ -7,12 +7,15 @@ Domain: Sector exploration, progress tracking, and mastery ranks
 Services:
 - SectorProgressService: Sector exploration progress and rewards
 - MasteryService: 3-rank mastery progression for sectors
+- MatronService: Matron boss encounters and reward distribution
 """
 
 from .mastery_service import ExplorationMasteryService
+from .matron_service import MatronService
 from .sector_progress_service import SectorProgressService
 
 __all__ = [
     "SectorProgressService",
     "ExplorationMasteryService",
+    "MatronService",
 ]

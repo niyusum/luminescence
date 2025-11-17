@@ -14,7 +14,9 @@
       "Bash(python -m pyright:*)",
       "Bash(python3 -m pyright:*)",
       "Bash(del:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(done)",
+      "Bash(for dir in src/modules/*/)"
     ],
     "deny": [],
     "ask": []

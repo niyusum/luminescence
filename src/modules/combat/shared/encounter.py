@@ -40,7 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Sequence
 from uuid import UUID, uuid4
 
 
@@ -171,8 +171,8 @@ class Encounter:
     enemy_max_hp: int
     
     # Teams
-    player_team: List[MaidenStats]
-    enemy_team: Optional[List[MaidenStats | EnemyStats]]
+    player_team: Sequence[MaidenStats]
+    enemy_team: Optional[Sequence[MaidenStats | EnemyStats]]
     
     # Optional context
     enemy_id: Optional[int] = None  # For PvP

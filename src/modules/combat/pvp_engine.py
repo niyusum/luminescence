@@ -47,11 +47,11 @@ Dependencies
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING, List, Sequence, Tuple
 
 from src.core.logging.logger import get_logger
 from src.core.validation.input_validator import InputValidator
-from src.modules.combat.shared.encounter import Encounter, EncounterType, MaidenStats
+from src.modules.combat.shared.encounter import Encounter, EncounterType, EnemyStats, MaidenStats
 
 if TYPE_CHECKING:
     from src.core.config.manager import ConfigManager
@@ -268,7 +268,7 @@ class PvPEngine:
     # ========================================================================
 
     async def calculate_team_stats(
-        self, team: List[MaidenStats], player_id: int
+        self, team: Sequence[MaidenStats], player_id: int
     ) -> Tuple[int, int]:
         """
         Calculate aggregate team ATK/DEF with leader bonuses.
@@ -291,28 +291,32 @@ class PvPEngine:
 
     async def calculate_damage(
         self,
-        attacker_team: List[MaidenStats],
-        defender_team: List[MaidenStats],
+        attacker_team: Sequence[MaidenStats | EnemyStats],
+        defender_team: Sequence[MaidenStats | EnemyStats],
         attacker_player_id: int,
         defender_player_id: int,
     ) -> int:
         """
         Calculate damage from attacker to defender in PvP.
-        
+
         Uses aggregate team ATK vs DEF with element considerations.
-        
+
         Args:
             attacker_team: Attacking team
             defender_team: Defending team
             attacker_player_id: Attacker's player ID
             defender_player_id: Defender's player ID
-        
+
         Returns:
             Damage to defender's HP pool
         """
+        # Filter to only MaidenStats for team stats calculation (PvP uses maiden teams)
+        attacker_maidens = [m for m in attacker_team if isinstance(m, MaidenStats)]
+        defender_maidens = [m for m in defender_team if isinstance(m, MaidenStats)]
+
         # Get team stats with leader bonuses
-        atk, _ = await self.calculate_team_stats(attacker_team, attacker_player_id)
-        _, defense = await self.calculate_team_stats(defender_team, defender_player_id)
+        atk, _ = await self.calculate_team_stats(attacker_maidens, attacker_player_id)
+        _, defense = await self.calculate_team_stats(defender_maidens, defender_player_id)
 
         # Apply defense effectiveness
         effective_def = int(defense * self._defense_effectiveness)
@@ -390,6 +394,18 @@ class PvPEngine:
             self._logger.error(
                 "Missing team in PvP encounter",
                 extra={"encounter_id": str(encounter.encounter_id)},
+            )
+            return encounter
+
+        # Validate player IDs exist (should always be present for PvP)
+        if attacker_id is None or defender_id is None:
+            self._logger.error(
+                "Missing player ID in PvP encounter",
+                extra={
+                    "encounter_id": str(encounter.encounter_id),
+                    "attacker_id": attacker_id,
+                    "defender_id": defender_id,
+                },
             )
             return encounter
 

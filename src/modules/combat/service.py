@@ -49,7 +49,7 @@ Dependencies
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Dict, Optional
 from uuid import UUID
 
@@ -62,6 +62,7 @@ from src.modules.combat.aggregate_engine import AggregateEngine
 from src.modules.combat.elemental_engine import ElementalTeamEngine
 from src.modules.combat.pvp_engine import PvPEngine
 from src.modules.combat.shared.encounter import Encounter, EnemyStats
+from src.modules.shared.base_repository import BaseRepository
 from src.modules.shared.base_service import BaseService
 from src.modules.shared.exceptions import (
     InsufficientResourcesError,
@@ -73,6 +74,7 @@ if TYPE_CHECKING:
     from logging import Logger
 
     from src.core.config.manager import ConfigManager
+    from src.modules.ascension.progress_service import AscensionProgressService
     from src.modules.ascension.token_service import AscensionTokenService
 
 logger = get_logger(__name__)
@@ -119,10 +121,11 @@ class CombatService(BaseService):
         pvp_engine: PvPEngine,
         aggregate_engine: AggregateEngine,
         ascension_token_service: AscensionTokenService,
+        ascension_progress_service: AscensionProgressService,
     ) -> None:
         """
         Initialize CombatService with all engines and dependencies.
-        
+
         Args:
             config_manager: Application configuration
             event_bus: Event bus for combat events
@@ -131,6 +134,7 @@ class CombatService(BaseService):
             pvp_engine: PvP combat engine
             aggregate_engine: PvE combat engine
             ascension_token_service: Token reward service for ascension
+            ascension_progress_service: Progress service for floor unlock validation
         """
         super().__init__(config_manager, event_bus, logger)
 
@@ -138,8 +142,24 @@ class CombatService(BaseService):
         self._pvp_engine = pvp_engine
         self._aggregate_engine = aggregate_engine
         self._ascension_token_service = ascension_token_service
+        self._ascension_progress = ascension_progress_service
 
-        self.log.info("CombatService initialized with token integration")
+        # Initialize encounter repository
+        from src.database.models.combat.encounter import CombatEncounter
+        self._encounter_repo = BaseRepository[CombatEncounter](
+            model_class=CombatEncounter,
+            logger=get_logger(f"{__name__}.EncounterRepository"),
+        )
+
+        # TTL config
+        self._encounter_ttl_ongoing = int(
+            self._config.get("combat.encounter_ttl_ongoing_hours", default=1)
+        )
+        self._encounter_ttl_resolved = int(
+            self._config.get("combat.encounter_ttl_resolved_hours", default=24)
+        )
+
+        self.log.info("CombatService initialized with encounter persistence")
 
     # ========================================================================
     # PUBLIC API - Ascension Combat
@@ -175,11 +195,24 @@ class CombatService(BaseService):
 
         self.log_operation("start_ascension_battle", player_id=player_id, floor=floor)
 
-        # TODO: Validate player has unlocked this floor
-        # async with DatabaseService.get_session() as session:
-        #     progress = await ascension_service.get_progress(player_id)
-        #     if progress.highest_floor_reached < floor:
-        #         raise InvalidOperationError(...)
+        # Validate player has unlocked this floor
+        try:
+            progress = await self._ascension_progress.get_ascension_progress(player_id)
+            highest_floor = progress["highest_floor"]
+
+            # Players can attempt their highest floor + 1 (next floor)
+            if floor > highest_floor + 1:
+                raise InvalidOperationError(
+                    action="start_ascension_battle",
+                    reason=f"Floor {floor} not unlocked. Highest floor reached: {highest_floor}",
+                )
+        except NotFoundError:
+            # Player has no ascension record - only allow floor 1
+            if floor > 1:
+                raise InvalidOperationError(
+                    action="start_ascension_battle",
+                    reason=f"Floor {floor} not unlocked. Start with floor 1.",
+                )
 
         # Build encounter
         encounter = await self._elemental_engine.build_encounter(player_id, floor)
@@ -190,8 +223,8 @@ class CombatService(BaseService):
         # Mark as resolved
         encounter.resolved_at = datetime.now(timezone.utc)
 
-        # Save encounter (TODO: implement encounter persistence)
-        # await self.save_encounter(encounter)
+        # Save encounter for replay/audit
+        await self.save_encounter(encounter)
 
         # Emit event
         await self.emit_event(
@@ -776,62 +809,182 @@ class CombatService(BaseService):
     async def save_encounter(self, encounter: Encounter) -> bool:
         """
         Save encounter state to database for resumption.
-        
-        Future implementation for multi-session battles.
-        
+
+        Enables mid-battle save/resume and combat log replay.
+
         Args:
             encounter: Encounter to save
-        
+
         Returns:
             True if saved successfully
         """
-        # TODO: Implement encounter persistence
-        # - Serialize encounter.to_dict()
-        # - Store in encounters table
-        # - TTL for cleanup (e.g., 1 hour)
-        self.log.warning(
-            "Encounter persistence not yet implemented",
-            extra={"encounter_id": str(encounter.encounter_id)},
-        )
-        return False
+        from src.database.models.combat.encounter import CombatEncounter
+
+        self.log_operation("save_encounter", encounter_id=str(encounter.encounter_id))
+
+        try:
+            async with DatabaseService.get_transaction() as session:
+                # Calculate expiration time
+                if encounter.resolved_at:
+                    ttl_hours = self._encounter_ttl_resolved
+                else:
+                    ttl_hours = self._encounter_ttl_ongoing
+
+                expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+
+                # Check if encounter already exists
+                existing = await self._encounter_repo.find_one_where(
+                    session,
+                    CombatEncounter.encounter_id == encounter.encounter_id,
+                )
+
+                if existing:
+                    # Update existing encounter
+                    existing.encounter_data = encounter.to_dict()
+                    existing.resolved_at = encounter.resolved_at
+                    existing.expires_at = expires_at
+                else:
+                    # Create new encounter record
+                    encounter_record = CombatEncounter(
+                        encounter_id=encounter.encounter_id,
+                        player_id=encounter.player_id,
+                        encounter_type=encounter.type.value,
+                        encounter_data=encounter.to_dict(),
+                        resolved_at=encounter.resolved_at,
+                        expires_at=expires_at,
+                    )
+                    session.add(encounter_record)
+
+                self.log.info(
+                    "Encounter saved successfully",
+                    extra={
+                        "encounter_id": str(encounter.encounter_id),
+                        "player_id": encounter.player_id,
+                        "type": encounter.type.value,
+                        "resolved": encounter.resolved_at is not None,
+                        "expires_at": expires_at.isoformat(),
+                    },
+                )
+
+                return True
+
+        except Exception as e:
+            self.log.error(
+                f"Failed to save encounter: {e}",
+                extra={"encounter_id": str(encounter.encounter_id)},
+                exc_info=True,
+            )
+            return False
 
     async def load_encounter(self, encounter_id: UUID) -> Optional[Encounter]:
         """
         Load encounter state from database.
-        
-        Future implementation for resuming battles.
-        
+
+        Enables resuming battles from saved state.
+
         Args:
             encounter_id: Encounter UUID
-        
+
         Returns:
-            Encounter if found, None otherwise
+            Encounter if found and not expired, None otherwise
         """
-        # TODO: Implement encounter loading
-        # - Query encounters table
-        # - Deserialize with Encounter.from_dict()
-        # - Validate not expired
-        self.log.warning(
-            "Encounter loading not yet implemented",
-            extra={"encounter_id": str(encounter_id)},
-        )
-        return None
+        from src.database.models.combat.encounter import CombatEncounter
+
+        self.log_operation("load_encounter", encounter_id=str(encounter_id))
+
+        try:
+            async with DatabaseService.get_session() as session:
+                encounter_record = await self._encounter_repo.find_one_where(
+                    session,
+                    CombatEncounter.encounter_id == encounter_id,
+                )
+
+                if not encounter_record:
+                    self.log.info(
+                        "Encounter not found",
+                        extra={"encounter_id": str(encounter_id)},
+                    )
+                    return None
+
+                # Check if expired
+                now = datetime.now(timezone.utc)
+                if encounter_record.expires_at < now:
+                    self.log.info(
+                        "Encounter expired",
+                        extra={
+                            "encounter_id": str(encounter_id),
+                            "expired_at": encounter_record.expires_at.isoformat(),
+                        },
+                    )
+                    # Clean up expired encounter
+                    await self.delete_encounter(encounter_id)
+                    return None
+
+                # Deserialize encounter
+                encounter = Encounter.from_dict(encounter_record.encounter_data)
+
+                self.log.info(
+                    "Encounter loaded successfully",
+                    extra={
+                        "encounter_id": str(encounter_id),
+                        "player_id": encounter.player_id,
+                        "type": encounter.type.value,
+                    },
+                )
+
+                return encounter
+
+        except Exception as e:
+            self.log.error(
+                f"Failed to load encounter: {e}",
+                extra={"encounter_id": str(encounter_id)},
+                exc_info=True,
+            )
+            return None
 
     async def delete_encounter(self, encounter_id: UUID) -> bool:
         """
         Delete encounter from database.
-        
-        Future implementation for cleanup.
-        
+
+        Used for cleanup of expired or completed encounters.
+
         Args:
             encounter_id: Encounter UUID
-        
+
         Returns:
             True if deleted successfully
         """
-        # TODO: Implement encounter deletion
-        self.log.warning(
-            "Encounter deletion not yet implemented",
-            extra={"encounter_id": str(encounter_id)},
-        )
-        return False
+        from src.database.models.combat.encounter import CombatEncounter
+
+        self.log_operation("delete_encounter", encounter_id=str(encounter_id))
+
+        try:
+            async with DatabaseService.get_transaction() as session:
+                encounter_record = await self._encounter_repo.find_one_where(
+                    session,
+                    CombatEncounter.encounter_id == encounter_id,
+                )
+
+                if not encounter_record:
+                    self.log.info(
+                        "Encounter not found for deletion",
+                        extra={"encounter_id": str(encounter_id)},
+                    )
+                    return False
+
+                await session.delete(encounter_record)
+
+                self.log.info(
+                    "Encounter deleted successfully",
+                    extra={"encounter_id": str(encounter_id)},
+                )
+
+                return True
+
+        except Exception as e:
+            self.log.error(
+                f"Failed to delete encounter: {e}",
+                extra={"encounter_id": str(encounter_id)},
+                exc_info=True,
+            )
+            return False

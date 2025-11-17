@@ -54,13 +54,33 @@ from src.modules.player import (
 )
 
 # Maiden services
-from src.modules.maiden import MaidenBaseService, MaidenService
+from src.modules.maiden import (
+    MaidenBaseService,
+    MaidenService,
+    PowerCalculationService,
+    LeaderSkillService,
+)
 
 # Exploration services
-from src.modules.exploration import ExplorationMasteryService, SectorProgressService
+from src.modules.exploration import (
+    ExplorationMasteryService,
+    SectorProgressService,
+    MatronService,
+)
 
 # Ascension services
-from src.modules.ascension import AscensionProgressService
+from src.modules.ascension import AscensionProgressService, AscensionTokenService
+
+# Combat services
+from src.modules.combat import (
+    CombatService,
+    ElementalTeamEngine,
+    PvPEngine,
+    AggregateEngine,
+)
+from src.modules.combat.shared.elements import ElementResolver
+from src.modules.combat.shared.formulas import CombatFormulas
+from src.modules.combat.shared.hp_scaling import HPScalingCalculator
 
 # Daily services
 from src.modules.daily import DailyQuestService
@@ -141,13 +161,17 @@ class ServiceContainer:
         # Maiden services
         self._maiden: Optional[MaidenService] = None
         self._maiden_base: Optional[MaidenBaseService] = None
+        self._power_calculation: Optional[PowerCalculationService] = None
+        self._leader_skill: Optional[LeaderSkillService] = None
 
         # Progression services
         self._tutorial: Optional[TutorialService] = None
         self._daily_quest: Optional[DailyQuestService] = None
         self._sector_progress: Optional[SectorProgressService] = None
         self._exploration_mastery: Optional[ExplorationMasteryService] = None
+        self._matron: Optional[MatronService] = None
         self._ascension_progress: Optional[AscensionProgressService] = None
+        self._ascension_token: Optional[AscensionTokenService] = None
         self._leaderboard: Optional[LeaderboardService] = None
 
         # Economy services
@@ -165,6 +189,15 @@ class ServiceContainer:
         self._guild_invite: Optional[GuildInviteService] = None
         self._guild_audit: Optional[GuildAuditService] = None
         self._guild_permission: Optional[GuildPermissionService] = None
+
+        # Combat services
+        self._element_resolver: Optional[ElementResolver] = None
+        self._combat_formulas: Optional[CombatFormulas] = None
+        self._hp_scaling: Optional[HPScalingCalculator] = None
+        self._elemental_engine: Optional[ElementalTeamEngine] = None
+        self._pvp_engine: Optional[PvPEngine] = None
+        self._aggregate_engine: Optional[AggregateEngine] = None
+        self._combat: Optional[CombatService] = None
 
         self._initialized = False
 
@@ -234,6 +267,15 @@ class ServiceContainer:
                 MaidenBaseService,
             )
 
+            # Power and leader skill services (config-only)
+            start = time.perf_counter()
+            self._power_calculation = PowerCalculationService(self._config_manager)
+            self._service_init_times["power_calculation"] = time.perf_counter() - start
+
+            start = time.perf_counter()
+            self._leader_skill = LeaderSkillService(self._config_manager)
+            self._service_init_times["leader_skill"] = time.perf_counter() - start
+
             # Initialize progression services
             self._tutorial = self._create_service(
                 "tutorial",
@@ -281,6 +323,18 @@ class ServiceContainer:
                 TokenService,
             )
 
+            # Ascension token service (needs token_service)
+            if not self._token:
+                raise RuntimeError("TokenService must be initialized before AscensionTokenService")
+            start = time.perf_counter()
+            self._ascension_token = AscensionTokenService(
+                config_manager=self._config_manager,
+                event_bus=self._event_bus,
+                logger=get_logger("src.modules.ascension.token_service.AscensionTokenService"),
+                token_service=self._token,
+            )
+            self._service_init_times["ascension_token"] = time.perf_counter() - start
+
             self._transaction_log = self._create_service(
                 "transaction_log",
                 TransactionLogService,
@@ -317,6 +371,101 @@ class ServiceContainer:
                 "guild_permission",
                 GuildPermissionService,
             )
+
+            # Initialize combat helper services
+            start = time.perf_counter()
+            self._element_resolver = ElementResolver(self._config_manager)
+            self._service_init_times["element_resolver"] = time.perf_counter() - start
+
+            start = time.perf_counter()
+            self._combat_formulas = CombatFormulas(self._element_resolver)
+            self._service_init_times["combat_formulas"] = time.perf_counter() - start
+
+            start = time.perf_counter()
+            self._hp_scaling = HPScalingCalculator(self._config_manager)
+            self._service_init_times["hp_scaling"] = time.perf_counter() - start
+
+            # Initialize combat engines (need power, leader, elements, formulas, hp_scaling, player_progression)
+            if not self._power_calculation or not self._leader_skill:
+                raise RuntimeError("Power and Leader services must be initialized before combat engines")
+            if not self._player_progression:
+                raise RuntimeError("PlayerProgressionService must be initialized before combat engines")
+
+            start = time.perf_counter()
+            self._elemental_engine = ElementalTeamEngine(
+                config_manager=self._config_manager,
+                power_service=self._power_calculation,
+                leader_service=self._leader_skill,
+                element_resolver=self._element_resolver,
+                combat_formulas=self._combat_formulas,
+                hp_scaling=self._hp_scaling,
+                player_progression_service=self._player_progression,
+            )
+            self._service_init_times["elemental_engine"] = time.perf_counter() - start
+
+            start = time.perf_counter()
+            self._pvp_engine = PvPEngine(
+                config_manager=self._config_manager,
+                power_service=self._power_calculation,
+                leader_service=self._leader_skill,
+                element_resolver=self._element_resolver,
+                combat_formulas=self._combat_formulas,
+                hp_scaling=self._hp_scaling,
+            )
+            self._service_init_times["pvp_engine"] = time.perf_counter() - start
+
+            start = time.perf_counter()
+            self._aggregate_engine = AggregateEngine(
+                config_manager=self._config_manager,
+                power_service=self._power_calculation,
+                leader_service=self._leader_skill,
+                element_resolver=self._element_resolver,
+                combat_formulas=self._combat_formulas,
+                hp_scaling=self._hp_scaling,
+            )
+            self._service_init_times["aggregate_engine"] = time.perf_counter() - start
+
+            # Initialize combat service (needs engines + ascension services)
+            if not self._ascension_token:
+                raise RuntimeError("AscensionTokenService must be initialized before CombatService")
+            if not self._ascension_progress:
+                raise RuntimeError("AscensionProgressService must be initialized before CombatService")
+
+            start = time.perf_counter()
+            self._combat = CombatService(
+                config_manager=self._config_manager,
+                event_bus=self._event_bus,
+                logger=get_logger("src.modules.combat.service.CombatService"),
+                elemental_engine=self._elemental_engine,
+                pvp_engine=self._pvp_engine,
+                aggregate_engine=self._aggregate_engine,
+                ascension_token_service=self._ascension_token,
+                ascension_progress_service=self._ascension_progress,
+            )
+            self._service_init_times["combat"] = time.perf_counter() - start
+
+            # Initialize matron service (needs combat + sector_progress + player services)
+            if not self._sector_progress:
+                raise RuntimeError("SectorProgressService must be initialized before MatronService")
+            if not self._player_currencies:
+                raise RuntimeError("PlayerCurrenciesService must be initialized before MatronService")
+            if not self._player_progression:
+                raise RuntimeError("PlayerProgressionService must be initialized before MatronService")
+            if not self._player_stats:
+                raise RuntimeError("PlayerStatsService must be initialized before MatronService")
+
+            start = time.perf_counter()
+            self._matron = MatronService(
+                config_manager=self._config_manager,
+                event_bus=self._event_bus,
+                logger=get_logger("src.modules.exploration.matron_service.MatronService"),
+                combat_service=self._combat,
+                sector_progress_service=self._sector_progress,
+                player_currencies_service=self._player_currencies,
+                player_progression_service=self._player_progression,
+                player_stats_service=self._player_stats,
+            )
+            self._service_init_times["matron"] = time.perf_counter() - start
 
             self._init_end = time.perf_counter()
             self._initialized = True
@@ -411,7 +560,7 @@ class ServiceContainer:
                 else None
             ),
             "all_services_available": self._initialized
-            and len(self._service_init_times) == 24,
+            and len(self._service_init_times) == 35,
         }
 
     # ========================================================================
@@ -470,6 +619,18 @@ class ServiceContainer:
             raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
         return self._maiden_base
 
+    @property
+    def power_calculation(self) -> PowerCalculationService:
+        if not self._initialized or self._power_calculation is None:
+            raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
+        return self._power_calculation
+
+    @property
+    def leader_skill(self) -> LeaderSkillService:
+        if not self._initialized or self._leader_skill is None:
+            raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
+        return self._leader_skill
+
     # ========================================================================
     # Progression Services
     # ========================================================================
@@ -499,10 +660,22 @@ class ServiceContainer:
         return self._exploration_mastery
 
     @property
+    def matron(self) -> MatronService:
+        if not self._initialized or self._matron is None:
+            raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
+        return self._matron
+
+    @property
     def ascension_progress(self) -> AscensionProgressService:
         if not self._initialized or self._ascension_progress is None:
             raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
         return self._ascension_progress
+
+    @property
+    def ascension_token(self) -> AscensionTokenService:
+        if not self._initialized or self._ascension_token is None:
+            raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
+        return self._ascension_token
 
     @property
     def leaderboard(self) -> LeaderboardService:
@@ -581,6 +754,52 @@ class ServiceContainer:
         if not self._initialized or self._guild_permission is None:
             raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
         return self._guild_permission
+
+    # ========================================================================
+    # Combat Services
+    # ========================================================================
+
+    @property
+    def element_resolver(self) -> ElementResolver:
+        if not self._initialized or self._element_resolver is None:
+            raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
+        return self._element_resolver
+
+    @property
+    def combat_formulas(self) -> CombatFormulas:
+        if not self._initialized or self._combat_formulas is None:
+            raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
+        return self._combat_formulas
+
+    @property
+    def hp_scaling(self) -> HPScalingCalculator:
+        if not self._initialized or self._hp_scaling is None:
+            raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
+        return self._hp_scaling
+
+    @property
+    def elemental_engine(self) -> ElementalTeamEngine:
+        if not self._initialized or self._elemental_engine is None:
+            raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
+        return self._elemental_engine
+
+    @property
+    def pvp_engine(self) -> PvPEngine:
+        if not self._initialized or self._pvp_engine is None:
+            raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
+        return self._pvp_engine
+
+    @property
+    def aggregate_engine(self) -> AggregateEngine:
+        if not self._initialized or self._aggregate_engine is None:
+            raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
+        return self._aggregate_engine
+
+    @property
+    def combat(self) -> CombatService:
+        if not self._initialized or self._combat is None:
+            raise RuntimeError("ServiceContainer not initialized. Call initialize() first.")
+        return self._combat
 
     # ========================================================================
     # Utility

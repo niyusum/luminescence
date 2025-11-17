@@ -66,6 +66,9 @@ if TYPE_CHECKING:
     from src.core.config.manager import ConfigManager
     from src.modules.combat.service import CombatService
     from src.modules.exploration.sector_progress_service import SectorProgressService
+    from src.modules.player.currencies_service import PlayerCurrenciesService
+    from src.modules.player.progression_service import PlayerProgressionService
+    from src.modules.player.stats_service import PlayerStatsService
 
 logger = get_logger(__name__)
 
@@ -108,21 +111,30 @@ class MatronService(BaseService):
         logger: Logger,
         combat_service: CombatService,
         sector_progress_service: SectorProgressService,
+        player_currencies_service: PlayerCurrenciesService,
+        player_progression_service: PlayerProgressionService,
+        player_stats_service: PlayerStatsService,
     ) -> None:
         """
         Initialize MatronService with required dependencies.
-        
+
         Args:
             config_manager: Application configuration
             event_bus: Event bus for matron events
             logger: Structured logger
             combat_service: Combat service for battle execution
             sector_progress_service: Sector progress service for tracking
+            player_currencies_service: Player currencies service for reward distribution
+            player_progression_service: Player progression service for XP rewards
+            player_stats_service: Player stats service for drop charge rewards
         """
         super().__init__(config_manager, event_bus, logger)
 
         self._combat = combat_service
         self._sector_progress = sector_progress_service
+        self._player_currencies = player_currencies_service
+        self._player_progression = player_progression_service
+        self._player_stats = player_stats_service
 
         # Load matron config
         self._hp_base = self.get_config(
@@ -663,16 +675,31 @@ class MatronService(BaseService):
         # Calculate rewards
         rewards = self.calculate_matron_rewards(sector_id, sublevel, is_boss_sublevel)
 
+        # Award lumees
+        await self._player_currencies.add_resource(
+            player_id=player_id,
+            resource_type="lumees",
+            amount=rewards["lumees"],
+            reason="matron_victory",
+            context=f"sector_{sector_id}_sublevel_{sublevel}",
+        )
+
+        # Award XP
+        await self._player_progression.add_xp(
+            player_id=player_id,
+            xp_amount=rewards["xp"],
+            reason="matron_victory",
+            context=f"sector_{sector_id}_sublevel_{sublevel}",
+        )
+
+        # Award drop charges
+        await self._player_stats.add_drop_charges(
+            player_id=player_id,
+            amount=rewards["drop_charges"],
+            reason="matron_victory",
+        )
+
         async with DatabaseService.get_transaction() as session:
-            # TODO: Award lumees via WalletService
-            # await wallet_service.add_lumees(player_id, rewards["lumees"], "matron_victory")
-
-            # TODO: Award XP via ProgressionService
-            # await progression_service.add_xp(player_id, rewards["xp"], "matron_victory")
-
-            # TODO: Award drop charges via StatsService
-            # await stats_service.add_drop_charges(player_id, rewards["drop_charges"], "matron_victory")
-
             # Mark miniboss as defeated
             await self._sector_progress.defeat_miniboss(
                 player_id, sector_id, sublevel, context="matron_victory"

@@ -42,7 +42,7 @@ Dependencies
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Tuple
+from typing import TYPE_CHECKING, Dict, List, Tuple, TypedDict
 
 from sqlalchemy import select
 
@@ -62,6 +62,25 @@ logger = get_logger(__name__)
 # ============================================================================
 # Data Models
 # ============================================================================
+
+
+class MaidenContributor(TypedDict):
+    """
+    Type definition for maiden contributor in power breakdown.
+
+    Represents a single maiden's contribution to total power.
+    """
+    maiden_id: int
+    maiden_base_id: int
+    name: str
+    tier: int
+    quantity: int
+    element: str
+    attack: int
+    defense: int
+    power: int
+    tier_multiplier: float
+    contribution_pct: float
 
 
 @dataclass(frozen=True)
@@ -97,7 +116,7 @@ class TeamPowerBreakdown:
     total_power: int
     maiden_count: int
     unique_maidens: int
-    top_contributors: List[Dict[str, object]]  # Top N by power
+    top_contributors: List[MaidenContributor]  # Top N by power
 
 
 # ============================================================================

@@ -183,6 +183,37 @@ class PlayerProgressionService(BaseService):
                 "state": progression.state or {},
             }
 
+    async def get_player_level(self, player_id: int) -> int:
+        """
+        Get player's current level.
+
+        This is a **read-only** operation using get_session().
+        Convenience method for services that only need the level.
+
+        Args:
+            player_id: Discord ID of the player
+
+        Returns:
+            Player's current level
+
+        Raises:
+            NotFoundError: If player progression record not found
+        """
+        player_id = InputValidator.validate_discord_id(player_id)
+
+        self.log_operation("get_player_level", player_id=player_id)
+
+        async with DatabaseService.get_session() as session:
+            progression = await self._progression_repo.find_one_where(
+                session,
+                self._progression_repo.model_class.player_id == player_id,
+            )
+
+            if not progression:
+                raise NotFoundError("PlayerProgression", player_id)
+
+            return progression.level
+
     # ========================================================================
     # PUBLIC API - Write Operations (XP & Leveling)
     # ========================================================================
