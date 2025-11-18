@@ -50,29 +50,28 @@ leader_effects:
 
 # Element System
 elements:
-  # Valid element types
+  # Valid element types (canonical Lumen elements)
   valid_elements:
-    - "fire"
-    - "water"
+    - "infernal"
+    - "umbral"
     - "earth"
-    - "air"
-    - "light"
-    - "dark"
-    - "neutral"
+    - "tempest"
+    - "radiant"
+    - "abyssal"
 
   # Element advantage bonuses (damage multipliers)
   advantage_multiplier: 1.2   # +20% damage
   disadvantage_multiplier: 0.8 # -20% damage
 
   # Element matchups (who beats who)
+  # Canonical Lumen element system
   advantages:
-    fire: "earth"
-    water: "fire"
-    earth: "air"
-    air: "water"
-    light: "dark"
-    dark: "light"
-    neutral: null  # No advantages
+    infernal: "earth"      # Fire burns Earth
+    abyssal: "infernal"    # Water quenches Fire
+    earth: "tempest"       # Earth grounds Lightning/Air
+    tempest: "abyssal"     # Lightning electrifies Water
+    radiant: "umbral"      # Light banishes Darkness
+    umbral: "radiant"      # Darkness obscures Light
 
 # Fusion System Integration
 fusion:

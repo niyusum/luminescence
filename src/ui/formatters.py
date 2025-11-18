@@ -49,13 +49,13 @@ class CombatFormatters:
             '███████████████░░░░░'
         """
         if max_hp == 0:
-            return "░" * width
+            return Emojis.PROGRESS_BAR_EMPTY * width
 
         filled_width = int((current_hp / max_hp) * width)
         filled_width = max(0, min(width, filled_width))
         empty_width = width - filled_width
 
-        return "█" * filled_width + "░" * empty_width
+        return Emojis.PROGRESS_BAR_FILLED * filled_width + Emojis.PROGRESS_BAR_EMPTY * empty_width
 
     @staticmethod
     def render_hp_percentage(current_hp: int, max_hp: int) -> str:
@@ -170,7 +170,7 @@ class ProgressFormatters:
         filled_width = max(0, min(width, filled_width))
         empty_width = width - filled_width
 
-        return "━" * filled_width + "░" * empty_width
+        return Emojis.PROGRESS_BAR_HORIZONTAL * filled_width + Emojis.PROGRESS_BAR_EMPTY * empty_width
 
     @staticmethod
     def format_progress_display(progress: float) -> str:

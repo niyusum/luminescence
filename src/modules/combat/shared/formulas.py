@@ -152,7 +152,7 @@ class CombatFormulas:
             >>> result = combat_formulas.calculate_damage(DamageInput(
             ...     attacker_atk=1000,
             ...     defender_def=500,
-            ...     attacker_element="fire",
+            ...     attacker_element="infernal",
             ...     defender_element="earth"
             ... ))
             >>> print(result.final_damage)  # ~780 (base 650 * 1.2 elem)

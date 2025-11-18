@@ -520,11 +520,11 @@ class EmbedFactory:
 
                 # Get rank display (medals for top 3)
                 if rank == 1:
-                    rank_display = f"{Emojis.GOLD} #1"
+                    rank_display = f"{Emojis.FIRST_PLACE} #1"
                 elif rank == 2:
-                    rank_display = f"{Emojis.SILVER} #2"
+                    rank_display = f"{Emojis.SECOND_PLACE} #2"
                 elif rank == 3:
-                    rank_display = f"{Emojis.BRONZE} #3"
+                    rank_display = f"{Emojis.THIRD_PLACE} #3"
                 else:
                     rank_display = f"#{rank}"
 

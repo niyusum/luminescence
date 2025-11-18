@@ -168,7 +168,7 @@ class PvPEngine:
         from typing import Dict
 
         element_best: Dict[str, MaidenStats] = {}
-        target_elements = {"fire", "water", "earth", "air", "light", "dark"}
+        target_elements = {"infernal", "umbral", "earth", "tempest", "radiant", "abyssal"}
 
         for maiden_data in breakdown.top_contributors:
             element = maiden_data["element"].lower()

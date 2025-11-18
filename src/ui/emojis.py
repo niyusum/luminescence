@@ -43,12 +43,29 @@ class Emojis:
     EXPERIENCE = "📈"
 
     # ═══════════════════════════════════════════════════════════════
-    # MASTERY & PROGRESSION
+    # LEADERBOARD MEDALS (Ranking positions)
+    # ═══════════════════════════════════════════════════════════════
+    FIRST_PLACE = "🥇"
+    SECOND_PLACE = "🥈"
+    THIRD_PLACE = "🥉"
+
+    # ═══════════════════════════════════════════════════════════════
+    # MASTERY & PROGRESSION (Sector-based)
     # ═══════════════════════════════════════════════════════════════
     NO_MASTERY = "⭐"
-    BRONZE = "🥉"
-    SILVER = "🥈"
-    GOLD = "🥇"
+    BRONZE_MASTERY = "🥉"
+    SILVER_MASTERY = "🥈"
+    GOLD_MASTERY = "🥇"
+
+    # ═══════════════════════════════════════════════════════════════
+    # ASCENSION TOKENS (Tower loot drops)
+    # ═══════════════════════════════════════════════════════════════
+    BRONZE_TOKEN = "🥉"
+    SILVER_TOKEN = "🥈"
+    GOLD_TOKEN = "🥇"
+    PLATINUM_TOKEN = "💎"
+    DIAMOND_TOKEN = "💠"
+    MYTHIC_TOKEN = "✨"
 
     # ═══════════════════════════════════════════════════════════════
     # RARITY TIERS
@@ -123,12 +140,17 @@ class Emojis:
     PENCIL = "✏️"
     CLIPBOARD = "📋"
 
-    # Progress indicators
+    # Progress indicators (circular)
     PROGRESS_EMPTY = "🔴"
     PROGRESS_LOW = "🟠"
     PROGRESS_MEDIUM = "🟡"
     PROGRESS_HIGH = "🟢"
     PROGRESS_COMPLETE = "✅"
+
+    # Progress bar characters (linear)
+    PROGRESS_BAR_FILLED = "█"
+    PROGRESS_BAR_EMPTY = "░"
+    PROGRESS_BAR_HORIZONTAL = "━"
 
     # ═══════════════════════════════════════════════════════════════
     # BONUSES & BUFFS

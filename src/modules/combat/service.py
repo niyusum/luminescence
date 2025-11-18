@@ -76,6 +76,8 @@ if TYPE_CHECKING:
     from src.core.config.manager import ConfigManager
     from src.modules.ascension.progress_service import AscensionProgressService
     from src.modules.ascension.token_service import AscensionTokenService
+    from src.modules.player.currencies_service import PlayerCurrenciesService
+    from src.modules.player.progression_service import PlayerProgressionService
 
 logger = get_logger(__name__)
 
@@ -122,6 +124,8 @@ class CombatService(BaseService):
         aggregate_engine: AggregateEngine,
         ascension_token_service: AscensionTokenService,
         ascension_progress_service: AscensionProgressService,
+        player_currencies_service: PlayerCurrenciesService,
+        player_progression_service: PlayerProgressionService,
     ) -> None:
         """
         Initialize CombatService with all engines and dependencies.
@@ -135,6 +139,8 @@ class CombatService(BaseService):
             aggregate_engine: PvE combat engine
             ascension_token_service: Token reward service for ascension
             ascension_progress_service: Progress service for floor unlock validation
+            player_currencies_service: Player currencies service for reward distribution
+            player_progression_service: Player progression service for XP rewards
         """
         super().__init__(config_manager, event_bus, logger)
 
@@ -143,6 +149,8 @@ class CombatService(BaseService):
         self._aggregate_engine = aggregate_engine
         self._ascension_token_service = ascension_token_service
         self._ascension_progress = ascension_progress_service
+        self._player_currencies = player_currencies_service
+        self._player_progression = player_progression_service
 
         # Initialize encounter repository
         from src.database.models.combat.encounter import CombatEncounter
@@ -326,22 +334,31 @@ class CombatService(BaseService):
         lumees_reward = int(base_lumees * (floor**scaling_exp))
         xp_reward = int(base_xp * (floor**scaling_exp))
 
+        # Award lumees
+        await self._player_currencies.add_resource(
+            player_id=player_id,
+            resource_type="lumees",
+            amount=lumees_reward,
+            reason="ascension_victory",
+            context=f"floor_{floor}",
+        )
+
+        # Award XP
+        await self._player_progression.add_xp(
+            player_id=player_id,
+            xp_amount=xp_reward,
+            reason="ascension_victory",
+            context=f"floor_{floor}",
+        )
+
+        # Award tokens via AscensionTokenService
+        token_result = await self._ascension_token_service.award_floor_tokens(
+            player_id, floor, context="ascension_victory"
+        )
+
         async with DatabaseService.get_transaction() as session:
-            # TODO: Award lumees via WalletService
-            # await wallet_service.add_lumees(player_id, lumees_reward, "ascension_victory")
-
-            # TODO: Award XP via ProgressionService
-            # await progression_service.add_xp(player_id, xp_reward, "ascension_victory")
-
-            # ⭐ Award tokens via AscensionTokenService
-            token_result = await self._ascension_token_service.award_floor_tokens(
-                player_id, floor, context="ascension_victory"
-            )
-
-            # TODO: Update AscensionProgress
-            # await ascension_service.record_floor_victory(
-            #     player_id, floor, lumees_reward, xp_reward
-            # )
+            # Update AscensionProgress will be done via record_floor_victory
+            # (This is called by the ascension progress service internally)
 
             # Audit log
             await AuditLogger.log(
@@ -420,10 +437,14 @@ class CombatService(BaseService):
             encounter_id=str(encounter_id),
         )
 
-        async with DatabaseService.get_transaction() as session:
-            # TODO: Record defeat in AscensionProgress
-            # await ascension_service.record_floor_defeat(player_id, floor)
+        # Record defeat in AscensionProgress
+        await self._ascension_progress.record_floor_defeat(
+            player_id=player_id,
+            floor=floor,
+            context="combat_defeat",
+        )
 
+        async with DatabaseService.get_transaction() as session:
             # Audit log
             await AuditLogger.log(
                 player_id=player_id,
@@ -563,15 +584,37 @@ class CombatService(BaseService):
         defeat_lumees = self.get_config("combat.pvp.rewards.defeat_lumees", default=10)
         defeat_xp = self.get_config("combat.pvp.rewards.defeat_xp", default=5)
 
+        # Award winner rewards
+        await self._player_currencies.add_resource(
+            player_id=winner_id,
+            resource_type="lumees",
+            amount=victory_lumees,
+            reason="pvp_victory",
+            context=f"opponent_{loser_id}",
+        )
+        await self._player_progression.add_xp(
+            player_id=winner_id,
+            xp_amount=victory_xp,
+            reason="pvp_victory",
+            context=f"opponent_{loser_id}",
+        )
+
+        # Award loser consolation rewards
+        await self._player_currencies.add_resource(
+            player_id=loser_id,
+            resource_type="lumees",
+            amount=defeat_lumees,
+            reason="pvp_defeat",
+            context=f"opponent_{winner_id}",
+        )
+        await self._player_progression.add_xp(
+            player_id=loser_id,
+            xp_amount=defeat_xp,
+            reason="pvp_defeat",
+            context=f"opponent_{winner_id}",
+        )
+
         async with DatabaseService.get_transaction() as session:
-            # TODO: Award rewards via WalletService and ProgressionService
-            # Winner:
-            # await wallet_service.add_lumees(winner_id, victory_lumees, "pvp_victory")
-            # await progression_service.add_xp(winner_id, victory_xp, "pvp_victory")
-            
-            # Loser:
-            # await wallet_service.add_lumees(loser_id, defeat_lumees, "pvp_defeat")
-            # await progression_service.add_xp(loser_id, defeat_xp, "pvp_defeat")
 
             # Audit log
             await AuditLogger.log(
@@ -757,10 +800,22 @@ class CombatService(BaseService):
             encounter_id=str(encounter_id),
         )
 
+        # Award rewards
+        await self._player_currencies.add_resource(
+            player_id=player_id,
+            resource_type="lumees",
+            amount=base_lumees,
+            reason="pve_victory",
+            context=f"enemy_{enemy_id}",
+        )
+        await self._player_progression.add_xp(
+            player_id=player_id,
+            xp_amount=base_xp,
+            reason="pve_victory",
+            context=f"enemy_{enemy_id}",
+        )
+
         async with DatabaseService.get_transaction() as session:
-            # TODO: Award rewards via WalletService and ProgressionService
-            # await wallet_service.add_lumees(player_id, base_lumees, "pve_victory")
-            # await progression_service.add_xp(player_id, base_xp, "pve_victory")
 
             # Audit log
             await AuditLogger.log(

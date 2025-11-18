@@ -10,7 +10,7 @@ turn-based combat against floor monsters.
 
 Domain
 ------
-- Element-based team composition (Fire/Water/Earth/Air/Light/Dark)
+- Element-based team composition (Infernal/Umbral/Earth/Tempest/Radiant/Abyssal)
 - Leader skill application to team stats
 - Turn-based combat simulation
 - Monster scaling per floor
@@ -170,20 +170,20 @@ class ElementalTeamEngine:
     async def build_player_team(self, player_id: int) -> List[MaidenStats]:
         """
         Build elemental team: best maiden per element (up to 6).
-        
+
         Selects strongest maiden of each element by power.
-        Elements considered: fire, water, earth, air, light, dark.
-        
+        Elements considered: infernal, umbral, earth, tempest, radiant, abyssal.
+
         Args:
             player_id: Discord ID
-        
+
         Returns:
             List of MaidenStats (up to 6 maidens)
-        
+
         Example:
             >>> team = await engine.build_player_team(123)
             >>> print([m.element for m in team])
-            ['fire', 'water', 'earth', 'light', 'dark']
+            ['infernal', 'umbral', 'earth', 'radiant', 'abyssal']
         """
         player_id = InputValidator.validate_discord_id(player_id)
 
@@ -197,7 +197,7 @@ class ElementalTeamEngine:
 
         # Group by element and select strongest per element
         element_best: Dict[str, MaidenStats] = {}
-        target_elements = {"fire", "water", "earth", "air", "light", "dark"}
+        target_elements = {"infernal", "umbral", "earth", "tempest", "radiant", "abyssal"}
 
         for maiden_data in breakdown.top_contributors:
             element = maiden_data["element"].lower()

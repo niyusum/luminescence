@@ -36,7 +36,7 @@ class Element(Enum):
     UMBRAL = ("umbral", "Umbral", Emojis.UMBRAL, 0x36454F)
     EARTH = ("earth", "Earth", Emojis.EARTH, 0x355E3B)
     TEMPEST = ("tempest", "Tempest", Emojis.ENERGY, 0x818589)
-    RADFIANT = ("radiant", "Radiant", Emojis.RADIANT, 0xFFF8DC)
+    RADIANT = ("radiant", "Radiant", Emojis.RADIANT, 0xFFF8DC)
     ABYSSAL = ("abyssal", "Abyssal", Emojis.ABYSSAL, 0x191970)
 
     def __init__(self, key: str, display_name: str, emoji: str, color: int):
@@ -256,8 +256,8 @@ class UIConstants:
 
     # Progress bars
     PROGRESS_BAR_LENGTH = 10
-    PROGRESS_FILLED = "█"
-    PROGRESS_EMPTY = "░"
+    PROGRESS_FILLED = Emojis.PROGRESS_BAR_FILLED
+    PROGRESS_EMPTY = Emojis.PROGRESS_BAR_EMPTY
 
     # Discord embed limits
     EMBED_DESCRIPTION_LIMIT = 4096

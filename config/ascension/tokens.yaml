@@ -12,50 +12,50 @@ token_system:
     bronze:
       name: "Bronze Token"
       tier_range: [1, 3]
-      emoji: "🥉"
       color: 0xCD7F32
       description: "Redeems for Tier 1-3 Maiden"
       order: 1
+      # Emoji: Use Emojis.BRONZE_TOKEN from src/ui/emojis.py
 
     silver:
       name: "Silver Token"
       tier_range: [3, 5]
-      emoji: "🥈"
       color: 0xC0C0C0
       description: "Redeems for Tier 3-5 Maiden"
       order: 2
+      # Emoji: Use Emojis.SILVER_TOKEN from src/ui/emojis.py
 
     gold:
       name: "Gold Token"
       tier_range: [5, 7]
-      emoji: "🥇"
       color: 0xFFD700
       description: "Redeems for Tier 5-7 Maiden"
       order: 3
+      # Emoji: Use Emojis.GOLD_TOKEN from src/ui/emojis.py
 
     platinum:
       name: "Platinum Token"
       tier_range: [7, 9]
-      emoji: "💎"
       color: 0xE5E4E2
       description: "Redeems for Tier 7-9 Maiden"
       order: 4
+      # Emoji: Use Emojis.PLATINUM_TOKEN from src/ui/emojis.py
 
     diamond:
       name: "Diamond Token"
       tier_range: [9, 11]
-      emoji: "💠"
       color: 0xB9F2FF
       description: "Redeems for Tier 9-11 Maiden"
       order: 5
+      # Emoji: Use Emojis.DIAMOND_TOKEN from src/ui/emojis.py
 
     mythic:
       name: "Mythic Token"
       tier_range: [11, 12]
-      emoji: "✨"
       color: 0xFF00FF
       description: "Redeems for Tier 11-12 Maiden (Max Tier)"
       order: 6
+      # Emoji: Use Emojis.MYTHIC_TOKEN from src/ui/emojis.py
 
   # Floor ranges for token types (determines which token is awarded)
   floor_ranges:

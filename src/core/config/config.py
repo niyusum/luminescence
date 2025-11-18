@@ -83,6 +83,8 @@ from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 
+from src.ui.emojis import Emojis
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -286,7 +288,7 @@ class Config:
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_FAILOVER_TO_MEMORY: bool = True
     RATE_LIMIT_COOLDOWN_MESSAGE: str = (
-        "⏳ Please wait {remaining:.1f} seconds before using this command again."
+        f"{Emojis.REGENERATING} Please wait {{remaining:.1f}} seconds before using this command again."
     )
     
     # =========================================================================
@@ -709,11 +711,11 @@ class Config:
             if cls.is_production():
                 if "user:password" in cls.DATABASE_URL:
                     logger.error(
-                        "⚠️  SECURITY: Using default database credentials in production!"
+                        f"{Emojis.WARNING}  SECURITY: Using default database credentials in production!"
                     )
                 
                 if cls.DEBUG:
-                    logger.warning("⚠️  DEBUG mode enabled in production!")
+                    logger.warning(f"{Emojis.WARNING}  DEBUG mode enabled in production!")
             
             cls._validated = True
             
@@ -730,7 +732,7 @@ class Config:
         except Exception as e:
             logger.warning(f"Config validation warning (safe for tests): {e}")
             if cls.ENVIRONMENT.lower() == "production":
-                logger.error("⚠️  Configuration validation failed in production!")
+                logger.error(f"{Emojis.WARNING}  Configuration validation failed in production!")
                 raise
     
     # =========================================================================

@@ -53,14 +53,14 @@ logger = get_logger(__name__)
 class ElementResolver:
     """
     Resolves element advantages using config-driven matchup tables.
-    
+
     Applies rock-paper-scissors style combat modifiers:
-    - Fire beats Earth (+20% damage)
-    - Water beats Fire (+20% damage)
-    - Earth beats Air (+20% damage)
-    - Air beats Water (+20% damage)
-    - Light beats Dark (+20% damage)
-    - Dark beats Light (+20% damage)
+    - Infernal beats Earth (+20% damage)
+    - Abyssal beats Infernal (+20% damage)
+    - Earth beats Tempest (+20% damage)
+    - Tempest beats Abyssal (+20% damage)
+    - Radiant beats Umbral (+20% damage)
+    - Umbral beats Radiant (+20% damage)
     
     Public Methods
     --------------
@@ -100,7 +100,7 @@ class ElementResolver:
         self._valid_elements: Set[str] = set(
             element_cfg.get(
                 "valid_elements",
-                ["fire", "water", "earth", "air", "light", "dark", "neutral"],
+                ["infernal", "umbral", "earth", "tempest", "radiant", "abyssal", "neutral"],
             )
         )
 
@@ -140,10 +140,10 @@ class ElementResolver:
             Damage multiplier (float)
         
         Example:
-            >>> mult = element_resolver.get_multiplier("fire", "earth")
-            >>> print(mult)  # 1.2 (fire beats earth)
-            >>> mult = element_resolver.get_multiplier("fire", "water")
-            >>> print(mult)  # 0.8 (water beats fire)
+            >>> mult = element_resolver.get_multiplier("infernal", "earth")
+            >>> print(mult)  # 1.2 (infernal beats earth)
+            >>> mult = element_resolver.get_multiplier("infernal", "abyssal")
+            >>> print(mult)  # 0.8 (abyssal beats infernal)
         """
         if not attacker_elem or not defender_elem:
             return 1.0
@@ -196,7 +196,7 @@ class ElementResolver:
             True if attacker has advantage, False otherwise
         
         Example:
-            >>> element_resolver.has_advantage("fire", "earth")
+            >>> element_resolver.has_advantage("infernal", "earth")
             True
         """
         if not attacker_elem or not defender_elem:
@@ -225,9 +225,9 @@ class ElementResolver:
             Dict with "beats" and "beaten_by" keys
         
         Example:
-            >>> chain = element_resolver.get_advantage_chain("fire")
+            >>> chain = element_resolver.get_advantage_chain("infernal")
             >>> print(chain)
-            {"beats": "earth", "beaten_by": "water"}
+            {"beats": "earth", "beaten_by": "abyssal"}
         """
         if not element:
             return {"beats": None, "beaten_by": None}
@@ -261,7 +261,7 @@ class ElementResolver:
             True if element is in valid_elements list
         
         Example:
-            >>> element_resolver.is_valid_element("fire")
+            >>> element_resolver.is_valid_element("infernal")
             True
             >>> element_resolver.is_valid_element("pizza")
             False

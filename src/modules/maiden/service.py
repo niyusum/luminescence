@@ -413,7 +413,7 @@ class MaidenService(BaseService):
             ...     player_id=123456789,
             ...     maiden_base_id=1,
             ...     tier=1,
-            ...     element="fire",
+            ...     element="infernal",
             ...     quantity=1,
             ...     acquired_from="summon"
             ... )

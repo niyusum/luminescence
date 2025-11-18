@@ -251,7 +251,7 @@ class MaidenBaseService(BaseService):
             List of maiden base dicts
 
         Example:
-            >>> bases = await base_service.get_maiden_bases_by_element("fire")
+            >>> bases = await base_service.get_maiden_bases_by_element("infernal")
         """
         self.log_operation("get_maiden_bases_by_element", element=element)
 
@@ -316,7 +316,7 @@ class MaidenBaseService(BaseService):
 
         Example:
             >>> elements = await base_service.get_all_elements()
-            >>> print(elements)  # ["fire", "water", "earth", "air"]
+            >>> print(elements)  # ["infernal", "umbral", "earth", "tempest", "radiant", "abyssal"]
         """
         self.log_operation("get_all_elements")
 

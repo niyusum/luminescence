@@ -425,11 +425,15 @@ class ServiceContainer:
             )
             self._service_init_times["aggregate_engine"] = time.perf_counter() - start
 
-            # Initialize combat service (needs engines + ascension services)
+            # Initialize combat service (needs engines + ascension services + player services)
             if not self._ascension_token:
                 raise RuntimeError("AscensionTokenService must be initialized before CombatService")
             if not self._ascension_progress:
                 raise RuntimeError("AscensionProgressService must be initialized before CombatService")
+            if not self._player_currencies:
+                raise RuntimeError("PlayerCurrenciesService must be initialized before CombatService")
+            if not self._player_progression:
+                raise RuntimeError("PlayerProgressionService must be initialized before CombatService")
 
             start = time.perf_counter()
             self._combat = CombatService(
@@ -441,6 +445,8 @@ class ServiceContainer:
                 aggregate_engine=self._aggregate_engine,
                 ascension_token_service=self._ascension_token,
                 ascension_progress_service=self._ascension_progress,
+                player_currencies_service=self._player_currencies,
+                player_progression_service=self._player_progression,
             )
             self._service_init_times["combat"] = time.perf_counter() - start
 
