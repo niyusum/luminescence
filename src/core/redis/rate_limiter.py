@@ -187,7 +187,7 @@ class RedisRateLimiter:
     # Initialization
     # ════════════════════════════════════════════════════════════════════
 
-    def __init__(self, redis_service: type[RedisService]) -> None:
+    def __init__(self, redis_service: type[RedisService], config_manager: ConfigManager) -> None:
         """
         Create a Redis-backed rate limiter bound to the core RedisService.
 
@@ -196,8 +196,11 @@ class RedisRateLimiter:
         redis_service : type[RedisService]
             The RedisService singleton type used to obtain the client and
             resilience layer.
+        config_manager : ConfigManager
+            The config manager instance to use for configuration
         """
         self._redis_service: type[RedisService] = redis_service
+        self._config_manager = config_manager
 
         # Core behavior configuration
         algorithm = self._get_config_str("core.redis.rate_limiter.algorithm", "token_bucket").strip().lower()
@@ -849,10 +852,9 @@ class RedisRateLimiter:
             )
         return latency_ms
 
-    @staticmethod
-    def _get_config_str(key: str, default: str) -> str:
+    def _get_config_str(self, key: str, default: str) -> str:
         try:
-            value = ConfigManager.get(key)
+            value = self._config_manager.get(key)
             if isinstance(value, str):
                 return value
         except Exception:
@@ -863,10 +865,9 @@ class RedisRateLimiter:
             )
         return default
 
-    @staticmethod
-    def _get_config_int(key: str, default: int) -> int:
+    def _get_config_int(self, key: str, default: int) -> int:
         try:
-            value = ConfigManager.get(key)
+            value = self._config_manager.get(key)
             if isinstance(value, int):
                 return value
         except Exception:

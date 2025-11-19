@@ -71,11 +71,12 @@ class FeatureLoader:
     BASE_PACKAGE: str = "features"
     COG_SUFFIX: str = "_cog"
 
-    def __init__(self, bot) -> None:
+    def __init__(self, bot, config_manager: ConfigManager) -> None:
         self.bot = bot
+        self._config_manager = config_manager
         self.load_results: List[LoadResult] = []
         self.load_timeout_seconds: float = float(
-            ConfigManager.get("bot.feature_load_timeout_seconds", 30.0)
+            self._config_manager.get("bot.feature_load_timeout_seconds", 30.0)
         )
 
     async def load_all_features(self) -> Dict[str, object]:
@@ -395,7 +396,9 @@ async def load_all_features(bot) -> Dict[str, object]:
 
     New code should prefer using FeatureLoader directly for access to stats.
     """
-    loader = FeatureLoader(bot)
+    # Get config_manager from bot (assumes bot has config_manager property)
+    config_manager = bot.config_manager
+    loader = FeatureLoader(bot, config_manager)
     return await loader.load_all_features()
 
 

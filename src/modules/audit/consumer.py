@@ -113,19 +113,23 @@ class AuditConsumer:
         self,
         event_bus: EventBus,
         audit_repository: AuditRepository,
+        config_manager: Optional[ConfigManager] = None,
     ) -> None:
         """
         Initialize audit consumer.
-        
+
         Parameters
         ----------
         event_bus : EventBus
             The event bus to subscribe to
         audit_repository : AuditRepository
             The repository for persisting audit logs
+        config_manager : ConfigManager, optional
+            Configuration manager for consumer settings
         """
         self._event_bus = event_bus
         self._audit_repo = audit_repository
+        self._config_manager = config_manager
         
         # Buffer for batching
         self._buffer: deque = deque()
@@ -713,11 +717,12 @@ class AuditConsumer:
     # CONFIGURATION HELPERS
     # ═══════════════════════════════════════════════════════════════════════
     
-    @staticmethod
-    def _get_config_int(key: str, default: int) -> int:
+    def _get_config_int(self, key: str, default: int) -> int:
         """Get integer config value with fallback."""
+        if self._config_manager is None:
+            return default
         try:
-            val = ConfigManager.get(key)
+            val = self._config_manager.get(key)
             if isinstance(val, int):
                 return val
         except Exception:

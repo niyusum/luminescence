@@ -23,20 +23,7 @@ LUMEN 2025 COMPLIANCE
 ✓ Event-driven - emits ascension.token.* events
 ✓ Observable - structured logging
 ✓ Delegates to TokenService for actual inventory changes
-
-Design Decisions
-----------------
-- Token type determined by floor range (1-10 = bronze, 11-25 = silver, etc.)
-- Tokens awarded every N floors (configurable, default 5)
-- Milestone floors award bonus tokens
-- Special milestone floors award multiple token types
-- Token quantity can scale with floor difficulty
-
-Dependencies
-------------
-- TokenService: For inventory management
-- ConfigManager: For token rules and floor ranges
-- EventBus: For token award events
+✓ Transaction-safe when composed with caller's transaction via optional session
 """
 
 from __future__ import annotations
@@ -74,9 +61,10 @@ class AscensionTokenService(BaseService):
     --------------
     - determine_token_type(floor) -> Get token type for floor
     - is_token_eligible(floor) -> Check if floor awards token
-    - calculate_token_rewards(floor) -> Get all token rewards for floor
-    - award_floor_tokens(player_id, floor) -> Award tokens for floor victory
     - get_milestone_bonus_tokens(floor) -> Get bonus tokens for milestone
+    - calculate_token_rewards(floor) -> Get all token rewards for floor
+    - award_floor_tokens(player_id, floor, context, session) -> Award tokens for floor victory
+      (session optional, for atomic composition with caller's transaction)
     """
 
     def __init__(
@@ -156,7 +144,7 @@ class AscensionTokenService(BaseService):
         for min_floor, max_floor, token_type in self._floor_ranges:
             if min_floor <= floor <= max_floor:
                 self.log.debug(
-                    f"Token type determined: {token_type}",
+                    "Token type determined",
                     extra={"floor": floor, "token_type": token_type},
                 )
                 return token_type
@@ -185,7 +173,7 @@ class AscensionTokenService(BaseService):
         is_eligible = floor % self._token_interval == 0
 
         self.log.debug(
-            f"Token eligibility check: {is_eligible}",
+            "Token eligibility check",
             extra={
                 "floor": floor,
                 "interval": self._token_interval,
@@ -223,7 +211,7 @@ class AscensionTokenService(BaseService):
         if not milestone_config:
             return []
 
-        bonus_tokens = []
+        bonus_tokens: List[Dict[str, Any]] = []
 
         # Check for token awards in milestone config
         for key, value in milestone_config.items():
@@ -243,7 +231,7 @@ class AscensionTokenService(BaseService):
                 bonus_tokens.append({"token_type": token_type, "quantity": quantity})
 
         self.log.debug(
-            f"Milestone bonuses: {len(bonus_tokens)} token types",
+            "Milestone bonuses calculated",
             extra={"floor": floor, "bonus_tokens": bonus_tokens},
         )
 
@@ -274,7 +262,7 @@ class AscensionTokenService(BaseService):
         """
         floor = InputValidator.validate_positive_integer(floor, "floor")
 
-        rewards = []
+        rewards: List[Dict[str, Any]] = []
 
         # Check regular interval token
         if self.is_token_eligible(floor):
@@ -286,7 +274,7 @@ class AscensionTokenService(BaseService):
         rewards.extend(milestone_bonuses)
 
         self.log.info(
-            f"Token rewards calculated for floor {floor}",
+            "Token rewards calculated for floor",
             extra={"floor": floor, "total_rewards": len(rewards), "rewards": rewards},
         )
 
@@ -297,7 +285,11 @@ class AscensionTokenService(BaseService):
     # ========================================================================
 
     async def award_floor_tokens(
-        self, player_id: int, floor: int, context: Optional[str] = None
+        self,
+        player_id: int,
+        floor: int,
+        context: Optional[str] = None,
+        session: Optional[Any] = None,  # SAFETY: Optional session for atomicity
     ) -> Dict[str, Any]:
         """
         Award all tokens for a floor victory.
@@ -305,19 +297,34 @@ class AscensionTokenService(BaseService):
         Delegates to TokenService for actual inventory changes.
         This is a **write operation** (via TokenService.award_tokens).
         
+        When a database session is provided, all token inventory changes are
+        performed using the caller's transaction (no internal transaction is
+        created here), allowing atomic composition with other reward operations
+        (XP, lumees, RewardClaim, etc.).
+        
         Args:
             player_id: Discord ID
             floor: Floor defeated
             context: Optional context string
+            session: Optional database session for atomicity with caller
         
         Returns:
-            Dict with awarded tokens and updated balances
+            Dict with awarded tokens and updated balances:
+                {
+                    "player_id": int,
+                    "floor": int,
+                    "tokens_awarded": [
+                        {"token_type": str, "quantity": int, "new_balance": int},
+                        ...
+                    ],
+                }
         
         Example:
             >>> result = await ascension_token_service.award_floor_tokens(
             ...     player_id=123,
             ...     floor=50,
-            ...     context="ascension_victory"
+            ...     context="ascension_victory",
+            ...     session=session,  # Optional: participate in outer transaction
             ... )
             >>> print(result["tokens_awarded"])
             [
@@ -330,10 +337,13 @@ class AscensionTokenService(BaseService):
         floor = InputValidator.validate_positive_integer(floor, "floor")
 
         self.log_operation(
-            "award_floor_tokens", player_id=player_id, floor=floor
+            "award_floor_tokens",
+            player_id=player_id,
+            floor=floor,
+            has_session=session is not None,
         )
 
-        # Calculate rewards
+        # Calculate rewards (pure logic, no DB)
         token_rewards = self.calculate_token_rewards(floor)
 
         if not token_rewards:
@@ -347,8 +357,11 @@ class AscensionTokenService(BaseService):
                 "tokens_awarded": [],
             }
 
-        # Award each token type
-        awarded_tokens = []
+        awarded_tokens: List[Dict[str, Any]] = []
+
+        # SAFETY: When session is provided, rely on TokenService to honor it and
+        # avoid creating its own transaction. This allows CombatService to keep
+        # all rewards (XP, lumees, tokens, RewardClaim) in a single atomic transaction.
         for reward in token_rewards:
             token_type = reward["token_type"]
             quantity = reward["quantity"]
@@ -359,6 +372,7 @@ class AscensionTokenService(BaseService):
                 quantity=quantity,
                 source=f"ascension_floor_{floor}",
                 context=context,
+                session=session,  # <--- key change for atomic composition
             )
 
             awarded_tokens.append(
@@ -369,7 +383,7 @@ class AscensionTokenService(BaseService):
                 }
             )
 
-        # Emit event
+        # Emit event (safe regardless of transaction context)
         await self.emit_event(
             event_type="ascension.tokens_awarded",
             data={
@@ -380,11 +394,12 @@ class AscensionTokenService(BaseService):
         )
 
         self.log.info(
-            f"Awarded {len(awarded_tokens)} token type(s) for floor {floor}",
+            "Ascension floor tokens awarded",
             extra={
                 "player_id": player_id,
                 "floor": floor,
                 "tokens_awarded": awarded_tokens,
+                "token_types": [t["token_type"] for t in awarded_tokens],
             },
         )
 

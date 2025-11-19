@@ -51,7 +51,7 @@ Architecture Notes
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union, cast
 
 from redis.asyncio import Redis
 from redis.asyncio.client import Pipeline
@@ -70,16 +70,19 @@ class RedisBatchOperations:
     pipelines, and chunking for large batches.
     """
     
-    def __init__(self, client: Redis) -> None:
+    def __init__(self, client: Redis, config_manager: ConfigManager) -> None:
         """
         Initialize batch operations handler.
-        
+
         Parameters
         ----------
         client : Redis
             The Redis client to use for operations
+        config_manager : ConfigManager
+            The config manager instance to use for configuration
         """
         self._client = client
+        self._config_manager = config_manager
         self._max_keys = self._get_config_int("core.redis.batch.max_keys_per_operation", 1000)
         self._pipeline_buffer = self._get_config_int("core.redis.batch.pipeline_buffer_size", 100)
         
@@ -199,13 +202,13 @@ class RedisBatchOperations:
             # If TTL is specified, use pipeline for MSET + EXPIRE
             if ttl_seconds is not None:
                 async with self._client.pipeline() as pipe:
-                    await pipe.mset(mapping)
+                    await pipe.mset(cast(Mapping[str, Any], mapping))  # type: ignore[arg-type]
                     for key in mapping.keys():
                         await pipe.expire(key, ttl_seconds)
                     await pipe.execute()
             else:
                 # Simple MSET without TTL
-                await self._client.mset(mapping)
+                await self._client.mset(cast(Mapping[str, Any], mapping))  # type: ignore[arg-type]
             
             latency_ms = (time.monotonic() - start_time) * 1000
             
@@ -394,11 +397,10 @@ class RedisBatchOperations:
     # CONFIGURATION HELPERS
     # ═══════════════════════════════════════════════════════════════════════
     
-    @staticmethod
-    def _get_config_int(key: str, default: int) -> int:
+    def _get_config_int(self, key: str, default: int) -> int:
         """Get integer config value with fallback."""
         try:
-            val = ConfigManager.get(key)
+            val = self._config_manager.get(key)
             if isinstance(val, int):
                 return val
         except Exception:

@@ -111,6 +111,7 @@ class EventBus:
         router: Optional[EventRouter] = None,
         scheduler: Optional[EventScheduler] = None,
         metrics: Optional[EventMetricsRecorder] = None,
+        config_manager: Optional[ConfigManager] = None,
         *,
         enable_metrics: bool = True,
         critical_timeout_seconds: Optional[float] = None,
@@ -129,6 +130,8 @@ class EventBus:
             Optional EventScheduler instance. Creates default if None.
         metrics:
             Optional EventMetricsRecorder. Creates default if None.
+        config_manager:
+            Optional ConfigManager instance for loading timeout config.
         enable_metrics:
             Whether to collect metrics. Default True.
         critical_timeout_seconds:
@@ -136,6 +139,7 @@ class EventBus:
         high_timeout_seconds:
             Timeout for HIGH listeners. Uses config if None.
         """
+        self._config_manager = config_manager
         self._registry = registry or ListenerRegistry()
         self._router = router or EventRouter()
         self._scheduler = scheduler or EventScheduler()
@@ -167,8 +171,7 @@ class EventBus:
     # Configuration Loading
     # ------------------------------------------------------------------ #
 
-    @staticmethod
-    def _load_timeout(key: str, override: Optional[float], default: float) -> float:
+    def _load_timeout(self, key: str, override: Optional[float], default: float) -> float:
         """
         Load timeout value with fallback chain: override → config → default.
 
@@ -189,8 +192,12 @@ class EventBus:
         if override is not None:
             return float(override)
 
+        # If no config_manager provided, use default
+        if self._config_manager is None:
+            return float(default)
+
         try:
-            value = ConfigManager.get(key, default)
+            value = self._config_manager.get(key, default)
             return float(value)
         except Exception as exc:
             logger.warning(

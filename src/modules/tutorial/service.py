@@ -553,7 +553,8 @@ class TutorialService(BaseService):
                     f"Cannot claim reward: tutorial step '{step_id}' not completed"
                 )
 
-            # Check if reward already claimed
+            # SAFETY: idempotency - Check if reward already claimed (with pessimistic lock)
+            # This prevents duplicate reward claims even under concurrent requests
             if tutorial.rewards_claimed.get(step_id, False):
                 raise InvalidOperationError(
                     "claim_reward",

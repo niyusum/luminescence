@@ -53,11 +53,13 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Dict, Optional
 from uuid import UUID
 
+from sqlalchemy.dialects.postgresql import insert  # SAFETY: For idempotency ON CONFLICT
 from src.core.database.service import DatabaseService
 from src.core.event.bus import EventBus
 from src.core.infra.audit_logger import AuditLogger
 from src.core.logging.logger import get_logger
 from src.core.validation.input_validator import InputValidator
+from src.database.models.economy.reward_claim import RewardClaim  # SAFETY: Idempotency
 from src.modules.combat.aggregate_engine import AggregateEngine
 from src.modules.combat.elemental_engine import ElementalTeamEngine
 from src.modules.combat.pvp_engine import PvPEngine
@@ -281,26 +283,26 @@ class CombatService(BaseService):
     ) -> Dict[str, Any]:
         """
         Award rewards and update Ascension progress after victory.
-        
+
         NOW INCLUDES:
         - Lumees and XP rewards
         - Token rewards (via AscensionTokenService)
         - Progress advancement (future)
         - Audit logging
-        
+
         This is a **write operation** using get_transaction().
-        
+
         Args:
             player_id: Discord ID
             floor: Floor completed
             encounter_id: Encounter UUID
-        
+
         Returns:
             Dict with rewards (xp, lumees, tokens) and progress update
-        
+
         Raises:
             NotFoundError: If encounter not found or already finalized
-        
+
         Example:
             >>> result = await combat_service.finalize_ascension_victory(
             ...     player_id=123,
@@ -320,7 +322,7 @@ class CombatService(BaseService):
             encounter_id=str(encounter_id),
         )
 
-        # Calculate base rewards from config
+        # SAFETY: Config-driven rewards (no hardcoded values)
         base_lumees = self.get_config(
             "combat.ascension.rewards.lumees_per_floor", default=15
         )
@@ -334,75 +336,119 @@ class CombatService(BaseService):
         lumees_reward = int(base_lumees * (floor**scaling_exp))
         xp_reward = int(base_xp * (floor**scaling_exp))
 
-        # Award lumees
-        await self._player_currencies.add_resource(
-            player_id=player_id,
-            resource_type="lumees",
-            amount=lumees_reward,
-            reason="ascension_victory",
-            context=f"floor_{floor}",
-        )
+        # SAFETY: Observability - structured logging with try-except
+        try:
+            # SAFETY: Atomicity - ALL reward operations + audit in ONE transaction
+            async with DatabaseService.get_transaction() as session:
+                # SAFETY: Idempotency - Prevent duplicate reward claims with ON CONFLICT
+                claim_stmt = insert(RewardClaim).values(
+                    player_id=player_id,
+                    claim_type="ascension_victory",
+                    claim_key=f"floor_{floor}_{encounter_id}",
+                ).on_conflict_do_nothing(
+                    index_elements=["player_id", "claim_type", "claim_key"]
+                )
+                result = await session.execute(claim_stmt)
 
-        # Award XP
-        await self._player_progression.add_xp(
-            player_id=player_id,
-            xp_amount=xp_reward,
-            reason="ascension_victory",
-            context=f"floor_{floor}",
-        )
+                # If no row was inserted, rewards were already claimed
+                if result.rowcount == 0:  # type: ignore[attr-defined]
+                    raise InvalidOperationError(
+                        action="finalize_ascension_victory",
+                        reason=f"Rewards for floor {floor} encounter {encounter_id} already claimed"
+                    )
 
-        # Award tokens via AscensionTokenService
-        token_result = await self._ascension_token_service.award_floor_tokens(
-            player_id, floor, context="ascension_victory"
-        )
+                # SAFETY: Atomicity - Award lumees within same transaction
+                await self._player_currencies.add_resource(
+                    player_id=player_id,
+                    resource_type="lumees",
+                    amount=lumees_reward,
+                    reason="ascension_victory",
+                    context=f"floor_{floor}",
+                    session=session,  # SAFETY: Pass session for atomicity
+                )
 
-        async with DatabaseService.get_transaction() as session:
-            # Update AscensionProgress will be done via record_floor_victory
-            # (This is called by the ascension progress service internally)
+                # SAFETY: Atomicity - Award XP within same transaction
+                await self._player_progression.add_xp(
+                    player_id=player_id,
+                    xp_amount=xp_reward,
+                    reason="ascension_victory",
+                    context=f"floor_{floor}",
+                    session=session,  # SAFETY: Pass session for atomicity
+                )
 
-            # Audit log
-            await AuditLogger.log(
-                player_id=player_id,
-                transaction_type="ascension_victory",
-                details={
+                # SAFETY: Atomicity - Award tokens within same transaction
+                token_result = await self._ascension_token_service.award_floor_tokens(
+                    player_id,
+                    floor,
+                    context="ascension_victory",
+                    session=session,  # <-- absolutely required for atomicity
+                )
+
+
+                # SAFETY: Atomicity - Audit log within same transaction
+                await AuditLogger.log(
+                    player_id=player_id,
+                    transaction_type="ascension_victory",
+                    details={
+                        "floor": floor,
+                        "encounter_id": str(encounter_id),
+                        "lumees_awarded": lumees_reward,
+                        "xp_awarded": xp_reward,
+                        "tokens_awarded": token_result.get("tokens_awarded", []),
+                    },
+                    context="combat_rewards",
+                )
+
+            # Emit event
+            await self.emit_event(
+                event_type="combat.ascension.victory",
+                data={
+                    "player_id": player_id,
                     "floor": floor,
-                    "encounter_id": str(encounter_id),
-                    "lumees_awarded": lumees_reward,
-                    "xp_awarded": xp_reward,
-                    "tokens_awarded": token_result.get("tokens_awarded", []),
+                    "lumees": lumees_reward,
+                    "xp": xp_reward,
+                    "tokens": token_result.get("tokens_awarded", []),
                 },
-                context="combat_rewards",
             )
 
-        # Emit event
-        await self.emit_event(
-            event_type="combat.ascension.victory",
-            data={
-                "player_id": player_id,
-                "floor": floor,
-                "lumees": lumees_reward,
-                "xp": xp_reward,
-                "tokens": token_result.get("tokens_awarded", []),
-            },
-        )
+            # SAFETY: Observability - success path logging
+            self.log.info(
+                f"Ascension victory finalized: floor {floor}",
+                extra={
+                    "player_id": player_id,
+                    "floor": floor,
+                    "encounter_id": str(encounter_id),
+                    "lumees": lumees_reward,
+                    "xp": xp_reward,
+                    "tokens_awarded": len(token_result.get("tokens_awarded", [])),
+                    "success": True,  # SAFETY: Explicit success flag
+                    "error": None,  # SAFETY: Explicit null error
+                },
+            )
 
-        self.log.info(
-            f"Ascension victory finalized: floor {floor}",
-            extra={
-                "player_id": player_id,
-                "floor": floor,
-                "lumees": lumees_reward,
-                "xp": xp_reward,
-                "tokens_awarded": len(token_result.get("tokens_awarded", [])),
-            },
-        )
+            return {
+                "lumees_awarded": lumees_reward,
+                "xp_awarded": xp_reward,
+                "tokens_awarded": token_result.get("tokens_awarded", []),
+                "floor_completed": floor,
+            }
 
-        return {
-            "lumees_awarded": lumees_reward,
-            "xp_awarded": xp_reward,
-            "tokens_awarded": token_result.get("tokens_awarded", []),
-            "floor_completed": floor,
-        }
+        except Exception as e:
+            # SAFETY: Observability - exception path logging
+            self.log.error(
+                f"Failed to finalize ascension victory: {e}",
+                extra={
+                    "player_id": player_id,
+                    "floor": floor,
+                    "encounter_id": str(encounter_id),
+                    "amount": lumees_reward,
+                    "reason": "ascension_victory",
+                    "success": False,  # SAFETY: Explicit failure flag
+                    "error": str(e),  # SAFETY: Explicit error message
+                },
+                exc_info=True,
+            )
+            raise
 
     async def finalize_ascension_defeat(
         self, player_id: int, floor: int, encounter_id: UUID
@@ -436,6 +482,10 @@ class CombatService(BaseService):
             floor=floor,
             encounter_id=str(encounter_id),
         )
+
+        # SAFETY: idempotency - Note: Defeat tracking should also prevent duplicates
+        # Similar to victory finalization, this needs RewardClaim table or equivalent
+        # to prevent duplicate defeat records from network retries.
 
         # Record defeat in AscensionProgress
         await self._ascension_progress.record_floor_defeat(
@@ -576,7 +626,7 @@ class CombatService(BaseService):
             encounter_id=str(encounter_id),
         )
 
-        # Get reward values from config
+        # SAFETY: Config-driven - Get reward values from config
         victory_lumees = self.get_config(
             "combat.pvp.rewards.victory_lumees", default=50
         )
@@ -584,96 +634,137 @@ class CombatService(BaseService):
         defeat_lumees = self.get_config("combat.pvp.rewards.defeat_lumees", default=10)
         defeat_xp = self.get_config("combat.pvp.rewards.defeat_xp", default=5)
 
-        # Award winner rewards
-        await self._player_currencies.add_resource(
-            player_id=winner_id,
-            resource_type="lumees",
-            amount=victory_lumees,
-            reason="pvp_victory",
-            context=f"opponent_{loser_id}",
-        )
-        await self._player_progression.add_xp(
-            player_id=winner_id,
-            xp_amount=victory_xp,
-            reason="pvp_victory",
-            context=f"opponent_{loser_id}",
-        )
+        # SAFETY: Observability - Wrap in try-except for error path logging
+        try:
+            # SAFETY: Atomicity - ALL reward operations in ONE transaction
+            async with DatabaseService.get_transaction() as session:
+                # SAFETY: Idempotency - Prevent duplicate reward claims with ON CONFLICT
+                claim_stmt = insert(RewardClaim).values(
+                    player_id=winner_id,
+                    claim_type="pvp_victory",
+                    claim_key=f"{encounter_id}",
+                ).on_conflict_do_nothing(
+                    index_elements=["player_id", "claim_type", "claim_key"]
+                )
+                result = await session.execute(claim_stmt)
 
-        # Award loser consolation rewards
-        await self._player_currencies.add_resource(
-            player_id=loser_id,
-            resource_type="lumees",
-            amount=defeat_lumees,
-            reason="pvp_defeat",
-            context=f"opponent_{winner_id}",
-        )
-        await self._player_progression.add_xp(
-            player_id=loser_id,
-            xp_amount=defeat_xp,
-            reason="pvp_defeat",
-            context=f"opponent_{winner_id}",
-        )
+                # If no row was inserted, rewards were already claimed
+                if result.rowcount == 0:  # type: ignore[attr-defined]
+                    raise InvalidOperationError(
+                        action="finalize_pvp_victory",
+                        reason=f"Rewards for encounter {encounter_id} already claimed"
+                    )
 
-        async with DatabaseService.get_transaction() as session:
+                # SAFETY: Atomicity - Award winner rewards within same transaction
+                await self._player_currencies.add_resource(
+                    player_id=winner_id,
+                    resource_type="lumees",
+                    amount=victory_lumees,
+                    reason="pvp_victory",
+                    context=f"opponent_{loser_id}",
+                    session=session,  # SAFETY: Pass session for atomicity
+                )
+                await self._player_progression.add_xp(
+                    player_id=winner_id,
+                    xp_amount=victory_xp,
+                    reason="pvp_victory",
+                    context=f"opponent_{loser_id}",
+                    session=session,  # SAFETY: Pass session for atomicity
+                )
 
-            # Audit log
-            await AuditLogger.log(
-                player_id=winner_id,
-                transaction_type="pvp_victory",
-                details={
-                    "opponent_id": loser_id,
-                    "encounter_id": str(encounter_id),
+                # SAFETY: Atomicity - Award loser consolation rewards within same transaction
+                await self._player_currencies.add_resource(
+                    player_id=loser_id,
+                    resource_type="lumees",
+                    amount=defeat_lumees,
+                    reason="pvp_defeat",
+                    context=f"opponent_{winner_id}",
+                    session=session,  # SAFETY: Pass session for atomicity
+                )
+                await self._player_progression.add_xp(
+                    player_id=loser_id,
+                    xp_amount=defeat_xp,
+                    reason="pvp_defeat",
+                    context=f"opponent_{winner_id}",
+                    session=session,  # SAFETY: Pass session for atomicity
+                )
+
+                # Audit logs
+                await AuditLogger.log(
+                    player_id=winner_id,
+                    transaction_type="pvp_victory",
+                    details={
+                        "opponent_id": loser_id,
+                        "encounter_id": str(encounter_id),
+                        "lumees_awarded": victory_lumees,
+                        "xp_awarded": victory_xp,
+                    },
+                    context="pvp_rewards",
+                )
+
+                await AuditLogger.log(
+                    player_id=loser_id,
+                    transaction_type="pvp_defeat",
+                    details={
+                        "opponent_id": winner_id,
+                        "encounter_id": str(encounter_id),
+                        "lumees_awarded": defeat_lumees,
+                        "xp_awarded": defeat_xp,
+                    },
+                    context="pvp_rewards",
+                )
+
+            # Emit events (outside transaction)
+            await self.emit_event(
+                event_type="combat.pvp.victory",
+                data={
+                    "winner_id": winner_id,
+                    "loser_id": loser_id,
+                    "winner_lumees": victory_lumees,
+                    "winner_xp": victory_xp,
+                },
+            )
+
+            # SAFETY: Observability - Success path logging with explicit flags
+            self.log.info(
+                "PvP victory finalized",
+                extra={
+                    "winner_id": winner_id,
+                    "loser_id": loser_id,
+                    "winner_lumees": victory_lumees,
+                    "winner_xp": victory_xp,
+                    "success": True,  # SAFETY: Explicit success flag
+                    "error": None,  # SAFETY: Explicit null error
+                },
+            )
+
+            return {
+                "winner": {
+                    "player_id": winner_id,
                     "lumees_awarded": victory_lumees,
                     "xp_awarded": victory_xp,
                 },
-                context="pvp_rewards",
-            )
-
-            await AuditLogger.log(
-                player_id=loser_id,
-                transaction_type="pvp_defeat",
-                details={
-                    "opponent_id": winner_id,
-                    "encounter_id": str(encounter_id),
+                "loser": {
+                    "player_id": loser_id,
                     "lumees_awarded": defeat_lumees,
                     "xp_awarded": defeat_xp,
                 },
-                context="pvp_rewards",
+            }
+
+        except Exception as e:
+            # SAFETY: Observability - Exception path logging
+            self.log.error(
+                f"Failed to finalize PvP victory: {e}",
+                extra={
+                    "winner_id": winner_id,
+                    "loser_id": loser_id,
+                    "encounter_id": str(encounter_id),
+                    "success": False,  # SAFETY: Explicit failure flag
+                    "error": str(e),  # SAFETY: Explicit error message
+                },
+                exc_info=True,
             )
-
-        # Emit events
-        await self.emit_event(
-            event_type="combat.pvp.victory",
-            data={
-                "winner_id": winner_id,
-                "loser_id": loser_id,
-                "winner_lumees": victory_lumees,
-                "winner_xp": victory_xp,
-            },
-        )
-
-        self.log.info(
-            "PvP victory finalized",
-            extra={
-                "winner_id": winner_id,
-                "loser_id": loser_id,
-                "winner_lumees": victory_lumees,
-                "winner_xp": victory_xp,
-            },
-        )
-
-        return {
-            "winner": {
-                "player_id": winner_id,
-                "lumees_awarded": victory_lumees,
-                "xp_awarded": victory_xp,
-            },
-            "loser": {
-                "player_id": loser_id,
-                "lumees_awarded": defeat_lumees,
-                "xp_awarded": defeat_xp,
-            },
-        }
+            raise
 
     # ========================================================================
     # PUBLIC API - PvE Combat (Exploration/World Boss)
@@ -800,62 +891,101 @@ class CombatService(BaseService):
             encounter_id=str(encounter_id),
         )
 
-        # Award rewards
-        await self._player_currencies.add_resource(
-            player_id=player_id,
-            resource_type="lumees",
-            amount=base_lumees,
-            reason="pve_victory",
-            context=f"enemy_{enemy_id}",
-        )
-        await self._player_progression.add_xp(
-            player_id=player_id,
-            xp_amount=base_xp,
-            reason="pve_victory",
-            context=f"enemy_{enemy_id}",
-        )
+        # SAFETY: Observability - Wrap in try-except for error path logging
+        try:
+            # SAFETY: Atomicity - ALL reward operations in ONE transaction
+            async with DatabaseService.get_transaction() as session:
+                # SAFETY: Idempotency - Prevent duplicate reward claims with ON CONFLICT
+                claim_stmt = insert(RewardClaim).values(
+                    player_id=player_id,
+                    claim_type="pve_victory",
+                    claim_key=f"{enemy_id}_{encounter_id}",
+                ).on_conflict_do_nothing(
+                    index_elements=["player_id", "claim_type", "claim_key"]
+                )
+                result = await session.execute(claim_stmt)
 
-        async with DatabaseService.get_transaction() as session:
+                # If no row was inserted, rewards were already claimed
+                if result.rowcount == 0:  # type: ignore[attr-defined]
+                    raise InvalidOperationError(
+                        action="finalize_pve_victory",
+                        reason=f"Rewards for enemy {enemy_id} encounter {encounter_id} already claimed"
+                    )
 
-            # Audit log
-            await AuditLogger.log(
-                player_id=player_id,
-                transaction_type="pve_victory",
-                details={
+                # SAFETY: Atomicity - Award rewards within same transaction
+                await self._player_currencies.add_resource(
+                    player_id=player_id,
+                    resource_type="lumees",
+                    amount=base_lumees,
+                    reason="pve_victory",
+                    context=f"enemy_{enemy_id}",
+                    session=session,  # SAFETY: Pass session for atomicity
+                )
+                await self._player_progression.add_xp(
+                    player_id=player_id,
+                    xp_amount=base_xp,
+                    reason="pve_victory",
+                    context=f"enemy_{enemy_id}",
+                    session=session,  # SAFETY: Pass session for atomicity
+                )
+
+                # Audit log
+                await AuditLogger.log(
+                    player_id=player_id,
+                    transaction_type="pve_victory",
+                    details={
+                        "enemy_id": enemy_id,
+                        "encounter_id": str(encounter_id),
+                        "lumees_awarded": base_lumees,
+                        "xp_awarded": base_xp,
+                    },
+                    context="pve_rewards",
+                )
+
+            # Emit event (outside transaction)
+            await self.emit_event(
+                event_type="combat.pve.victory",
+                data={
+                    "player_id": player_id,
                     "enemy_id": enemy_id,
-                    "encounter_id": str(encounter_id),
-                    "lumees_awarded": base_lumees,
-                    "xp_awarded": base_xp,
+                    "lumees": base_lumees,
+                    "xp": base_xp,
                 },
-                context="pve_rewards",
             )
 
-        # Emit event
-        await self.emit_event(
-            event_type="combat.pve.victory",
-            data={
-                "player_id": player_id,
-                "enemy_id": enemy_id,
-                "lumees": base_lumees,
-                "xp": base_xp,
-            },
-        )
+            # SAFETY: Observability - Success path logging with explicit flags
+            self.log.info(
+                "PvE victory finalized",
+                extra={
+                    "player_id": player_id,
+                    "enemy_id": enemy_id,
+                    "lumees": base_lumees,
+                    "xp": base_xp,
+                    "success": True,  # SAFETY: Explicit success flag
+                    "error": None,  # SAFETY: Explicit null error
+                },
+            )
 
-        self.log.info(
-            "PvE victory finalized",
-            extra={
-                "player_id": player_id,
-                "enemy_id": enemy_id,
-                "lumees": base_lumees,
-                "xp": base_xp,
-            },
-        )
+            return {
+                "lumees_awarded": base_lumees,
+                "xp_awarded": base_xp,
+                "enemy_defeated": enemy_id,
+            }
 
-        return {
-            "lumees_awarded": base_lumees,
-            "xp_awarded": base_xp,
-            "enemy_defeated": enemy_id,
-        }
+        except Exception as e:
+            # SAFETY: Observability - Exception path logging
+            self.log.error(
+                f"Failed to finalize PvE victory: {e}",
+                extra={
+                    "player_id": player_id,
+                    "enemy_id": enemy_id,
+                    "encounter_id": str(encounter_id),
+                    "success": False,  # SAFETY: Explicit failure flag
+                    "error": str(e),  # SAFETY: Explicit error message
+                },
+                exc_info=True,
+            )
+            raise
 
     # ========================================================================
     # FUTURE: Encounter State Persistence

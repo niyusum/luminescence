@@ -37,12 +37,13 @@ Architecture Notes
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 from src.core.logging.logger import get_logger
 
 if TYPE_CHECKING:
     from src.modules.audit.consumer import AuditConsumer
+    from src.core.config.manager import ConfigManager
 
 logger = get_logger(__name__)
 
@@ -50,7 +51,7 @@ logger = get_logger(__name__)
 _active_consumers: List[AuditConsumer] = []
 
 
-async def initialize_event_system() -> None:
+async def initialize_event_system(config_manager: Optional[ConfigManager] = None) -> None:
     """
     Initialize all event listeners and consumers.
 
@@ -61,6 +62,11 @@ async def initialize_event_system() -> None:
 
     Should be called during bot setup, before the "bot.setup_complete" event
     is published.
+
+    Parameters
+    ----------
+    config_manager:
+        Optional ConfigManager instance for consumer configuration.
 
     Raises
     ------
@@ -89,7 +95,7 @@ async def initialize_event_system() -> None:
         # DatabaseService uses class methods, pass the class itself
         # (AuditRepository type hint is outdated from pre-refactor)
         audit_repo = AuditRepository(DatabaseService)  # type: ignore[arg-type]
-        audit_consumer = AuditConsumer(event_bus, audit_repo)
+        audit_consumer = AuditConsumer(event_bus, audit_repo, config_manager=config_manager)
         await audit_consumer.start()
 
         _active_consumers.append(audit_consumer)

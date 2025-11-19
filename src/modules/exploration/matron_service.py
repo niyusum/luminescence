@@ -51,11 +51,13 @@ from __future__ import annotations
 import random
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from sqlalchemy.dialects.postgresql import insert  # SAFETY: For idempotency ON CONFLICT
 from src.core.database.service import DatabaseService
 from src.core.event.bus import EventBus
 from src.core.infra.audit_logger import AuditLogger
 from src.core.logging.logger import get_logger
 from src.core.validation.input_validator import InputValidator
+from src.database.models.economy.reward_claim import RewardClaim  # SAFETY: Idempotency
 from src.modules.combat.shared.encounter import EnemyStats
 from src.modules.shared.base_service import BaseService
 from src.modules.shared.exceptions import InvalidOperationError, NotFoundError
@@ -672,77 +674,120 @@ class MatronService(BaseService):
             sublevel=sublevel,
         )
 
-        # Calculate rewards
+        # SAFETY: Config-driven - Calculate rewards from config
         rewards = self.calculate_matron_rewards(sector_id, sublevel, is_boss_sublevel)
 
-        # Award lumees
-        await self._player_currencies.add_resource(
-            player_id=player_id,
-            resource_type="lumees",
-            amount=rewards["lumees"],
-            reason="matron_victory",
-            context=f"sector_{sector_id}_sublevel_{sublevel}",
-        )
+        # SAFETY: Observability - Wrap in try-except for error path logging
+        try:
+            # SAFETY: Atomicity - ALL reward operations in ONE transaction
+            async with DatabaseService.get_transaction() as session:
+                # SAFETY: Idempotency - Prevent duplicate reward claims with ON CONFLICT
+                claim_stmt = insert(RewardClaim).values(
+                    player_id=player_id,
+                    claim_type="matron_victory",
+                    claim_key=f"sector_{sector_id}_sublevel_{sublevel}_{encounter_id}",
+                ).on_conflict_do_nothing(
+                    index_elements=["player_id", "claim_type", "claim_key"]
+                )
+                result = await session.execute(claim_stmt)
 
-        # Award XP
-        await self._player_progression.add_xp(
-            player_id=player_id,
-            xp_amount=rewards["xp"],
-            reason="matron_victory",
-            context=f"sector_{sector_id}_sublevel_{sublevel}",
-        )
+                # If no row was inserted, rewards were already claimed
+                if result.rowcount == 0:  # type: ignore[attr-defined]
+                    raise InvalidOperationError(
+                        action="finalize_matron_victory",
+                        reason=f"Rewards for sector {sector_id} sublevel {sublevel} already claimed"
+                    )
 
-        # Award drop charges
-        await self._player_stats.add_drop_charges(
-            player_id=player_id,
-            amount=rewards["drop_charges"],
-            reason="matron_victory",
-        )
+                # SAFETY: Atomicity - Award lumees within same transaction
+                await self._player_currencies.add_resource(
+                    player_id=player_id,
+                    resource_type="lumees",
+                    amount=rewards["lumees"],
+                    reason="matron_victory",
+                    context=f"sector_{sector_id}_sublevel_{sublevel}",
+                    session=session,  # SAFETY: Pass session for atomicity
+                )
 
-        async with DatabaseService.get_transaction() as session:
-            # Mark miniboss as defeated
-            await self._sector_progress.defeat_miniboss(
-                player_id, sector_id, sublevel, context="matron_victory"
+                # SAFETY: Atomicity - Award XP within same transaction
+                await self._player_progression.add_xp(
+                    player_id=player_id,
+                    xp_amount=rewards["xp"],
+                    reason="matron_victory",
+                    context=f"sector_{sector_id}_sublevel_{sublevel}",
+                    session=session,  # SAFETY: Pass session for atomicity
+                )
+
+                # SAFETY: Atomicity - Award drop charges within same transaction
+                # TODO: PlayerStatsService.add_drop_charges needs session parameter for true atomicity
+                await self._player_stats.add_drop_charges(
+                    player_id=player_id,
+                    amount=rewards["drop_charges"],
+                    reason="matron_victory",
+                )
+
+                # Mark miniboss as defeated
+                # TODO: SectorProgressService.defeat_miniboss needs session parameter for true atomicity
+                await self._sector_progress.defeat_miniboss(
+                    player_id, sector_id, sublevel, context="matron_victory"
+                )
+
+                # Audit log
+                await AuditLogger.log(
+                    player_id=player_id,
+                    transaction_type="matron_defeated",
+                    details={
+                        "sector_id": sector_id,
+                        "sublevel": sublevel,
+                        "encounter_id": encounter_id,
+                        "rewards": rewards,
+                    },
+                    context="matron_combat",
+                )
+
+            # Emit victory event (outside transaction)
+            await self.emit_event(
+                event_type="matron.defeated",
+                data={
+                    "player_id": player_id,
+                    "sector_id": sector_id,
+                    "sublevel": sublevel,
+                    "rewards": rewards,
+                },
             )
 
-            # Audit log
-            await AuditLogger.log(
-                player_id=player_id,
-                transaction_type="matron_defeated",
-                details={
+            # SAFETY: Observability - Success path logging with explicit flags
+            self.log.info(
+                f"Matron victory finalized: sector {sector_id}-{sublevel}",
+                extra={
+                    "player_id": player_id,
+                    "sector_id": sector_id,
+                    "sublevel": sublevel,
+                    "rewards": rewards,
+                    "success": True,  # SAFETY: Explicit success flag
+                    "error": None,  # SAFETY: Explicit null error
+                },
+            )
+
+            return {
+                "player_id": player_id,
+                "sector_id": sector_id,
+                "sublevel": sublevel,
+                "rewards": rewards,
+                "miniboss_defeated": True,
+            }
+
+        except Exception as e:
+            # SAFETY: Observability - Exception path logging
+            self.log.error(
+                f"Failed to finalize matron victory: {e}",
+                extra={
+                    "player_id": player_id,
                     "sector_id": sector_id,
                     "sublevel": sublevel,
                     "encounter_id": encounter_id,
-                    "rewards": rewards,
+                    "success": False,  # SAFETY: Explicit failure flag
+                    "error": str(e),  # SAFETY: Explicit error message
                 },
-                context="matron_combat",
+                exc_info=True,
             )
-
-        # Emit victory event
-        await self.emit_event(
-            event_type="matron.defeated",
-            data={
-                "player_id": player_id,
-                "sector_id": sector_id,
-                "sublevel": sublevel,
-                "rewards": rewards,
-            },
-        )
-
-        self.log.info(
-            f"Matron victory finalized: sector {sector_id}-{sublevel}",
-            extra={
-                "player_id": player_id,
-                "sector_id": sector_id,
-                "sublevel": sublevel,
-                "rewards": rewards,
-            },
-        )
-
-        return {
-            "player_id": player_id,
-            "sector_id": sector_id,
-            "sublevel": sublevel,
-            "rewards": rewards,
-            "miniboss_defeated": True,
-        }
+            raise

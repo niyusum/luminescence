@@ -224,6 +224,7 @@ class PlayerProgressionService(BaseService):
         xp_amount: int,
         reason: str,
         context: Optional[str] = None,
+        session: Optional[Any] = None,  # SAFETY: Optional session for atomicity
     ) -> Dict[str, Any]:
         """
         Add XP to player and handle level-ups.
@@ -272,10 +273,13 @@ class PlayerProgressionService(BaseService):
             reason=reason,
         )
 
-        async with DatabaseService.get_transaction() as session:
+        # SAFETY: Atomicity - Use provided session or create new transaction
+        if session is not None:
+            # Use provided session (part of larger transaction)
+            tx_session = session
             # Lock the row for update
             progression = await self._progression_repo.find_one_where(
-                session,
+                tx_session,
                 self._progression_repo.model_class.player_id == player_id,
                 for_update=True,  # SELECT FOR UPDATE
             )
@@ -360,6 +364,7 @@ class PlayerProgressionService(BaseService):
                 },
             )
 
+            # Return without committing (caller manages transaction)
             return {
                 "player_id": player_id,
                 "old_xp": old_xp,
@@ -370,6 +375,107 @@ class PlayerProgressionService(BaseService):
                 "levels_gained": levels_gained,
                 "stat_points_awarded": stat_points_awarded,
             }
+        else:
+            # Create new transaction (standalone operation)
+            async with DatabaseService.get_transaction() as tx_session:
+                # Lock the row for update
+                progression = await self._progression_repo.find_one_where(
+                    tx_session,
+                    self._progression_repo.model_class.player_id == player_id,
+                    for_update=True,  # SELECT FOR UPDATE
+                )
+
+                if not progression:
+                    raise NotFoundError("PlayerProgression", player_id)
+
+                old_xp = progression.xp
+                old_level = progression.level
+
+                # Add XP
+                progression.xp = old_xp + xp_amount
+
+                # Check for level-ups (can cascade)
+                levels_gained = 0
+                points_per_level = self.get_config("POINTS_PER_LEVEL", default=5)
+
+                while True:
+                    xp_required = self._calculate_xp_for_level(progression.level + 1)
+                    if progression.xp >= xp_required:
+                        progression.level += 1
+                        levels_gained += 1
+                        progression.stat_points += points_per_level
+                        progression.last_level_up = datetime.now(timezone.utc)
+                    else:
+                        break
+
+                stat_points_awarded = levels_gained * points_per_level
+
+                # Audit logging
+                await AuditLogger.log(
+                    player_id=player_id,
+                    transaction_type="xp_added",
+                    details={
+                        "old_xp": old_xp,
+                        "new_xp": progression.xp,
+                        "xp_amount": xp_amount,
+                        "old_level": old_level,
+                        "new_level": progression.level,
+                        "levels_gained": levels_gained,
+                        "stat_points_awarded": stat_points_awarded,
+                        "reason": reason,
+                    },
+                    context=context or "xp_gain",
+                )
+
+                # Event emission
+                await self.emit_event(
+                    event_type="player.xp_added",
+                    data={
+                        "player_id": player_id,
+                        "old_xp": old_xp,
+                        "new_xp": progression.xp,
+                        "xp_amount": xp_amount,
+                        "reason": reason,
+                    },
+                )
+
+                # Level-up events
+                if levels_gained > 0:
+                    await self.emit_event(
+                        event_type="player.leveled_up",
+                        data={
+                            "player_id": player_id,
+                            "old_level": old_level,
+                            "new_level": progression.level,
+                            "levels_gained": levels_gained,
+                            "stat_points_awarded": stat_points_awarded,
+                        },
+                    )
+
+                self.log.info(
+                    f"XP added: +{xp_amount} XP, {levels_gained} levels gained",
+                    extra={
+                        "player_id": player_id,
+                        "old_xp": old_xp,
+                        "new_xp": progression.xp,
+                        "old_level": old_level,
+                        "new_level": progression.level,
+                        "levels_gained": levels_gained,
+                        "stat_points_awarded": stat_points_awarded,
+                    },
+                )
+
+                # Transaction auto-commits on exit
+                return {
+                    "player_id": player_id,
+                    "old_xp": old_xp,
+                    "new_xp": progression.xp,
+                    "xp_amount": xp_amount,
+                    "old_level": old_level,
+                    "new_level": progression.level,
+                    "levels_gained": levels_gained,
+                    "stat_points_awarded": stat_points_awarded,
+                }
 
     # ========================================================================
     # PUBLIC API - Class Selection

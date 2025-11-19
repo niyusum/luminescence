@@ -31,4 +31,11 @@ lpt[1-9]
 .claude/
 migrations/
 scripts/
-tests/
+
+# Test artifacts (but track tests/ directory itself)
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+.hypothesis/

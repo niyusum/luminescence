@@ -155,6 +155,19 @@ class ColorTheme:
         >>> ColorTheme.get_color("fusion")  # Feature color
     """
 
+    # Optional ConfigManager instance for runtime color tuning
+    _config_manager: Optional[ConfigManager] = None
+
+    @classmethod
+    def initialize(cls, config_manager: ConfigManager) -> None:
+        """
+        Initialize ColorTheme with ConfigManager for runtime color tuning.
+
+        Args:
+            config_manager: ConfigManager instance
+        """
+        cls._config_manager = config_manager
+
     @classmethod
     def get_color(cls, context: str, **kwargs) -> int:
         """
@@ -176,12 +189,13 @@ class ColorTheme:
             0xF39C12
         """
         # Try ConfigManager first (allows runtime tuning)
-        config_key = f"embed_colors.{context}"
-        try:
-            if config_color := ConfigManager.get(config_key):
-                return config_color
-        except Exception:
-            pass  # Fall back to defaults
+        if cls._config_manager is not None:
+            config_key = f"embed_colors.{context}"
+            try:
+                if config_color := cls._config_manager.get(config_key):
+                    return config_color
+            except Exception:
+                pass  # Fall back to defaults
 
         # Element context
         if context == "element" and "element" in kwargs:

@@ -37,6 +37,7 @@ from src.core.database.service import DatabaseService
 from src.core.infra.audit_logger import AuditLogger
 from src.core.logging.logger import get_logger
 from src.core.validation.input_validator import InputValidator
+from src.domain.models.base import DomainValidationError
 from src.modules.shared.base_repository import BaseRepository
 from src.modules.shared.base_service import BaseService
 from src.modules.shared.exceptions import (
@@ -435,7 +436,7 @@ class MaidenService(BaseService):
 
         async with DatabaseService.get_transaction() as session:
             # Try to find existing maiden stack
-            maiden = await self._maiden_repo.find_by_player_base_tier(
+            maiden_db = await self._maiden_repo.find_by_player_base_tier(
                 session,
                 player_id=player_id,
                 maiden_base_id=maiden_base_id,
@@ -443,10 +444,28 @@ class MaidenService(BaseService):
                 for_update=True,
             )
 
-            if maiden and maiden.deleted_at is None:
-                # Stack exists - increase quantity
-                old_quantity = maiden.quantity
-                maiden.quantity = old_quantity + quantity
+            if maiden_db and maiden_db.deleted_at is None:
+                # Stack exists - use domain model to add quantity
+                # Load maiden base for domain model
+                from src.database.models.core.maiden_base import MaidenBase
+                maiden_base = await session.get(MaidenBase, maiden_base_id)
+
+                if not maiden_base:
+                    raise NotFoundError("MaidenBase", maiden_base_id)
+
+                # Convert to domain model
+                from src.domain.models import Maiden as MaidenDomain
+                maiden_domain = MaidenDomain.from_db(maiden_db, maiden_base)
+
+                # Use domain model method (emits domain events)
+                old_quantity = maiden_domain.quantity
+                maiden_domain.add_quantity(quantity)
+
+                # Apply domain model changes back to database model
+                updates = maiden_domain.to_db_updates()
+                for key, value in updates.items():
+                    setattr(maiden_db, key, value)
+
                 operation = "quantity_increased"
 
                 self.log.info(
@@ -456,14 +475,18 @@ class MaidenService(BaseService):
                         "maiden_base_id": maiden_base_id,
                         "tier": tier,
                         "old_quantity": old_quantity,
-                        "new_quantity": maiden.quantity,
+                        "new_quantity": maiden_domain.quantity,
                     },
                 )
+
+                # Publish domain events
+                for event in maiden_domain.get_pending_events():
+                    await self.emit_event(event.event_name, event.payload)
             else:
                 # Create new maiden stack
                 from src.database.models.core.maiden import Maiden
 
-                maiden = Maiden(
+                maiden_db = Maiden(
                     player_id=player_id,
                     maiden_base_id=maiden_base_id,
                     quantity=quantity,
@@ -474,7 +497,7 @@ class MaidenService(BaseService):
                     is_locked=False,
                 )
 
-                self._maiden_repo.add(session, maiden)
+                self._maiden_repo.add(session, maiden_db)
                 await session.flush()  # Get the ID
                 operation = "created"
 
@@ -482,7 +505,7 @@ class MaidenService(BaseService):
                     f"Maiden stack created: {quantity} maidens",
                     extra={
                         "player_id": player_id,
-                        "maiden_id": maiden.id,
+                        "maiden_id": maiden_db.id,
                         "maiden_base_id": maiden_base_id,
                         "tier": tier,
                         "quantity": quantity,
@@ -494,11 +517,11 @@ class MaidenService(BaseService):
                 player_id=player_id,
                 transaction_type="maiden_added",
                 details={
-                    "maiden_id": maiden.id,
+                    "maiden_id": maiden_db.id,
                     "maiden_base_id": maiden_base_id,
                     "tier": tier,
                     "quantity_added": quantity,
-                    "new_total": maiden.quantity,
+                    "new_total": maiden_db.quantity,
                     "acquired_from": acquired_from,
                     "operation": operation,
                     "reason": reason,
@@ -511,18 +534,18 @@ class MaidenService(BaseService):
                 event_type="maiden.added",
                 data={
                     "player_id": player_id,
-                    "maiden_id": maiden.id,
+                    "maiden_id": maiden_db.id,
                     "maiden_base_id": maiden_base_id,
                     "tier": tier,
                     "quantity_added": quantity,
-                    "total_quantity": maiden.quantity,
+                    "total_quantity": maiden_db.quantity,
                     "operation": operation,
                     "reason": reason,
                 },
             )
 
             return {
-                **self._maiden_to_dict(maiden),
+                **self._maiden_to_dict(maiden_db),
                 "operation": operation,
                 "quantity_added": quantity,
             }
@@ -582,7 +605,7 @@ class MaidenService(BaseService):
 
         async with DatabaseService.get_transaction() as session:
             # Find and lock maiden
-            maiden = await self._maiden_repo.find_by_player_base_tier(
+            maiden_db = await self._maiden_repo.find_by_player_base_tier(
                 session,
                 player_id=player_id,
                 maiden_base_id=maiden_base_id,
@@ -590,47 +613,69 @@ class MaidenService(BaseService):
                 for_update=True,
             )
 
-            if not maiden or maiden.deleted_at is not None:
+            if not maiden_db or maiden_db.deleted_at is not None:
                 raise NotFoundError(
                     "Maiden",
                     f"player={player_id}, base={maiden_base_id}, tier={tier}",
                 )
 
-            # Check if locked
-            if maiden.is_locked:
+            # Load maiden base for domain model
+            from src.database.models.core.maiden_base import MaidenBase
+            maiden_base = await session.get(MaidenBase, maiden_base_id)
+
+            if not maiden_base:
+                raise NotFoundError("MaidenBase", maiden_base_id)
+
+            # Convert to domain model
+            from src.domain.models import Maiden as MaidenDomain
+            maiden_domain = MaidenDomain.from_db(maiden_db, maiden_base)
+
+            # Check if locked (domain model validation)
+            if maiden_domain.is_locked:
                 raise InvalidOperationError(
                     "remove_maiden",
                     "Cannot remove locked maiden. Unlock first."
                 )
 
-            # Check sufficiency
-            if maiden.quantity < quantity:
-                raise InsufficientResourcesError(
-                    resource="maiden_quantity",
-                    required=quantity,
-                    current=maiden.quantity,
-                )
+            # Use domain model method (validates sufficiency and emits events)
+            old_quantity = maiden_domain.quantity
+            try:
+                maiden_domain.remove_quantity(quantity)
+            except DomainValidationError as e:
+                # Convert domain validation error to service exception
+                if "Insufficient quantity" in str(e):
+                    raise InsufficientResourcesError(
+                        resource="maiden_quantity",
+                        required=quantity,
+                        current=old_quantity,
+                    ) from e
+                raise
 
-            old_quantity = maiden.quantity
-            new_quantity = old_quantity - quantity
+            new_quantity = maiden_domain.quantity
 
             if new_quantity == 0:
                 # Soft delete
                 from datetime import datetime, timezone
 
-                maiden.deleted_at = datetime.now(timezone.utc)
+                maiden_db.deleted_at = datetime.now(timezone.utc)
                 operation = "deleted"
             else:
-                # Decrease quantity
-                maiden.quantity = new_quantity
+                # Apply domain model changes back to database model
+                updates = maiden_domain.to_db_updates()
+                for key, value in updates.items():
+                    setattr(maiden_db, key, value)
                 operation = "quantity_decreased"
+
+            # Publish domain events
+            for event in maiden_domain.get_pending_events():
+                await self.emit_event(event.event_name, event.payload)
 
             # Audit logging
             await AuditLogger.log(
                 player_id=player_id,
                 transaction_type="maiden_removed",
                 details={
-                    "maiden_id": maiden.id,
+                    "maiden_id": maiden_db.id,
                     "maiden_base_id": maiden_base_id,
                     "tier": tier,
                     "quantity_removed": quantity,
@@ -647,7 +692,7 @@ class MaidenService(BaseService):
                 event_type="maiden.removed",
                 data={
                     "player_id": player_id,
-                    "maiden_id": maiden.id,
+                    "maiden_id": maiden_db.id,
                     "maiden_base_id": maiden_base_id,
                     "tier": tier,
                     "quantity_removed": quantity,
@@ -662,7 +707,7 @@ class MaidenService(BaseService):
                 f"Maiden removed: -{quantity} (operation: {operation})",
                 extra={
                     "player_id": player_id,
-                    "maiden_id": maiden.id,
+                    "maiden_id": maiden_db.id,
                     "maiden_base_id": maiden_base_id,
                     "tier": tier,
                     "old_quantity": old_quantity,
@@ -672,7 +717,7 @@ class MaidenService(BaseService):
 
             return {
                 "player_id": player_id,
-                "maiden_id": maiden.id,
+                "maiden_id": maiden_db.id,
                 "maiden_base_id": maiden_base_id,
                 "tier": tier,
                 "quantity_removed": quantity,
@@ -700,26 +745,42 @@ class MaidenService(BaseService):
         maiden_id = InputValidator.validate_positive_integer(maiden_id, "maiden_id")
 
         async with DatabaseService.get_transaction() as session:
-            maiden = await self._maiden_repo.get_for_update(session, maiden_id)
+            maiden_db = await self._maiden_repo.get_for_update(session, maiden_id)
 
-            if not maiden or maiden.deleted_at is not None:
+            if not maiden_db or maiden_db.deleted_at is not None:
                 raise NotFoundError("Maiden", maiden_id)
 
             # Verify ownership
-            if maiden.player_id != player_id:
+            if maiden_db.player_id != player_id:
                 raise ValidationError("player_id", "Maiden does not belong to player")
 
-            was_locked = maiden.is_locked
-            maiden.is_locked = True
+            # Load maiden base for domain model
+            from src.database.models.core.maiden_base import MaidenBase
+            maiden_base = await session.get(MaidenBase, maiden_db.maiden_base_id)
 
-            await self.emit_event(
-                event_type="maiden.locked",
-                data={
-                    "player_id": player_id,
-                    "maiden_id": maiden_id,
-                    "was_already_locked": was_locked,
-                },
-            )
+            if not maiden_base:
+                raise NotFoundError("MaidenBase", maiden_db.maiden_base_id)
+
+            # Convert to domain model
+            from src.domain.models import Maiden as MaidenDomain
+            maiden_domain = MaidenDomain.from_db(maiden_db, maiden_base)
+
+            # Use domain model method (emits domain events)
+            was_locked = maiden_domain.is_locked
+            try:
+                maiden_domain.lock()
+            except DomainValidationError:
+                # Already locked - this is fine, just return current state
+                pass
+
+            # Apply domain model changes back to database model
+            updates = maiden_domain.to_db_updates()
+            for key, value in updates.items():
+                setattr(maiden_db, key, value)
+
+            # Publish domain events
+            for event in maiden_domain.get_pending_events():
+                await self.emit_event(event.event_name, event.payload)
 
             return {
                 "player_id": player_id,
@@ -738,25 +799,41 @@ class MaidenService(BaseService):
         maiden_id = InputValidator.validate_positive_integer(maiden_id, "maiden_id")
 
         async with DatabaseService.get_transaction() as session:
-            maiden = await self._maiden_repo.get_for_update(session, maiden_id)
+            maiden_db = await self._maiden_repo.get_for_update(session, maiden_id)
 
-            if not maiden or maiden.deleted_at is not None:
+            if not maiden_db or maiden_db.deleted_at is not None:
                 raise NotFoundError("Maiden", maiden_id)
 
-            if maiden.player_id != player_id:
+            if maiden_db.player_id != player_id:
                 raise ValidationError("player_id", "Maiden does not belong to player")
 
-            was_unlocked = not maiden.is_locked
-            maiden.is_locked = False
+            # Load maiden base for domain model
+            from src.database.models.core.maiden_base import MaidenBase
+            maiden_base = await session.get(MaidenBase, maiden_db.maiden_base_id)
 
-            await self.emit_event(
-                event_type="maiden.unlocked",
-                data={
-                    "player_id": player_id,
-                    "maiden_id": maiden_id,
-                    "was_already_unlocked": was_unlocked,
-                },
-            )
+            if not maiden_base:
+                raise NotFoundError("MaidenBase", maiden_db.maiden_base_id)
+
+            # Convert to domain model
+            from src.domain.models import Maiden as MaidenDomain
+            maiden_domain = MaidenDomain.from_db(maiden_db, maiden_base)
+
+            # Use domain model method (emits domain events)
+            was_unlocked = not maiden_domain.is_locked
+            try:
+                maiden_domain.unlock()
+            except DomainValidationError:
+                # Already unlocked - this is fine, just return current state
+                pass
+
+            # Apply domain model changes back to database model
+            updates = maiden_domain.to_db_updates()
+            for key, value in updates.items():
+                setattr(maiden_db, key, value)
+
+            # Publish domain events
+            for event in maiden_domain.get_pending_events():
+                await self.emit_event(event.event_name, event.payload)
 
             return {
                 "player_id": player_id,

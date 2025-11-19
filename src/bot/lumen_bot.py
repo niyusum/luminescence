@@ -118,7 +118,7 @@ class LumenBot(commands.Bot):
         )
 
         # Initialize bot-specific lifecycle management
-        self.lifecycle = BotLifecycle(self)
+        self.lifecycle = BotLifecycle(self, config_manager)
 
         # Bot state
         self.startup_metrics: Optional[StartupMetrics] = None
@@ -189,7 +189,7 @@ class LumenBot(commands.Bot):
 
             # Initialize event system (listeners and consumers)
             event_start = time.perf_counter()
-            await initialize_event_system()
+            await initialize_event_system(self._config_manager)
             event_time = (time.perf_counter() - event_start) * 1000
             logger.info("✓ Event system initialized (%.2fms)", event_time)
 

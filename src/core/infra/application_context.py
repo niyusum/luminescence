@@ -12,6 +12,7 @@ Responsibilities
 - Initialize ConfigManager
 - Initialize ServiceContainer with dependency injection
 - Create and configure LumenBot with dependency injection
+- **Explicitly register and load all feature cogs (P1.4)**
 - Coordinate graceful shutdown in reverse order
 - Provide structured lifecycle logging with timing
 
@@ -19,13 +20,14 @@ Non-Responsibilities
 --------------------
 - Business logic (delegated to domain services)
 - Bot event handling (delegated to LumenBot)
-- Feature loading (delegated to FeatureLoader)
 - Domain service implementation (delegated to ServiceContainer)
 
-Lumen 2025 Compliance
----------------------
+Lumen 2025 Compliance (P1.4)
+-----------------------------
 - Strict separation of concerns (infrastructure orchestration only)
 - Config-driven initialization
+- **Explicit cog registration (no magic discovery)**
+- **Constructor injection for all cogs**
 - Structured logging with timing metrics
 - Graceful degradation on non-critical failures
 - Dependency injection for testability
@@ -37,11 +39,13 @@ The ApplicationContext is the single point of control for:
 1. Dependency order enforcement
 2. Service lifecycle management
 3. Dependency injection coordination
+4. **Explicit cog registration and loading (P1.4)**
 
 Initialization Order (Critical):
     1. ConfigManager
     2. ServiceContainer
     3. LumenBot (with injected dependencies)
+    4. **Feature Cogs (with dependency injection)**
 
 Shutdown Order (Reverse):
     1. LumenBot.close()
@@ -63,6 +67,25 @@ from src.core.logging.logger import get_logger
 from src.core.services.container import ServiceContainer
 
 logger = get_logger(__name__)
+
+# ============================================================================
+# EXPLICIT COG REGISTRATION (P1.4 - No Magic Discovery)
+# ============================================================================
+
+FEATURE_COGS = [
+    "src.modules.player.cog",
+    "src.modules.maiden.cog",
+    "src.modules.exploration.cog",
+    "src.modules.ascension.cog",
+    "src.modules.daily.cog",
+    "src.modules.tutorial.cog",
+    "src.modules.leaderboard.cog",
+    "src.modules.shrine.cog",
+    "src.modules.guild.cog",
+    "src.modules.summon.cog",
+    "src.modules.economy.cog",
+    "src.modules.drop.cog",
+]
 
 
 class ApplicationContext:
@@ -146,6 +169,12 @@ class ApplicationContext:
             bot_time = (time.perf_counter() - bot_start) * 1000
             logger.info("✓ LumenBot created with DI (%.2fms)", bot_time)
 
+            # Step 4: Load feature cogs with dependency injection (P1.4)
+            cogs_start = time.perf_counter()
+            await self._load_cogs()
+            cogs_time = (time.perf_counter() - cogs_start) * 1000
+            logger.info("✓ Feature cogs loaded (%.2fms)", cogs_time)
+
             self._initialized = True
             total_time = (time.perf_counter() - start_time) * 1000
 
@@ -166,6 +195,77 @@ class ApplicationContext:
             # Attempt cleanup on initialization failure
             await self._emergency_shutdown()
             raise RuntimeError("Failed to initialize application context") from exc
+
+    async def _load_cogs(self) -> None:
+        """
+        Load all feature cogs with explicit dependency injection (P1.4).
+
+        Replaces magic discovery with explicit registration for:
+        - Clear dependency graph
+        - Predictable initialization order
+        - Constructor injection for all cogs
+        - Per-cog error handling and timing
+
+        Raises:
+            RuntimeError: If cog loading fails
+        """
+        if not self._bot or not self._service_container:
+            raise RuntimeError("Cannot load cogs: bot or service_container not initialized")
+
+        logger.info("Loading feature cogs with dependency injection...")
+
+        loaded_count = 0
+        failed_cogs = []
+
+        for cog_module_path in FEATURE_COGS:
+            cog_name = cog_module_path.split(".")[-2].title()  # e.g., "maiden" -> "Maiden"
+            cog_start = time.perf_counter()
+
+            try:
+                # Load cog with dependency injection
+                # Most cogs use discord.py's setup() pattern which calls bot.add_cog()
+                await self._bot.load_extension(cog_module_path)
+
+                cog_time = (time.perf_counter() - cog_start) * 1000
+                logger.debug(
+                    "  ✓ %s loaded (%.2fms)",
+                    cog_name,
+                    cog_time,
+                )
+                loaded_count += 1
+
+            except Exception as exc:
+                cog_time = (time.perf_counter() - cog_start) * 1000
+                logger.error(
+                    "  ✗ %s failed to load (%.2fms)",
+                    cog_name,
+                    cog_time,
+                    extra={
+                        "cog_module": cog_module_path,
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                    },
+                    exc_info=True,
+                )
+                failed_cogs.append((cog_name, str(exc)))
+
+        # Log summary
+        logger.info(
+            "Cog loading complete: %d/%d successful",
+            loaded_count,
+            len(FEATURE_COGS),
+        )
+
+        if failed_cogs:
+            logger.warning(
+                "Failed to load %d cogs: %s",
+                len(failed_cogs),
+                ", ".join(f"{name} ({error})" for name, error in failed_cogs),
+            )
+
+            # For now, we continue even if some cogs fail (graceful degradation)
+            # In production, you might want to fail fast for critical cogs
+            # raise RuntimeError(f"Failed to load {len(failed_cogs)} cogs")
 
     # ========================================================================
     # BOT EXECUTION

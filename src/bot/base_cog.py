@@ -15,6 +15,7 @@ Responsibilities
 - Provide structured logging with Discord context
 - Support Discord View error handling helpers
 - Provide user validation helpers for interactive components
+- Accept dependencies via constructor injection (ServiceContainer, ErrorResponseService)
 
 Non-Responsibilities
 --------------------
@@ -29,31 +30,51 @@ Lumen 2025 Compliance
 - All errors converted into structured embeds
 - Logging uses LogContext with Discord IDs where available
 - No direct database writes; only uses DatabaseService transaction contexts
+- Constructor injection for all dependencies (P0.5, P0.6)
+- No service locator pattern (deprecated: bot.service_container)
 
 Architecture Notes
 ------------------
 - Prefix-only architecture (slash commands removed)
 - Error boundaries: domain exceptions → user-friendly embeds
 - Layered: Cog → Service → Infra
+- Dependency injection: ServiceContainer passed in constructor
+
+Usage Example
+-------------
+>>> # Recommended: explicit dependency injection
+>>> class FusionCog(BaseCog):
+...     def __init__(self, bot, service_container, error_response_service):
+...         super().__init__(
+...             bot=bot,
+...             cog_name="FusionCog",
+...             service_container=service_container,
+...             error_response_service=error_response_service,
+...         )
+...         # Access services via self.service_container
+...         self.fusion_service = service_container.fusion_service
+...
+...     @commands.command()
+...     async def fuse(self, ctx, maiden1_id: int, maiden2_id: int):
+...         result = await self.fusion_service.execute_fusion(...)
+...         await self.send_success(ctx, "Fusion Complete", result.message)
 """
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 import discord
 from discord.ext import commands
 
 from src.core.database.service import DatabaseService
 from src.core.logging.logger import LogContext, get_logger
-from src.modules.shared.exceptions import (
-    CooldownActiveError,
-    InsufficientResourcesError,
-    InvalidOperationError,
-    NotFoundError,
-    RateLimitError,
-)
+from src.core.services.error_response_service import ErrorResponseService
+from src.modules.shared.exceptions import CooldownActiveError, ErrorSeverity
 from src.ui.utils.embed_builder import EmbedBuilder
+
+if TYPE_CHECKING:
+    from src.core.services.container import ServiceContainer
 
 # Legacy alias for backward compatibility
 CooldownError = CooldownActiveError
@@ -66,21 +87,64 @@ class BaseCog(commands.Cog):
     Provides common utilities for:
     - safe database transaction contexts
     - standardized feedback embeds
-    - domain-aware error handling
+    - domain-aware error handling via ErrorResponseService
     - Discord View helper utilities
+    - dependency injection for ServiceContainer
+
+    LUMEN LAW / LES 2025 Compliance
+    -------------------------------
+    - Uses ErrorResponseService for exception formatting (P0.1, P0.2)
+    - No hardcoded error messages in presentation layer
+    - Constructor injection for dependencies (P0.5, P0.6)
+    - ServiceContainer passed as parameter, not accessed via bot.service_container
+    - Explicit dependency graph enables testing and maintainability
+
+    Attributes
+    ----------
+    bot : commands.Bot
+        Discord bot instance
+    cog_name : str
+        Name of the cog for logging
+    logger : Logger
+        Structured logger for this cog
+    service_container : Optional[ServiceContainer]
+        Domain service container for accessing business services
+    error_response_service : ErrorResponseService
+        Service for formatting error responses
     """
 
-    def __init__(self, bot: commands.Bot, cog_name: str) -> None:
+    def __init__(
+        self,
+        bot: commands.Bot,
+        cog_name: str,
+        service_container: Optional[ServiceContainer] = None,
+        error_response_service: Optional[ErrorResponseService] = None,
+    ) -> None:
         """
-        Initialize BaseCog.
+        Initialize BaseCog with dependency injection.
 
         Args:
             bot: Discord bot instance
             cog_name: Name of the cog (e.g., "AscensionCog")
+            service_container: Domain service container for accessing business services.
+                If None, falls back to bot.service_container (for backward compatibility).
+            error_response_service: Service for formatting error responses.
+                If None, creates a new instance (for backward compatibility).
+
+        LES 2025 Compliance:
+            - Constructor injection for all dependencies (P0.5, P0.6)
+            - No service locator pattern (bot.service_container deprecated)
+            - Explicit dependency graph
         """
         self.bot = bot
         self.cog_name = cog_name
         self.logger = get_logger(cog_name)
+
+        # Service container (constructor injection preferred)
+        self.service_container = service_container or getattr(bot, 'service_container', None)
+
+        # Error response service
+        self.error_response_service = error_response_service or ErrorResponseService()
 
     # ========================================================================
     # DATABASE UTILITIES
@@ -182,45 +246,30 @@ class BaseCog(commands.Cog):
         """
         Handle known domain exceptions with user-friendly responses.
 
+        Uses ErrorResponseService to format exceptions following LES 2025 standards.
+
         Returns:
             True if the error was handled and a response was sent, False otherwise.
         """
-        if isinstance(error, InsufficientResourcesError):
-            await self.send_error(
-                ctx,
-                "Insufficient Resources",
-                str(error),
-                "Check your inventory and try again.",
-            )
-            return True
+        # Format error using ErrorResponseService
+        response = await self.error_response_service.format_error(error)
 
-        if isinstance(error, InvalidOperationError):
-            await self.send_error(ctx, "Invalid Operation", str(error))
-            return True
+        # Check if this is a known error type (has a template)
+        from src.domain.exceptions.registry import get_exception_template
+        template = get_exception_template(error)
 
-        if isinstance(error, CooldownError):
-            await self.send_error(
-                ctx,
-                "Cooldown Active",
-                str(error),
-                "Please wait before retrying.",
-            )
-            return True
+        if template is None:
+            # Unknown error type, not handled here
+            return False
 
-        if isinstance(error, RateLimitError):
-            await self.send_error(
-                ctx,
-                "Rate Limit Exceeded",
-                str(error),
-                "You're using this command too frequently. Please slow down.",
-            )
-            return True
-
-        if isinstance(error, NotFoundError):
-            await self.send_error(ctx, "Not Found", str(error))
-            return True
-
-        return False
+        # Send formatted error response
+        await self.send_error(
+            ctx,
+            title=response["title"],
+            description=response["description"],
+            help_text=response.get("help_text"),
+        )
+        return True
 
     # ========================================================================
     # LOGGING UTILITIES
@@ -332,8 +381,10 @@ class BaseCog(commands.Cog):
         """
         Standardized error handling for Discord View interactions.
 
-        Converts domain exceptions to user-friendly embeds and logs errors
-        with full context. Handles both response and followup scenarios.
+        Converts domain exceptions to user-friendly embeds using ErrorResponseService
+        and logs errors with full context. Handles both response and followup scenarios.
+
+        Uses ErrorResponseService for formatting following LES 2025 standards.
 
         Args:
             interaction: Discord interaction from button/modal/select callback
@@ -349,38 +400,21 @@ class BaseCog(commands.Cog):
             **context,
         )
 
-        # Build appropriate error embed
-        if isinstance(error, InsufficientResourcesError):
-            embed = EmbedBuilder.error(
-                title="Insufficient Resources",
-                description=str(error),
-                help_text="Check your inventory and try again.",
-            )
-        elif isinstance(error, InvalidOperationError):
-            embed = EmbedBuilder.error(
-                title="Invalid Operation",
-                description=str(error),
-            )
-        elif isinstance(error, CooldownError):
+        # Format error using ErrorResponseService
+        response = await self.error_response_service.format_error(error)
+
+        # Build embed based on severity
+        severity = response["severity"]
+        if severity in (ErrorSeverity.DEBUG, ErrorSeverity.INFO):
             embed = EmbedBuilder.warning(
-                title="Cooldown Active",
-                description=str(error),
-            )
-        elif isinstance(error, RateLimitError):
-            embed = EmbedBuilder.warning(
-                title="Rate Limit Exceeded",
-                description=str(error),
-            )
-        elif isinstance(error, NotFoundError):
-            embed = EmbedBuilder.error(
-                title="Not Found",
-                description=str(error),
+                title=response["title"],
+                description=response["description"],
             )
         else:
             embed = EmbedBuilder.error(
-                title="Something Went Wrong",
-                description="An unexpected error occurred while handling your action.",
-                help_text="The issue has been logged.",
+                title=response["title"],
+                description=response["description"],
+                help_text=response.get("help_text"),
             )
 
         # Send error embed (ephemeral where possible)

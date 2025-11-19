@@ -1,0 +1,1 @@
+{"timestamp": "2025-11-18T22:50:27.903633+00:00", "level": "INFO", "logger": "src.core.logging.logger", "message": "Logging initialized", "module": "logger", "function": "setup_logging", "line": 410, "extra": {"taskName": null, "environment": "development", "log_level": "INFO", "json": false, "colors": false, "logs_dir": "C:\\luminescent\\logs", "queue_max_size": 10000}}

@@ -332,6 +332,12 @@ class GuildService(BaseService):
             if not guild:
                 raise NotFoundError(f"Guild {guild_id} not found")
 
+            # SAFETY: idempotency - Note: Deposits are repeatable operations.
+            # Unlike one-time claims, users may legitimately deposit the same amount multiple times.
+            # Callers should implement UI-level protections (e.g., disable buttons after click)
+            # to prevent accidental double-deposits from user error.
+            # The pessimistic lock prevents concurrent race conditions.
+
             # Update treasury
             old_treasury = guild.treasury
             guild.treasury += amount
@@ -346,6 +352,20 @@ class GuildService(BaseService):
                     "amount": amount,
                     "old_treasury": old_treasury,
                     "new_treasury": new_treasury,
+                },
+            )
+
+            # SAFETY: observability - Log success with full economic context
+            self.log.info(
+                f"Treasury deposit: player {donor_id} deposited {amount} lumees to guild {guild_id}",
+                extra={
+                    "player_id": donor_id,
+                    "guild_id": guild_id,
+                    "amount": amount,
+                    "old_treasury": old_treasury,
+                    "new_treasury": new_treasury,
+                    "success": True,
+                    "reason": "guild_treasury_deposit",
                 },
             )
 

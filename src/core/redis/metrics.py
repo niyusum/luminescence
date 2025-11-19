@@ -62,7 +62,6 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import Any, Dict, Optional
 
-from src.core.config import ConfigManager
 from src.core.logging.logger import get_logger
 
 logger = get_logger(__name__)
@@ -211,6 +210,23 @@ class RedisMetrics:
     _health_checks: deque = deque(maxlen=100)
     _lock = Lock()
     _start_time: float = time.time()
+    _config_manager: Optional[Any] = None
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # INITIALIZATION
+    # ═════════════════════════════════════════════════════════════════════════
+
+    @classmethod
+    def initialize(cls, config_manager: Any) -> None:
+        """
+        Initialize the metrics collector with a config manager instance.
+
+        Parameters
+        ----------
+        config_manager : ConfigManager
+            The config manager instance to use for configuration
+        """
+        cls._config_manager = config_manager
 
     # ═════════════════════════════════════════════════════════════════════════
     # OPERATION METRICS
@@ -558,11 +574,13 @@ class RedisMetrics:
     # CONFIGURATION HELPERS
     # ═════════════════════════════════════════════════════════════════════════
 
-    @staticmethod
-    def _get_config_int(key: str, default: int) -> int:
+    @classmethod
+    def _get_config_int(cls, key: str, default: int) -> int:
         """Get integer config value with fallback."""
+        if cls._config_manager is None:
+            return default
         try:
-            val = ConfigManager.get(key)
+            val = cls._config_manager.get(key)
             if isinstance(val, int):
                 return val
         except Exception:

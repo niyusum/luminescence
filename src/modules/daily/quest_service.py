@@ -53,6 +53,8 @@ if TYPE_CHECKING:
     from src.core.config.manager import ConfigManager
     from src.core.event.bus import EventBus
     from src.database.models.progression.daily_quest import DailyQuest
+    from src.modules.player.currencies_service import PlayerCurrenciesService
+    from src.modules.player.progression_service import PlayerProgressionService
 
 
 # ============================================================================
@@ -93,6 +95,8 @@ class DailyQuestService(BaseService):
         config_manager: ConfigManager,
         event_bus: EventBus,
         logger: Logger,
+        player_currencies_service: PlayerCurrenciesService,
+        player_progression_service: PlayerProgressionService,
     ) -> None:
         """
         Initialize DailyQuestService with required dependencies.
@@ -101,6 +105,8 @@ class DailyQuestService(BaseService):
             config_manager: Application configuration manager
             event_bus: Event bus for cross-module communication
             logger: Structured logger instance
+            player_currencies_service: Service for currency operations
+            player_progression_service: Service for XP operations
         """
         super().__init__(config_manager, event_bus, logger)
 
@@ -110,6 +116,10 @@ class DailyQuestService(BaseService):
             model_class=DailyQuest,
             logger=get_logger(f"{__name__}.DailyQuestRepository"),
         )
+
+        # SAFETY: Store service dependencies for reward distribution
+        self._player_currencies = player_currencies_service
+        self._player_progression = player_progression_service
 
     # ========================================================================
     # PUBLIC API - Read Operations
@@ -516,59 +526,98 @@ class DailyQuestService(BaseService):
 
         today = date.today()
 
-        async with DatabaseService.get_transaction() as session:
-            from src.database.models.progression.daily_quest import DailyQuest
+        # SAFETY: Observability - Wrap in try-except for error path logging
+        try:
+            async with DatabaseService.get_transaction() as session:
+                from src.database.models.progression.daily_quest import DailyQuest
 
-            # Lock daily quest record
-            daily_quest = await self._daily_quest_repo.find_one_where(
-                session,
-                DailyQuest.player_id == player_id,
-                DailyQuest.quest_date == today,
-                for_update=True,
-            )
+                # Lock daily quest record
+                daily_quest = await self._daily_quest_repo.find_one_where(
+                    session,
+                    DailyQuest.player_id == player_id,
+                    DailyQuest.quest_date == today,
+                    for_update=True,
+                )
 
-            if not daily_quest:
-                raise NotFoundError("DailyQuest", f"player_id={player_id}, date={today}")
+                if not daily_quest:
+                    raise NotFoundError("DailyQuest", f"player_id={player_id}, date={today}")
 
-            # Check if rewards already claimed
-            if daily_quest.rewards_claimed:
-                raise InvalidOperationError("claim_rewards", "Daily quest rewards already claimed")
+                # SAFETY: idempotency - Check if rewards already claimed (with pessimistic lock)
+                # This prevents duplicate reward claims even under concurrent requests
+                if daily_quest.rewards_claimed:
+                    raise InvalidOperationError("claim_rewards", "Daily quest rewards already claimed")
 
-            # Check if any quests are completed
-            completed_count = sum(
-                1 for completed in daily_quest.quests_completed.values() if completed
-            )
+                # Check if any quests are completed
+                completed_count = sum(
+                    1 for completed in daily_quest.quests_completed.values() if completed
+                )
 
-            if completed_count == 0:
-                raise InvalidOperationError("claim_rewards", "No quests completed yet")
+                if completed_count == 0:
+                    raise InvalidOperationError("claim_rewards", "No quests completed yet")
 
-            # Get reward configuration
-            base_rewards = self.get_config("daily_quests.base_rewards", default={})
-            streak_bonus_pct = self.get_config(
-                "daily_quests.streak_bonus_pct", default=0.1
-            )
+                # Get reward configuration
+                base_rewards = self.get_config("daily_quests.base_rewards", default={})
+                streak_bonus_pct = self.get_config(
+                    "daily_quests.streak_bonus_pct", default=0.1
+                )
 
-            # Calculate total rewards
-            # Apply streak bonus if applicable
-            streak_multiplier = 1.0 + (daily_quest.bonus_streak * streak_bonus_pct)
+                # Calculate total rewards
+                # Apply streak bonus if applicable
+                streak_multiplier = 1.0 + (daily_quest.bonus_streak * streak_bonus_pct)
 
-            # Mark rewards as claimed
-            daily_quest.rewards_claimed = True
+                # SAFETY: Atomicity - Distribute rewards within same transaction
+                # Calculate final reward amounts
+                final_rewards = {}
+                for reward_type, base_amount in base_rewards.items():
+                    final_amount = int(base_amount * streak_multiplier)
+                    final_rewards[reward_type] = final_amount
 
-            # Audit logging
-            await AuditLogger.log(
-                player_id=player_id,
-                transaction_type="daily_quest_rewards_claimed",
-                details={
-                    "quests_completed": completed_count,
-                    "base_rewards": base_rewards,
-                    "bonus_streak": daily_quest.bonus_streak,
-                    "streak_multiplier": streak_multiplier,
-                },
-                context=context,
-            )
+                    # Distribute rewards based on type
+                    if reward_type == "lumees":
+                        await self._player_currencies.add_resource(
+                            player_id=player_id,
+                            resource_type="lumees",
+                            amount=final_amount,
+                            reason="daily_quest_completion",
+                            context=f"completed_{completed_count}_quests",
+                            session=session,  # SAFETY: Pass session for atomicity
+                        )
+                    elif reward_type == "xp":
+                        await self._player_progression.add_xp(
+                            player_id=player_id,
+                            xp_amount=final_amount,
+                            reason="daily_quest_completion",
+                            context=f"completed_{completed_count}_quests",
+                            session=session,  # SAFETY: Pass session for atomicity
+                        )
+                    elif reward_type == "auric_coin":
+                        await self._player_currencies.add_resource(
+                            player_id=player_id,
+                            resource_type="auric_coin",
+                            amount=final_amount,
+                            reason="daily_quest_completion",
+                            context=f"completed_{completed_count}_quests",
+                            session=session,  # SAFETY: Pass session for atomicity
+                        )
 
-            # Event emission
+                # SAFETY: idempotency - Mark rewards as claimed to prevent duplicate claims
+                daily_quest.rewards_claimed = True
+
+                # Audit logging
+                await AuditLogger.log(
+                    player_id=player_id,
+                    transaction_type="daily_quest_rewards_claimed",
+                    details={
+                        "quests_completed": completed_count,
+                        "base_rewards": base_rewards,
+                        "final_rewards": final_rewards,
+                        "bonus_streak": daily_quest.bonus_streak,
+                        "streak_multiplier": streak_multiplier,
+                    },
+                    context=context,
+                )
+
+            # Event emission (outside transaction)
             await self.emit_event(
                 event_type="daily_quest.rewards_claimed",
                 data={
@@ -576,15 +625,23 @@ class DailyQuestService(BaseService):
                     "quests_completed": completed_count,
                     "bonus_streak": daily_quest.bonus_streak,
                     "base_rewards": base_rewards,
+                    "final_rewards": final_rewards,
                 },
             )
 
+            # SAFETY: observability - Log success with full economic context
             self.log.info(
                 f"Daily quest rewards claimed by player {player_id} ({completed_count} quests, {daily_quest.bonus_streak} streak)",
                 extra={
                     "player_id": player_id,
                     "quests_completed": completed_count,
                     "bonus_streak": daily_quest.bonus_streak,
+                    "base_rewards": base_rewards,
+                    "final_rewards": final_rewards,
+                    "streak_multiplier": streak_multiplier,
+                    "success": True,  # SAFETY: Explicit success flag
+                    "error": None,  # SAFETY: Explicit null error
+                    "reason": "daily_quest_completion",
                 },
             )
 
@@ -592,6 +649,21 @@ class DailyQuestService(BaseService):
                 "player_id": player_id,
                 "quests_completed_count": completed_count,
                 "base_rewards": base_rewards,
+                "final_rewards": final_rewards,
                 "streak_bonus": daily_quest.bonus_streak,
                 "streak_multiplier": streak_multiplier,
             }
+
+        except Exception as e:
+            # SAFETY: Observability - Exception path logging
+            self.log.error(
+                f"Failed to claim daily quest rewards: {e}",
+                extra={
+                    "player_id": player_id,
+                    "reason": "daily_quest_completion",
+                    "success": False,  # SAFETY: Explicit failure flag
+                    "error": str(e),  # SAFETY: Explicit error message
+                },
+                exc_info=True,
+            )
+            raise

@@ -252,6 +252,7 @@ class UnifiedHealthCheck:
     # Class-level references to monitors (set by initialize())
     _database_monitor: Optional[DatabaseHealthMonitor] = None
     _redis_monitor: Optional[RedisHealthMonitor] = None
+    _config_manager: Optional[ConfigManager] = None
     _initialized: bool = False
 
     @classmethod
@@ -259,6 +260,7 @@ class UnifiedHealthCheck:
         cls,
         database_monitor: Optional[DatabaseHealthMonitor] = None,
         redis_monitor: Optional[RedisHealthMonitor] = None,
+        config_manager: Optional[ConfigManager] = None,
     ) -> None:
         """
         Initialize health check with monitor references.
@@ -271,6 +273,8 @@ class UnifiedHealthCheck:
             Reference to database health monitor
         redis_monitor : RedisHealthMonitor, optional
             Reference to Redis health monitor
+        config_manager : ConfigManager, optional
+            Reference to ConfigManager for timeout configuration
 
         Notes
         -----
@@ -279,6 +283,7 @@ class UnifiedHealthCheck:
         """
         cls._database_monitor = database_monitor
         cls._redis_monitor = redis_monitor
+        cls._config_manager = config_manager
         cls._initialized = True
 
         logger.info(
@@ -286,6 +291,7 @@ class UnifiedHealthCheck:
             extra={
                 "has_database_monitor": database_monitor is not None,
                 "has_redis_monitor": redis_monitor is not None,
+                "has_config_manager": config_manager is not None,
             },
         )
 
@@ -316,22 +322,25 @@ class UnifiedHealthCheck:
 
         # Determine timeout with fallback chain
         if timeout_seconds is None:
-            try:
-                timeout_value = ConfigManager.get(
-                    "health_check_timeout_seconds",
-                    default=cls.DEFAULT_TIMEOUT_SECONDS,
-                )
-                # Ensure we got a float/int value
-                if isinstance(timeout_value, (int, float)):
-                    timeout_seconds = float(timeout_value)
-                else:
+            if cls._config_manager is not None:
+                try:
+                    timeout_value = cls._config_manager.get(
+                        "health_check_timeout_seconds",
+                        default=cls.DEFAULT_TIMEOUT_SECONDS,
+                    )
+                    # Ensure we got a float/int value
+                    if isinstance(timeout_value, (int, float)):
+                        timeout_seconds = float(timeout_value)
+                    else:
+                        timeout_seconds = cls.DEFAULT_TIMEOUT_SECONDS
+                except Exception:
                     timeout_seconds = cls.DEFAULT_TIMEOUT_SECONDS
-            except Exception:
+                    logger.warning(
+                        "Failed to load timeout from ConfigManager, using default",
+                        extra={"default_timeout": cls.DEFAULT_TIMEOUT_SECONDS},
+                    )
+            else:
                 timeout_seconds = cls.DEFAULT_TIMEOUT_SECONDS
-                logger.warning(
-                    "ConfigManager unavailable, using default timeout",
-                    extra={"default_timeout": cls.DEFAULT_TIMEOUT_SECONDS},
-                )
 
         # Warn if not initialized
         if not cls._initialized:

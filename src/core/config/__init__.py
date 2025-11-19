@@ -75,26 +75,27 @@ summary = Config.get_config_summary()
 ```python
 from src.core.config import ConfigManager
 
-# Initialize (once at startup)
-await ConfigManager.initialize()
+# Initialize (once at startup) - creates instance
+config_manager = ConfigManager()
+await config_manager.initialize()
 
 # Read configuration
-fusion_base_cost = ConfigManager.get("fusion_costs.base", default=100)
-fusion_curve_a = ConfigManager.get("fusion_costs.curve.a", default=1.5)
+fusion_base_cost = config_manager.get("fusion_costs.base", default=100)
+fusion_curve_a = config_manager.get("fusion_costs.curve.a", default=1.5)
 
 # Write configuration (hot-reload)
-await ConfigManager.set(
+await config_manager.set(
     key="fusion_costs.base",
     value=150,
     modified_by="admin"
 )
 
 # Get metrics
-metrics = ConfigManager.get_metrics()
+metrics = config_manager.get_metrics()
 print(f"Cache hit rate: {metrics['cache_hit_rate']}%")
 
 # Health check
-health = ConfigManager.health_snapshot()
+health = config_manager.health_snapshot()
 if not health["initialized"]:
     logger.error("ConfigManager not initialized!")
 ```

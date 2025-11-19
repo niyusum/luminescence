@@ -84,61 +84,103 @@ class DropChargeService(BaseService):
         # Validation
         player_id = InputValidator.validate_discord_id(player_id)
 
-        async with DatabaseService.get_transaction() as session:
-            # Get player currencies with pessimistic lock
-            currencies = await self._currencies_repo.find_one_where(
-                session,
-                PlayerCurrencies.player_id == player_id,
-                for_update=True,
-            )
-
-            if not currencies:
-                raise NotFoundError("PlayerCurrencies", player_id)
-
-            # Calculate current charges (regeneration)
-            current_charges = self._calculate_current_charges(currencies)
-
-            # Check if player has charges
-            if current_charges <= 0:
-                next_charge_at = self._calculate_next_charge_time(currencies)
-                raise InvalidOperationError(
-                    "execute_drop",
-                    f"No drop charges available. Next charge at: {next_charge_at}"
+        # SAFETY: Observability - Wrap in try-except for error path logging
+        try:
+            async with DatabaseService.get_transaction() as session:
+                # Get player currencies with pessimistic lock
+                currencies = await self._currencies_repo.find_one_where(
+                    session,
+                    PlayerCurrencies.player_id == player_id,
+                    for_update=True,
                 )
 
-            # Calculate auric coin reward
-            base_reward = self.get_config("drop_system.auric_coin_per_drop", default=1)
-            class_bonus = self._get_class_bonus(player_class)
-            auric_earned = int(base_reward * class_bonus)
+                if not currencies:
+                    raise NotFoundError("PlayerCurrencies", player_id)
 
-            # Update currencies
-            currencies.auric_coin += auric_earned
-            currencies.drop_charges = current_charges - 1
-            currencies.last_drop_charge_update = datetime.now(timezone.utc)
+                # Calculate current charges (regeneration)
+                current_charges = self._calculate_current_charges(currencies)
 
-            # Calculate next charge time
-            next_charge_at = self._calculate_next_charge_time(currencies)
-            max_charges = self._get_max_charges(currencies)
+                # SAFETY: idempotency - Prevent duplicate drops from network retries/button mashing
+                # Check minimum time between drops (configurable cooldown window)
+                min_seconds_between_drops = self.get_config("drop_system.min_seconds_between_drops", default=1.0)  # SAFETY: config
+                if currencies.last_drop_charge_update:
+                    time_since_last_drop = (datetime.now(timezone.utc) - currencies.last_drop_charge_update).total_seconds()
+                    if time_since_last_drop < min_seconds_between_drops:
+                        raise InvalidOperationError(
+                            "execute_drop",
+                            f"Drop executed too recently. Please wait {min_seconds_between_drops - time_since_last_drop:.1f} more seconds."
+                        )
 
-            # Emit event
-            await self.emit_event(
-                "drop.executed",
-                {
-                    "player_id": player_id,
+                # Check if player has charges
+                if current_charges <= 0:
+                    next_charge_at = self._calculate_next_charge_time(currencies)
+                    raise InvalidOperationError(
+                        "execute_drop",
+                        f"No drop charges available. Next charge at: {next_charge_at}"
+                    )
+
+                # Calculate auric coin reward
+                base_reward = self.get_config("drop_system.auric_coin_per_drop", default=1)
+                class_bonus = self._get_class_bonus(player_class)
+                auric_earned = int(base_reward * class_bonus)
+
+                # Update currencies
+                currencies.auric_coin += auric_earned
+                currencies.drop_charges = current_charges - 1
+                currencies.last_drop_charge_update = datetime.now(timezone.utc)
+
+                # Calculate next charge time
+                next_charge_at = self._calculate_next_charge_time(currencies)
+                max_charges = self._get_max_charges(currencies)
+
+                # Emit event
+                await self.emit_event(
+                    "drop.executed",
+                    {
+                        "player_id": player_id,
+                        "auric_earned": auric_earned,
+                        "charges_consumed": 1,
+                        "charges_remaining": currencies.drop_charges,
+                        "class_bonus": class_bonus,
+                    },
+                )
+
+                # SAFETY: observability - Log success with full economic context
+                self.log.info(
+                    f"Drop executed: player {player_id} earned {auric_earned} auric coin",
+                    extra={
+                        "player_id": player_id,
+                        "amount": auric_earned,
+                        "charges_consumed": 1,
+                        "charges_remaining": currencies.drop_charges,
+                        "class_bonus": class_bonus,
+                        "success": True,
+                        "error": None,  # SAFETY: Explicit null error
+                        "reason": "drop_execution",
+                    },
+                )
+
+                return {
                     "auric_earned": auric_earned,
-                    "charges_consumed": 1,
                     "charges_remaining": currencies.drop_charges,
+                    "max_charges": max_charges,
+                    "next_charge_at": next_charge_at,
                     "class_bonus": class_bonus,
-                },
-            )
+                }
 
-            return {
-                "auric_earned": auric_earned,
-                "charges_remaining": currencies.drop_charges,
-                "max_charges": max_charges,
-                "next_charge_at": next_charge_at,
-                "class_bonus": class_bonus,
-            }
+        except Exception as e:
+            # SAFETY: Observability - Exception path logging
+            self.log.error(
+                f"Failed to execute drop: {e}",
+                extra={
+                    "player_id": player_id,
+                    "reason": "drop_execution",
+                    "success": False,  # SAFETY: Explicit failure flag
+                    "error": str(e),   # SAFETY: Explicit error message
+                },
+                exc_info=True,
+            )
+            raise
 
     async def get_charge_status(
         self,

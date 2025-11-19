@@ -87,7 +87,7 @@ class RedisHealthMonitor:
     automatic degradation detection and recovery tracking.
     """
     
-    def __init__(self, redis_service: type[RedisService]) -> None:
+    def __init__(self, redis_service: type[RedisService], config_manager: ConfigManager) -> None:
         """
         Initialize health monitor.
 
@@ -95,19 +95,22 @@ class RedisHealthMonitor:
         ----------
         redis_service : type[RedisService]
             The RedisService singleton type to monitor
+        config_manager : ConfigManager
+            The config manager instance to use for configuration
         """
         self._redis_service = redis_service
+        self._config_manager = config_manager
         self._state: HealthState = HealthState.HEALTHY
         self._is_running: bool = False
         self._monitor_task: Optional[asyncio.Task] = None
-        
+
         # Health check history
         self._check_history: deque = deque(maxlen=100)
         self._consecutive_failures: int = 0
         self._consecutive_successes: int = 0
         self._last_check_time: Optional[float] = None
         self._last_state_change: Optional[float] = None
-        
+
         # Configuration
         self._check_interval = self._get_config_int("core.redis.health.check_interval_seconds", 30)
         self._timeout = self._get_config_int("core.redis.health.timeout_seconds", 5)
@@ -370,22 +373,20 @@ class RedisHealthMonitor:
     # CONFIGURATION HELPERS
     # ═══════════════════════════════════════════════════════════════════════
     
-    @staticmethod
-    def _get_config_int(key: str, default: int) -> int:
+    def _get_config_int(self, key: str, default: int) -> int:
         """Get integer config value with fallback."""
         try:
-            val = ConfigManager.get(key)
+            val = self._config_manager.get(key)
             if isinstance(val, int):
                 return val
         except Exception:
             pass
         return default
-    
-    @staticmethod
-    def _get_config_float(key: str, default: float) -> float:
+
+    def _get_config_float(self, key: str, default: float) -> float:
         """Get float config value with fallback."""
         try:
-            val = ConfigManager.get(key)
+            val = self._config_manager.get(key)
             if isinstance(val, (int, float)):
                 return float(val)
         except Exception:

@@ -152,8 +152,17 @@ class RedisResilience:
         OSError,  # Network errors
     )
 
-    def __init__(self) -> None:
-        """Initialize Redis resilience with circuit breaker and retry policy."""
+    def __init__(self, config_manager: ConfigManager) -> None:
+        """
+        Initialize Redis resilience with circuit breaker and retry policy.
+
+        Parameters
+        ----------
+        config_manager : ConfigManager
+            The config manager instance to use for configuration
+        """
+        self._config_manager = config_manager
+
         # Circuit breaker state
         self._circuit_state: CircuitState = CircuitState.CLOSED
         self._failure_count: int = 0
@@ -595,33 +604,30 @@ class RedisResilience:
     # CONFIGURATION HELPERS
     # ═════════════════════════════════════════════════════════════════════════
 
-    @staticmethod
-    def _get_config_int(key: str, default: int) -> int:
+    def _get_config_int(self, key: str, default: int) -> int:
         """Get integer config value with fallback."""
         try:
-            val = ConfigManager.get(key)
+            val = self._config_manager.get(key)
             if isinstance(val, int):
                 return val
         except Exception:
             pass
         return default
 
-    @staticmethod
-    def _get_config_float(key: str, default: float) -> float:
+    def _get_config_float(self, key: str, default: float) -> float:
         """Get float config value with fallback."""
         try:
-            val = ConfigManager.get(key)
+            val = self._config_manager.get(key)
             if isinstance(val, (int, float)):
                 return float(val)
         except Exception:
             pass
         return default
 
-    @staticmethod
-    def _get_config_bool(key: str, default: bool) -> bool:
+    def _get_config_bool(self, key: str, default: bool) -> bool:
         """Get boolean config value with fallback."""
         try:
-            val = ConfigManager.get(key)
+            val = self._config_manager.get(key)
             if isinstance(val, bool):
                 return val
         except Exception:

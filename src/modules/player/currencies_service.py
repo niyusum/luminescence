@@ -211,6 +211,7 @@ class PlayerCurrenciesService(BaseService):
         amount: int,
         reason: str,
         context: Optional[str] = None,
+        session: Optional[Any] = None,  # SAFETY: Optional session for atomicity
     ) -> Dict[str, Any]:
         """
         Add currency to a player's balance.
@@ -265,14 +266,16 @@ class PlayerCurrenciesService(BaseService):
             reason=reason,
         )
 
-        # Config-driven: Check max resource limit
+        # SAFETY: Config-driven max resource limit (no hardcoded values)
         max_limit = self.get_config(f"MAX_{resource_type.upper()}", default=999_999_999)
 
-        # Atomic transaction with pessimistic locking
-        async with DatabaseService.get_transaction() as session:
+        # SAFETY: Atomicity - Use provided session or create new transaction
+        if session is not None:
+            # Use provided session (part of larger transaction)
+            tx_session = session
             # Lock the row for update
             currencies = await self._currencies_repo.find_one_where(
-                session,
+                tx_session,
                 self._currencies_repo.model_class.player_id == player_id,
                 for_update=True,  # SELECT FOR UPDATE
             )
@@ -326,7 +329,7 @@ class PlayerCurrenciesService(BaseService):
                 },
             )
 
-            # Transaction auto-commits on exit
+            # Return without committing (caller manages transaction)
             return {
                 "player_id": player_id,
                 "resource_type": resource_type,
@@ -334,6 +337,73 @@ class PlayerCurrenciesService(BaseService):
                 "new_value": new_value,
                 "delta": actual_delta,
             }
+        else:
+            # Create new transaction (standalone operation)
+            async with DatabaseService.get_transaction() as tx_session:
+                # Lock the row for update
+                currencies = await self._currencies_repo.find_one_where(
+                    tx_session,
+                    self._currencies_repo.model_class.player_id == player_id,
+                    for_update=True,  # SELECT FOR UPDATE
+                )
+
+                if not currencies:
+                    raise NotFoundError("PlayerCurrencies", player_id)
+
+                # Get old value
+                old_value: int = getattr(currencies, resource_type)
+
+                # Calculate new value with cap
+                new_value = min(old_value + amount, max_limit)
+                actual_delta = new_value - old_value
+
+                # Apply change
+                setattr(currencies, resource_type, new_value)
+
+                # Audit logging (async, non-blocking)
+                await AuditLogger.log_resource_change(
+                    player_id=player_id,
+                    resource_type=resource_type,
+                    old_value=old_value,
+                    new_value=new_value,
+                    reason=reason,
+                    context=context,
+                )
+
+                # Event emission for downstream systems
+                await self.emit_event(
+                    event_type="resource.added",
+                    data={
+                        "player_id": player_id,
+                        "resource_type": resource_type,
+                        "old_value": old_value,
+                        "new_value": new_value,
+                        "delta": actual_delta,
+                        "reason": reason,
+                    },
+                )
+
+                self.log.info(
+                    f"Resource added: {resource_type} +{actual_delta}",
+                    extra={
+                        "player_id": player_id,
+                        "resource_type": resource_type,
+                        "old_value": old_value,
+                        "new_value": new_value,
+                        "requested_amount": amount,
+                        "actual_delta": actual_delta,
+                        "reason": reason,
+                    },
+                )
+
+                # Transaction auto-commits on exit
+                return {
+                    "player_id": player_id,
+                    "resource_type": resource_type,
+                    "old_value": old_value,
+                    "new_value": new_value,
+                    "delta": actual_delta,
+                }
 
     async def subtract_resource(
         self,
@@ -342,6 +412,7 @@ class PlayerCurrenciesService(BaseService):
         amount: int,
         reason: str,
         context: Optional[str] = None,
+        session: Optional[Any] = None,  # SAFETY: Optional session for atomicity
     ) -> Dict[str, Any]:
         """
         Subtract currency from a player's balance.
@@ -354,6 +425,7 @@ class PlayerCurrenciesService(BaseService):
             amount: Amount to subtract (must be positive)
             reason: Reason for the subtraction (for audit trail)
             context: Optional command/system context
+            session: Optional database session for atomicity
 
         Returns:
             Dict with updated balance (same format as add_resource)
@@ -390,8 +462,9 @@ class PlayerCurrenciesService(BaseService):
             reason=reason,
         )
 
-        # Atomic transaction with pessimistic locking
-        async with DatabaseService.get_transaction() as session:
+        # SAFETY: Atomicity - Use provided session or create new transaction
+        if session is not None:
+            # Use provided session (part of larger transaction)
             # Lock the row for update
             currencies = await self._currencies_repo.find_one_where(
                 session,
@@ -454,7 +527,7 @@ class PlayerCurrenciesService(BaseService):
                 },
             )
 
-            # Transaction auto-commits on exit
+            # Return without committing (caller manages transaction)
             return {
                 "player_id": player_id,
                 "resource_type": resource_type,
@@ -462,6 +535,80 @@ class PlayerCurrenciesService(BaseService):
                 "new_value": new_value,
                 "delta": -amount,
             }
+
+        else:
+            # Create new transaction (standalone operation)
+            async with DatabaseService.get_transaction() as tx_session:
+                # Lock the row for update
+                currencies = await self._currencies_repo.find_one_where(
+                    tx_session,
+                    self._currencies_repo.model_class.player_id == player_id,
+                    for_update=True,  # SELECT FOR UPDATE
+                )
+
+                if not currencies:
+                    raise NotFoundError("PlayerCurrencies", player_id)
+
+                # Get old value
+                old_value: int = getattr(currencies, resource_type)
+
+                # Check sufficiency
+                if old_value < amount:
+                    raise InsufficientResourcesError(
+                        resource=resource_type,
+                        required=amount,
+                        current=old_value,
+                    )
+
+                # Calculate new value
+                new_value = old_value - amount
+
+                # Apply change
+                setattr(currencies, resource_type, new_value)
+
+                # Audit logging
+                await AuditLogger.log_resource_change(
+                    player_id=player_id,
+                    resource_type=resource_type,
+                    old_value=old_value,
+                    new_value=new_value,
+                    reason=reason,
+                    context=context,
+                )
+
+                # Event emission
+                await self.emit_event(
+                    event_type="resource.subtracted",
+                    data={
+                        "player_id": player_id,
+                        "resource_type": resource_type,
+                        "old_value": old_value,
+                        "new_value": new_value,
+                        "delta": -amount,
+                        "reason": reason,
+                    },
+                )
+
+                self.log.info(
+                    f"Resource subtracted: {resource_type} -{amount}",
+                    extra={
+                        "player_id": player_id,
+                        "resource_type": resource_type,
+                        "old_value": old_value,
+                        "new_value": new_value,
+                        "amount": amount,
+                        "reason": reason,
+                    },
+                )
+
+                # Transaction auto-commits on exit
+                return {
+                    "player_id": player_id,
+                    "resource_type": resource_type,
+                    "old_value": old_value,
+                    "new_value": new_value,
+                    "delta": -amount,
+                }
 
     async def transfer_resource(
         self,

@@ -104,7 +104,7 @@ class BotLifecycle:
     - graceful shutdown with resource cleanup
     """
 
-    def __init__(self, bot: "commands.Bot") -> None:
+    def __init__(self, bot: "commands.Bot", config_manager: ConfigManager) -> None:
         """
         Initialize bot lifecycle manager.
 
@@ -112,24 +112,27 @@ class BotLifecycle:
         ----------
         bot : commands.Bot
             The Discord bot instance.
+        config_manager : ConfigManager
+            Configuration manager instance for accessing bot settings.
         """
         self.bot = bot
+        self._config_manager = config_manager
         self.metrics = BotMetrics()
         self._health_task: Optional[asyncio.Task[None]] = None
         self._is_shutting_down = False
 
         # Configuration (config-driven with safe defaults)
         self._health_check_interval: float = float(
-            ConfigManager.get("bot.health_check_interval_seconds", 60)
+            self._config_manager.get("bot.health_check_interval_seconds", 60)
         )
         self._startup_timeout: float = float(
-            ConfigManager.get("bot.startup_timeout_seconds", 60)
+            self._config_manager.get("bot.startup_timeout_seconds", 60)
         )
         self._redis_degraded_latency_ms: float = float(
-            ConfigManager.get("bot.redis_degraded_latency_ms", 100.0)
+            self._config_manager.get("bot.redis_degraded_latency_ms", 100.0)
         )
         self._slow_startup_threshold_ms: float = float(
-            ConfigManager.get("bot.startup_slow_threshold_ms", 10_000.0)
+            self._config_manager.get("bot.startup_slow_threshold_ms", 10_000.0)
         )
 
         logger.info(
@@ -166,7 +169,7 @@ class BotLifecycle:
         missing_keys: List[str] = []
         for key in required_keys:
             try:
-                value = ConfigManager.get(key)
+                value = self._config_manager.get(key)
                 if not value:
                     missing_keys.append(key)
             except Exception:
@@ -175,7 +178,7 @@ class BotLifecycle:
         if missing_keys:
             raise ValueError(f"Missing required configuration: {', '.join(missing_keys)}")
 
-        token = ConfigManager.get("discord.token")
+        token = self._config_manager.get("discord.token")
         if not isinstance(token, str) or len(token) < 50:
             raise ValueError("Invalid Discord token format")
 

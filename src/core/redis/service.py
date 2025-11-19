@@ -97,6 +97,7 @@ class RedisService:
     _health_monitor: Optional[RedisHealthMonitor] = None
     _batch_ops: Optional[RedisBatchOperations] = None
     _rate_limiter: Optional[RedisRateLimiter] = None
+    _config_manager: Optional[ConfigManager] = None
     _init_lock: asyncio.Lock = asyncio.Lock()
     _is_healthy: bool = False
 
@@ -114,9 +115,14 @@ class RedisService:
     # ═══════════════════════════════════════════════════════════════════════
 
     @classmethod
-    async def initialize(cls) -> None:
+    async def initialize(cls, config_manager: ConfigManager) -> None:
         """
         Initialize the singleton Redis client and all Redis subsystem components.
+
+        Parameters
+        ----------
+        config_manager : ConfigManager
+            The config manager instance to use for configuration
 
         Idempotent and thread-safe. Safe to call multiple times.
 
@@ -132,6 +138,8 @@ class RedisService:
         async with cls._init_lock:
             if cls._client is not None:
                 return
+
+            cls._config_manager = config_manager
 
             url = cls._get_config_str(
                 "core.redis.url",
@@ -175,12 +183,15 @@ class RedisService:
                 cls._is_healthy = True
 
                 # Initialize resilience and utilities
-                cls._resilience = RedisResilience()
-                cls._batch_ops = RedisBatchOperations(cls._client)
-                cls._rate_limiter = RedisRateLimiter(cls)
+                cls._resilience = RedisResilience(cls._config_manager)
+                cls._batch_ops = RedisBatchOperations(cls._client, cls._config_manager)
+                cls._rate_limiter = RedisRateLimiter(cls, cls._config_manager)
 
                 # Initialize and start health monitor
-                cls._health_monitor = RedisHealthMonitor(cls)
+                cls._health_monitor = RedisHealthMonitor(cls, cls._config_manager)
+
+                # Initialize RedisMetrics with config manager
+                RedisMetrics.initialize(cls._config_manager)
                 await cls._health_monitor.start()
 
                 initialization_time_ms = (time.monotonic() - start_time) * 1000
@@ -208,7 +219,7 @@ class RedisService:
 
                 if cls._client is not None:
                     try:
-                        await cls._client.aclose()
+                        await cls._client.aclose()  # type: ignore[attr-defined]
                     except Exception:
                         pass
 
@@ -265,7 +276,7 @@ class RedisService:
 
         if client is not None:
             try:
-                await client.aclose()
+                await client.aclose()  # type: ignore[attr-defined]
                 logger.info("RedisService shutdown complete")
             except Exception as exc:
                 logger.error(
@@ -1673,15 +1684,16 @@ class RedisService:
     # CONFIGURATION HELPERS
     # ═══════════════════════════════════════════════════════════════════════
 
-    @staticmethod
-    def _get_config_str(key: str, default: str) -> str:
+    @classmethod
+    def _get_config_str(cls, key: str, default: str) -> str:
         """Get string config value with fallback."""
-        try:
-            val = ConfigManager.get(key)
-            if isinstance(val, str):
-                return val
-        except Exception:
-            pass
+        if cls._config_manager is not None:
+            try:
+                val = cls._config_manager.get(key)
+                if isinstance(val, str):
+                    return val
+            except Exception:
+                pass
 
         # Fallback to Config class attribute
         attr_name = key.replace("core.redis.", "REDIS_").replace(".", "_").upper()
@@ -1691,15 +1703,16 @@ class RedisService:
 
         return default
 
-    @staticmethod
-    def _get_config_int(key: str, default: int) -> int:
+    @classmethod
+    def _get_config_int(cls, key: str, default: int) -> int:
         """Get integer config value with fallback."""
-        try:
-            val = ConfigManager.get(key)
-            if isinstance(val, int):
-                return val
-        except Exception:
-            pass
+        if cls._config_manager is not None:
+            try:
+                val = cls._config_manager.get(key)
+                if isinstance(val, int):
+                    return val
+            except Exception:
+                pass
 
         # Fallback to Config class attribute
         attr_name = key.replace("core.redis.", "REDIS_").replace(".", "_").upper()
@@ -1709,15 +1722,16 @@ class RedisService:
 
         return default
 
-    @staticmethod
-    def _get_config_float(key: str, default: float) -> float:
+    @classmethod
+    def _get_config_float(cls, key: str, default: float) -> float:
         """Get float config value with fallback."""
-        try:
-            val = ConfigManager.get(key)
-            if isinstance(val, (int, float)):
-                return float(val)
-        except Exception:
-            pass
+        if cls._config_manager is not None:
+            try:
+                val = cls._config_manager.get(key)
+                if isinstance(val, (int, float)):
+                    return float(val)
+            except Exception:
+                pass
 
         # Fallback to Config class attribute
         attr_name = key.replace("core.redis.", "REDIS_").replace(".", "_").upper()
@@ -1727,15 +1741,16 @@ class RedisService:
 
         return default
 
-    @staticmethod
-    def _get_config_bool(key: str, default: bool) -> bool:
+    @classmethod
+    def _get_config_bool(cls, key: str, default: bool) -> bool:
         """Get boolean config value with fallback."""
-        try:
-            val = ConfigManager.get(key)
-            if isinstance(val, bool):
-                return val
-        except Exception:
-            pass
+        if cls._config_manager is not None:
+            try:
+                val = cls._config_manager.get(key)
+                if isinstance(val, bool):
+                    return val
+            except Exception:
+                pass
 
         # Fallback to Config class attribute
         attr_name = key.replace("core.redis.", "REDIS_").replace(".", "_").upper()

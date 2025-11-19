@@ -203,7 +203,8 @@ class ShrineService(BaseService):
                     f"Shrine {shrine_id} is not active and cannot be collected"
                 )
 
-            # Cooldown check
+            # SAFETY: idempotency - Cooldown check prevents duplicate collections
+            # Combined with pessimistic lock, this ensures no duplicate yield claims
             now = datetime.now(timezone.utc)
             cooldown_hours = self.get_config(
                 f"shrines.{shrine.shrine_type}.cooldown_hours", default=8
@@ -250,6 +251,20 @@ class ShrineService(BaseService):
                     "yield_amount": yield_amount,
                     "level": shrine.level,
                     "collected_at": now.isoformat(),
+                },
+            )
+
+            # SAFETY: observability - Log success with full economic context
+            self.log.info(
+                f"Shrine yield collected: player {player_id} earned {yield_amount} from shrine {shrine_id}",
+                extra={
+                    "player_id": player_id,
+                    "shrine_id": shrine_id,
+                    "shrine_type": shrine.shrine_type,
+                    "amount": yield_amount,
+                    "level": shrine.level,
+                    "success": True,
+                    "reason": "shrine_yield_collection",
                 },
             )
 

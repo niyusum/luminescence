@@ -127,6 +127,7 @@ from sqlalchemy.pool import NullPool, Pool, QueuePool
 from src.core.config.config import Config
 from src.core.logging.logger import get_logger
 from src.core.database.metrics import DatabaseMetrics
+from src.core.database.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 
 logger = get_logger(__name__)
 
@@ -205,6 +206,12 @@ class DatabaseService:
     - get_pool_metrics() -> Current connection pool statistics
     - record_pool_metrics() -> Emit pool metrics to monitoring backend
     - get_locked_entity() -> Helper for pessimistic row locking
+    - get_circuit_breaker_metrics() -> Circuit breaker state and metrics
+
+    **Circuit Breaker (P2.2)**:
+    - Prevents cascading failures when database is unavailable
+    - Automatically fails fast when failure threshold is reached
+    - Tests for recovery and resumes normal operation when database recovers
 
     Thread Safety
     -------------
@@ -216,6 +223,7 @@ class DatabaseService:
     _session_factory: Optional[async_sessionmaker[AsyncSession]] = None
     _config_snapshot: Optional[_DatabaseConfigSnapshot] = None
     _init_lock: asyncio.Lock = asyncio.Lock()
+    _circuit_breaker: Optional[CircuitBreaker] = None
 
     # ========================================================================
     # Initialization & Shutdown
@@ -334,6 +342,10 @@ class DatabaseService:
                     expire_on_commit=False,
                 )
 
+                # Initialize circuit breaker (P2.2)
+                cls._circuit_breaker = CircuitBreaker()
+                logger.debug("Circuit breaker initialized for DatabaseService")
+
                 DatabaseMetrics.record_engine_initialized(
                     url_scheme=config.url_scheme,
                     pool_class=config.pool_class.__name__,
@@ -402,6 +414,7 @@ class DatabaseService:
                 cls._engine = None
                 cls._session_factory = None
                 cls._config_snapshot = None
+                cls._circuit_breaker = None
 
     # ========================================================================
     # Health Check
@@ -728,6 +741,15 @@ class DatabaseService:
         """
         cls._ensure_initialized()
         assert cls._session_factory is not None  # Type checker assertion
+        assert cls._circuit_breaker is not None  # Type checker assertion
+
+        # Circuit breaker check (P2.2)
+        if not await cls._circuit_breaker.allow_request():
+            logger.warning("Transaction rejected by circuit breaker (fail-fast)")
+            raise CircuitBreakerOpenError(
+                "Database circuit breaker is open. "
+                "The database may be unavailable or experiencing issues."
+            )
 
         start = time.perf_counter()
         async with cls._session_factory() as session:
@@ -753,6 +775,9 @@ class DatabaseService:
                 committed = True
                 duration_ms = (time.perf_counter() - start) * 1000.0
 
+                # Record success in circuit breaker (P2.2)
+                await cls._circuit_breaker.record_success()
+
                 DatabaseMetrics.record_transaction_committed(duration_ms=duration_ms)
                 logger.debug(
                     "Database transaction committed",
@@ -762,6 +787,9 @@ class DatabaseService:
             except OperationalError as exc:
                 await session.rollback()
                 duration_ms = (time.perf_counter() - start) * 1000.0
+
+                # Record failure in circuit breaker (P2.2)
+                await cls._circuit_breaker.record_failure()
 
                 DatabaseMetrics.record_transaction_rolled_back(
                     duration_ms=duration_ms,
@@ -783,6 +811,9 @@ class DatabaseService:
                 await session.rollback()
                 duration_ms = (time.perf_counter() - start) * 1000.0
 
+                # Record failure in circuit breaker (P2.2)
+                await cls._circuit_breaker.record_failure()
+
                 DatabaseMetrics.record_transaction_rolled_back(
                     duration_ms=duration_ms,
                     error_type=type(exc).__name__,
@@ -802,6 +833,9 @@ class DatabaseService:
             except Exception as exc:
                 await session.rollback()
                 duration_ms = (time.perf_counter() - start) * 1000.0
+
+                # Record failure in circuit breaker (P2.2)
+                await cls._circuit_breaker.record_failure()
 
                 DatabaseMetrics.record_transaction_rolled_back(
                     duration_ms=duration_ms,
@@ -870,3 +904,61 @@ class DatabaseService:
         - Other transactions attempting to lock the same row will block
         """
         return await session.get(model, primary_key, with_for_update=True)
+
+    # ========================================================================
+    # Circuit Breaker Metrics (P2.2)
+    # ========================================================================
+
+    @classmethod
+    def get_circuit_breaker_metrics(cls) -> dict[str, Any]:
+        """
+        Get current circuit breaker state and metrics.
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary containing:
+            - state: Current circuit state (closed/open/half_open)
+            - failure_count: Total failures since initialization
+            - success_count: Total successes since initialization
+            - consecutive_failures: Current consecutive failure streak
+            - total_requests: Total requests processed
+            - rejected_requests: Requests rejected by circuit breaker
+            - last_failure_time: Timestamp of last failure (or None)
+            - last_state_change_time: Timestamp of last state transition
+
+        Notes
+        -----
+        Returns a dict with default values if circuit breaker is not initialized.
+        Useful for health endpoints and monitoring dashboards.
+
+        Usage Example
+        -------------
+        >>> metrics = DatabaseService.get_circuit_breaker_metrics()
+        >>> if metrics["state"] == "open":
+        >>>     logger.warning("Database circuit breaker is OPEN!")
+        """
+        if cls._circuit_breaker is None:
+            return {
+                "state": "not_initialized",
+                "failure_count": 0,
+                "success_count": 0,
+                "consecutive_failures": 0,
+                "total_requests": 0,
+                "rejected_requests": 0,
+                "last_failure_time": None,
+                "last_state_change_time": None,
+            }
+
+        cb_metrics = cls._circuit_breaker.get_metrics()
+        return {
+            "state": cb_metrics.state.value,
+            "failure_count": cb_metrics.failure_count,
+            "success_count": cb_metrics.success_count,
+            "consecutive_failures": cb_metrics.consecutive_failures,
+            "total_requests": cb_metrics.total_requests,
+            "rejected_requests": cb_metrics.rejected_requests,
+            "last_failure_time": cb_metrics.last_failure_time,
+            "last_state_change_time": cb_metrics.last_state_change_time,
+            "half_open_test_count": cb_metrics.half_open_test_count,
+        }
